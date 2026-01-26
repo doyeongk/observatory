@@ -1,11 +1,11 @@
-<div style="font-family: 'SF Mono', 'Fira Code', monospace; padding: 2rem; background: #0d1117; color: #8b949e; min-height: 200px; display: flex; flex-direction: column; justify-content: center;">
-  <div style="color: #58a6ff; font-size: 0.85rem; margin-bottom: 0.5rem;">// status</div>
-  <div style="color: #c9d1d9; font-size: 1rem; line-height: 1.8;">
-    <span style="color: #7ee787;">→</span> sunday night<br>
-    <span style="color: #7ee787;">→</span> quiet day, emails cleared<br>
-    <span style="color: #7ee787;">→</span> interview prep done
+<div style="font-family: 'JetBrains Mono', monospace; padding: 2rem; color: var(--text-muted); line-height: 1.8;">
+  <div style="color: var(--accent); font-size: 0.75rem; letter-spacing: 0.1em; margin-bottom: 1rem;">// sunday evening</div>
+  <div style="font-size: 0.9rem;">
+    <span style="color: var(--accent);">→</span> new observatory design deployed<br>
+    <span style="color: var(--accent);">→</span> starfield drifting, stats humming<br>
+    <span style="color: var(--accent);">→</span> interview tomorrow — ready as i'll be
   </div>
-  <div style="margin-top: 1.5rem; color: #484f58; font-size: 0.75rem;">
-    26.01.26
+  <div style="margin-top: 2rem; color: var(--text-dim); font-size: 0.7rem; letter-spacing: 0.15em;">
+    26.01.26 • 21:00
   </div>
 </div>
