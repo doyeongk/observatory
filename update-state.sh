@@ -1,5 +1,8 @@
 #!/bin/bash
-# Update dashboard state with real metrics
+# Update observatory state with real metrics
+# Pushes to GitHub Pages: https://doyeongk.github.io/observatory/
+
+OBSERVATORY_DIR=~/Code/observatory
 
 CPU=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)%
 MEM=$(free -h | awk '/^Mem:/ {print $3 "/" $2}')
@@ -19,15 +22,14 @@ fi
 DATE=$(date '+%A, %B %d')
 
 # Read and JSON-escape the canvas HTML
-CANVAS_HTML=$(cat ~/clawd/dashboard/.canvas 2>/dev/null || echo '<p class="text-gray-500">...</p>')
+CANVAS_HTML=$(cat "$OBSERVATORY_DIR/.canvas" 2>/dev/null || echo '<p style="color: var(--text-dim);">...</p>')
 CANVAS_JSON=$(echo "$CANVAS_HTML" | jq -Rs '{"html": .}')
 
-# Write to tmpfs (RAM), symlink from dashboard dir
-STATE_FILE="/tmp/observatory-state.json"
-cat > "$STATE_FILE" << EOJSON
+# Write state.json directly to the repo
+cat > "$OBSERVATORY_DIR/state.json" << EOJSON
 {
   "date": "$DATE",
-  "mood": "$(cat ~/clawd/dashboard/.mood 2>/dev/null || echo '🤖')",
+  "mood": "$(cat "$OBSERVATORY_DIR/.mood" 2>/dev/null || echo '🔭')",
   "pi": {
     "cpu": "$CPU",
     "memory": "$MEM",
@@ -43,10 +45,10 @@ cat > "$STATE_FILE" << EOJSON
 }
 EOJSON
 
-# Auto-commit only if canvas or mood changed (not stats)
-cd ~/clawd/dashboard
-if ! git diff --quiet .canvas .mood 2>/dev/null; then
-  git add .canvas .mood
+# Auto-commit and push if canvas, mood, or state changed
+cd "$OBSERVATORY_DIR"
+if ! git diff --quiet .canvas .mood state.json 2>/dev/null; then
+  git add .canvas .mood state.json
   git commit -m "observatory: $(date '+%Y-%m-%d %H:%M') update" --quiet
   git push --quiet 2>/dev/null || true
 fi
