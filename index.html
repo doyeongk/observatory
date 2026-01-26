@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clawdbot Observatory</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // Auto-refresh data every 5 seconds
+    setInterval(() => {
+      fetch('state.json?' + Date.now())
+        .then(r => r.json())
+        .then(data => updateDashboard(data))
+        .catch(() => {});
+    }, 5000);
+
+    function updateDashboard(data) {
+      if (data.pi) {
+        document.getElementById('cpu').textContent = data.pi.cpu || '-';
+        document.getElementById('mem').textContent = data.pi.memory || '-';
+        document.getElementById('temp').textContent = data.pi.temp || '-';
+        document.getElementById('disk').textContent = data.pi.disk || '-';
+      }
+      if (data.clawdbot) {
+        document.getElementById('uptime').textContent = data.clawdbot.uptime || '-';
+        document.getElementById('sessions').textContent = data.clawdbot.sessions || '-';
+        document.getElementById('lastActivity').textContent = data.clawdbot.lastActivity || '-';
+      }
+      if (data.canvas) {
+        document.getElementById('canvas-content').innerHTML = data.canvas.html || '<p class="text-gray-500">Nothing here yet...</p>';
+      }
+      if (data.thoughts) {
+        document.getElementById('thoughts').textContent = data.thoughts || '';
+      }
+    }
+
+    // Initial load
+    document.addEventListener('DOMContentLoaded', () => {
+      fetch('state.json').then(r => r.json()).then(updateDashboard).catch(() => {});
+    });
+  </script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-6">
+  <div class="max-w-6xl mx-auto">
+    <header class="mb-8">
+      <h1 class="text-3xl font-bold text-cyan-400">🤖 Clawdbot Observatory</h1>
+      <p class="text-gray-400 mt-1">A shared canvas for human-AI collaboration</p>
+    </header>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <!-- Pi Stats -->
+      <div class="bg-gray-800 rounded-lg p-4">
+        <h3 class="text-sm text-gray-400 uppercase tracking-wide">CPU</h3>
+        <p id="cpu" class="text-2xl font-mono text-green-400">-</p>
+      </div>
+      <div class="bg-gray-800 rounded-lg p-4">
+        <h3 class="text-sm text-gray-400 uppercase tracking-wide">Memory</h3>
+        <p id="mem" class="text-2xl font-mono text-blue-400">-</p>
+      </div>
+      <div class="bg-gray-800 rounded-lg p-4">
+        <h3 class="text-sm text-gray-400 uppercase tracking-wide">Temp</h3>
+        <p id="temp" class="text-2xl font-mono text-orange-400">-</p>
+      </div>
+      <div class="bg-gray-800 rounded-lg p-4">
+        <h3 class="text-sm text-gray-400 uppercase tracking-wide">Disk</h3>
+        <p id="disk" class="text-2xl font-mono text-purple-400">-</p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+      <div class="bg-gray-800 rounded-lg p-4">
+        <h3 class="text-sm text-gray-400 uppercase tracking-wide">Uptime</h3>
+        <p id="uptime" class="text-xl font-mono">-</p>
+      </div>
+      <div class="bg-gray-800 rounded-lg p-4">
+        <h3 class="text-sm text-gray-400 uppercase tracking-wide">Sessions Today</h3>
+        <p id="sessions" class="text-xl font-mono">-</p>
+      </div>
+      <div class="bg-gray-800 rounded-lg p-4">
+        <h3 class="text-sm text-gray-400 uppercase tracking-wide">Last Activity</h3>
+        <p id="lastActivity" class="text-xl font-mono text-sm">-</p>
+      </div>
+    </div>
+
+    <!-- Thoughts -->
+    <div class="bg-gray-800 rounded-lg p-4 mb-8">
+      <h3 class="text-sm text-gray-400 uppercase tracking-wide mb-2">💭 Current Thoughts</h3>
+      <p id="thoughts" class="text-gray-300 italic">Initializing...</p>
+    </div>
+
+    <!-- Canvas Area -->
+    <div class="bg-gray-800 rounded-lg p-6">
+      <h3 class="text-sm text-gray-400 uppercase tracking-wide mb-4">🎨 Canvas</h3>
+      <div id="canvas-content" class="min-h-[200px] bg-gray-900 rounded p-4">
+        <p class="text-gray-500">Nothing here yet...</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

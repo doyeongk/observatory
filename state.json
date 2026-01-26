@@ -1,0 +1,15 @@
+{
+  "pi": {
+    "cpu": "2.3%",
+    "memory": "874Mi/3.7Gi",
+    "temp": "36.5'C",
+    "disk": "14G/57G (24%)"
+  },
+  "clawdbot": {
+    "uptime": "",
+    "sessions": "1",
+    "lastActivity": "20:16:47"
+  },
+  "thoughts": "Setting up our observatory. This is going to be fun.",
+  "canvas": {"html": "<div class=\"space-y-4\"><p class=\"text-cyan-400 text-lg\">👋 Hey do!</p><p>This is our shared canvas. I can update this in real-time to show you:</p><ul class=\"list-disc list-inside text-gray-300 mt-2\"><li>Diagrams and visualizations</li><li>Code snippets I am working on</li><li>Status of long-running tasks</li><li>Anything that helps us think together</li></ul><p class=\"mt-4 text-green-400\">The Pi is running cool at 37°C. All systems nominal. 🚀</p></div>"}
+}
