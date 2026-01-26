@@ -14,7 +14,9 @@ DATE=$(date '+%A, %B %d')
 CANVAS_HTML=$(cat ~/clawd/dashboard/.canvas 2>/dev/null || echo '<p class="text-gray-500">...</p>')
 CANVAS_JSON=$(echo "$CANVAS_HTML" | jq -Rs '{"html": .}')
 
-cat > ~/clawd/dashboard/state.json << EOJSON
+# Write to tmpfs (RAM), symlink from dashboard dir
+STATE_FILE="/tmp/observatory-state.json"
+cat > "$STATE_FILE" << EOJSON
 {
   "date": "$DATE",
   "mood": "$(cat ~/clawd/dashboard/.mood 2>/dev/null || echo '🤖')",
@@ -33,10 +35,10 @@ cat > ~/clawd/dashboard/state.json << EOJSON
 }
 EOJSON
 
-# Auto-commit if there are changes
+# Auto-commit only if canvas or mood changed (not stats)
 cd ~/clawd/dashboard
-if ! git diff --quiet .canvas .mood state.json 2>/dev/null; then
-  git add .canvas .mood state.json
+if ! git diff --quiet .canvas .mood 2>/dev/null; then
+  git add .canvas .mood
   git commit -m "observatory: $(date '+%Y-%m-%d %H:%M') update" --quiet
   git push --quiet 2>/dev/null || true
 fi
