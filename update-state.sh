@@ -6,8 +6,16 @@ MEM=$(free -h | awk '/^Mem:/ {print $3 "/" $2}')
 TEMP=$(vcgencmd measure_temp 2>/dev/null | cut -d= -f2 || echo "N/A")
 DISK=$(df -h / | awk 'NR==2 {print $3 "/" $2 " (" $5 ")"}')
 
-# Get clawdbot info
-UPTIME=$(systemctl show clawdbot --property=ActiveEnterTimestamp 2>/dev/null | cut -d= -f2 || echo "unknown")
+# Get clawdbot info from process
+GATEWAY_PID=$(pgrep -f clawdbot-gateway 2>/dev/null | head -1)
+if [ -n "$GATEWAY_PID" ]; then
+  UPTIME=$(ps -o etimes= -p "$GATEWAY_PID" 2>/dev/null | awk '{h=int($1/3600); m=int(($1%3600)/60); printf "%dh %dm", h, m}')
+  # Count active session transcripts (rough proxy for session count)
+  SESSIONS=$(find ~/.clawdbot/agents/main/sessions -name "*.jsonl" -mmin -1440 2>/dev/null | wc -l)
+else
+  UPTIME="offline"
+  SESSIONS="0"
+fi
 DATE=$(date '+%A, %B %d')
 
 # Read and JSON-escape the canvas HTML
@@ -28,7 +36,7 @@ cat > "$STATE_FILE" << EOJSON
   },
   "clawdbot": {
     "uptime": "$UPTIME",
-    "sessions": "1",
+    "sessions": "$SESSIONS",
     "lastActivity": "$(date '+%H:%M:%S')"
   },
   "canvas": $CANVAS_JSON
