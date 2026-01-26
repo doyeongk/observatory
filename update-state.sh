@@ -10,6 +10,10 @@ DISK=$(df -h / | awk 'NR==2 {print $3 "/" $2 " (" $5 ")"}')
 UPTIME=$(systemctl show clawdbot --property=ActiveEnterTimestamp 2>/dev/null | cut -d= -f2 || echo "unknown")
 DATE=$(date '+%A, %B %d')
 
+# Read and JSON-escape the canvas HTML
+CANVAS_HTML=$(cat ~/clawd/dashboard/.canvas 2>/dev/null || echo '<p class="text-gray-500">...</p>')
+CANVAS_JSON=$(echo "$CANVAS_HTML" | jq -Rs '{"html": .}')
+
 cat > ~/clawd/dashboard/state.json << EOJSON
 {
   "date": "$DATE",
@@ -25,6 +29,6 @@ cat > ~/clawd/dashboard/state.json << EOJSON
     "sessions": "1",
     "lastActivity": "$(date '+%H:%M:%S')"
   },
-  "canvas": $(cat ~/clawd/dashboard/.canvas 2>/dev/null || echo '{"html": "<p class=\"text-gray-500\">...</p>"}')
+  "canvas": $CANVAS_JSON
 }
 EOJSON
