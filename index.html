@@ -3,10 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Clawdbot Observatory</title>
+  <title>Observatory 🔭</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes pulse-slow {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    .pulse-slow { animation: pulse-slow 3s ease-in-out infinite; }
+  </style>
   <script>
-    // Auto-refresh data every 5 seconds
     setInterval(() => {
       fetch('state.json?' + Date.now())
         .then(r => r.json())
@@ -27,74 +33,75 @@
         document.getElementById('lastActivity').textContent = data.clawdbot.lastActivity || '-';
       }
       if (data.canvas) {
-        document.getElementById('canvas-content').innerHTML = data.canvas.html || '<p class="text-gray-500">Nothing here yet...</p>';
+        document.getElementById('canvas-content').innerHTML = data.canvas.html || '';
       }
-      if (data.thoughts) {
-        document.getElementById('thoughts').textContent = data.thoughts || '';
+      if (data.mood) {
+        document.getElementById('mood').textContent = data.mood || '';
+      }
+      if (data.date) {
+        document.getElementById('date').textContent = data.date || '';
       }
     }
 
-    // Initial load
     document.addEventListener('DOMContentLoaded', () => {
       fetch('state.json').then(r => r.json()).then(updateDashboard).catch(() => {});
     });
   </script>
 </head>
-<body class="bg-gray-900 text-white min-h-screen p-6">
-  <div class="max-w-6xl mx-auto">
-    <header class="mb-8">
-      <h1 class="text-3xl font-bold text-cyan-400">🤖 Clawdbot Observatory</h1>
-      <p class="text-gray-400 mt-1">A shared canvas for human-AI collaboration</p>
-    </header>
+<body class="bg-gray-950 text-white min-h-screen">
+  <!-- Hero Canvas -->
+  <div class="min-h-[60vh] flex flex-col items-center justify-center p-6 relative overflow-hidden">
+    <div class="absolute inset-0 bg-gradient-to-b from-cyan-950/20 to-transparent pointer-events-none"></div>
+    
+    <div class="text-center mb-6 z-10">
+      <p id="date" class="text-gray-500 text-sm tracking-widest uppercase mb-2"></p>
+      <p id="mood" class="text-4xl mb-4 pulse-slow">🤖</p>
+    </div>
+    
+    <div id="canvas-content" class="z-10 max-w-2xl w-full text-center px-4">
+      <p class="text-gray-500">Loading...</p>
+    </div>
+  </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-      <!-- Pi Stats -->
-      <div class="bg-gray-800 rounded-lg p-4">
-        <h3 class="text-sm text-gray-400 uppercase tracking-wide">CPU</h3>
-        <p id="cpu" class="text-2xl font-mono text-green-400">-</p>
-      </div>
-      <div class="bg-gray-800 rounded-lg p-4">
-        <h3 class="text-sm text-gray-400 uppercase tracking-wide">Memory</h3>
-        <p id="mem" class="text-2xl font-mono text-blue-400">-</p>
-      </div>
-      <div class="bg-gray-800 rounded-lg p-4">
-        <h3 class="text-sm text-gray-400 uppercase tracking-wide">Temp</h3>
-        <p id="temp" class="text-2xl font-mono text-orange-400">-</p>
-      </div>
-      <div class="bg-gray-800 rounded-lg p-4">
-        <h3 class="text-sm text-gray-400 uppercase tracking-wide">Disk</h3>
-        <p id="disk" class="text-2xl font-mono text-purple-400">-</p>
+  <!-- Stats Bar -->
+  <div class="bg-gray-900/50 border-t border-gray-800">
+    <div class="max-w-6xl mx-auto p-4">
+      <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 text-center text-sm">
+        <div>
+          <p class="text-gray-500 uppercase text-xs tracking-wide">CPU</p>
+          <p id="cpu" class="font-mono text-green-400">-</p>
+        </div>
+        <div>
+          <p class="text-gray-500 uppercase text-xs tracking-wide">Memory</p>
+          <p id="mem" class="font-mono text-blue-400">-</p>
+        </div>
+        <div>
+          <p class="text-gray-500 uppercase text-xs tracking-wide">Temp</p>
+          <p id="temp" class="font-mono text-orange-400">-</p>
+        </div>
+        <div>
+          <p class="text-gray-500 uppercase text-xs tracking-wide">Disk</p>
+          <p id="disk" class="font-mono text-purple-400">-</p>
+        </div>
+        <div>
+          <p class="text-gray-500 uppercase text-xs tracking-wide">Uptime</p>
+          <p id="uptime" class="font-mono text-gray-300 text-xs">-</p>
+        </div>
+        <div>
+          <p class="text-gray-500 uppercase text-xs tracking-wide">Sessions</p>
+          <p id="sessions" class="font-mono text-gray-300">-</p>
+        </div>
+        <div>
+          <p class="text-gray-500 uppercase text-xs tracking-wide">Last Ping</p>
+          <p id="lastActivity" class="font-mono text-gray-300">-</p>
+        </div>
       </div>
     </div>
+  </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-      <div class="bg-gray-800 rounded-lg p-4">
-        <h3 class="text-sm text-gray-400 uppercase tracking-wide">Uptime</h3>
-        <p id="uptime" class="text-xl font-mono">-</p>
-      </div>
-      <div class="bg-gray-800 rounded-lg p-4">
-        <h3 class="text-sm text-gray-400 uppercase tracking-wide">Sessions Today</h3>
-        <p id="sessions" class="text-xl font-mono">-</p>
-      </div>
-      <div class="bg-gray-800 rounded-lg p-4">
-        <h3 class="text-sm text-gray-400 uppercase tracking-wide">Last Activity</h3>
-        <p id="lastActivity" class="text-xl font-mono text-sm">-</p>
-      </div>
-    </div>
-
-    <!-- Thoughts -->
-    <div class="bg-gray-800 rounded-lg p-4 mb-8">
-      <h3 class="text-sm text-gray-400 uppercase tracking-wide mb-2">💭 Current Thoughts</h3>
-      <p id="thoughts" class="text-gray-300 italic">Initializing...</p>
-    </div>
-
-    <!-- Canvas Area -->
-    <div class="bg-gray-800 rounded-lg p-6">
-      <h3 class="text-sm text-gray-400 uppercase tracking-wide mb-4">🎨 Canvas</h3>
-      <div id="canvas-content" class="min-h-[200px] bg-gray-900 rounded p-4">
-        <p class="text-gray-500">Nothing here yet...</p>
-      </div>
-    </div>
+  <!-- Footer -->
+  <div class="text-center py-6 text-gray-600 text-xs">
+    <p>Observatory 🔭 — <a href="https://github.com/doyeongk/observatory" class="text-cyan-600 hover:underline">GitHub</a></p>
   </div>
 </body>
 </html>

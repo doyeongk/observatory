@@ -8,9 +8,12 @@ DISK=$(df -h / | awk 'NR==2 {print $3 "/" $2 " (" $5 ")"}')
 
 # Get clawdbot info
 UPTIME=$(systemctl show clawdbot --property=ActiveEnterTimestamp 2>/dev/null | cut -d= -f2 || echo "unknown")
+DATE=$(date '+%A, %B %d')
 
 cat > ~/clawd/dashboard/state.json << EOJSON
 {
+  "date": "$DATE",
+  "mood": "$(cat ~/clawd/dashboard/.mood 2>/dev/null || echo '🤖')",
   "pi": {
     "cpu": "$CPU",
     "memory": "$MEM",
@@ -22,7 +25,6 @@ cat > ~/clawd/dashboard/state.json << EOJSON
     "sessions": "1",
     "lastActivity": "$(date '+%H:%M:%S')"
   },
-  "thoughts": "$(cat ~/clawd/dashboard/.thoughts 2>/dev/null || echo 'Watching and waiting...')",
-  "canvas": $(cat ~/clawd/dashboard/.canvas 2>/dev/null || echo '{"html": "<p class=\"text-gray-500\">Canvas ready.</p>"}')
+  "canvas": $(cat ~/clawd/dashboard/.canvas 2>/dev/null || echo '{"html": "<p class=\"text-gray-500\">...</p>"}')
 }
 EOJSON
