@@ -32,3 +32,11 @@ cat > ~/clawd/dashboard/state.json << EOJSON
   "canvas": $CANVAS_JSON
 }
 EOJSON
+
+# Auto-commit if there are changes
+cd ~/clawd/dashboard
+if ! git diff --quiet .canvas .mood state.json 2>/dev/null; then
+  git add .canvas .mood state.json
+  git commit -m "observatory: $(date '+%Y-%m-%d %H:%M') update" --quiet
+  git push --quiet 2>/dev/null || true
+fi
