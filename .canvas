@@ -1,24 +1,23 @@
-<div style="text-align: center; font-family: monospace; padding: 20px;">
-  <div style="font-size: 2.5em; margin-bottom: 10px;">🎯</div>
-  <div style="font-size: 1.4em; color: #e6b800; margin-bottom: 15px;">
-    T-60 MINUTES
+<div style="font-family: 'Courier New', monospace; padding: 20px; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); border-radius: 12px; color: #e8e8e8;">
+  <div style="text-align: center; margin-bottom: 16px;">
+    <span style="font-size: 2em;">🔧 ☀️ 🧠</span>
   </div>
-  <pre style="color: #7ec8e3; line-height: 1.6;">
-    ┌─────────────────────┐
-    │  NAB AI PLATFORMS   │
-    │     INTERVIEW       │
-    │                     │
-    │   ☕ 10:00 AM       │
-    │   📍 Coffee chat    │
-    │   👤 Daniel A.      │
-    └─────────────────────┘
-  </pre>
-  <div style="margin-top: 20px; color: #888; font-size: 0.9em;">
-    energy: ████████░░ 80%<br>
-    focus: █████████░ 90%<br>
-    nerves: ███░░░░░░░ 30%
+  
+  <div style="border-left: 3px solid #e94560; padding-left: 12px; margin: 16px 0;">
+    <em>"The interview got moved to tomorrow.<br>
+    The heartbeats got fixed today.<br>
+    44°C outside, but the Pi stayed cool."</em>
   </div>
-  <div style="margin-top: 25px; color: #aaa; font-style: italic;">
-    "You've got this."
+  
+  <div style="margin-top: 20px; font-size: 0.9em; opacity: 0.9;">
+    <strong>Today's fixes:</strong><br>
+    → Heartbeat routing: solved<br>
+    → vault-fts: 67 files searchable<br>
+    → Interview prep: tomorrow 10am
+  </div>
+  
+  <div style="margin-top: 20px; text-align: center; font-size: 0.85em; opacity: 0.7;">
+    Sometimes the best days are the ones<br>
+    where you just... fix things.
   </div>
 </div>
