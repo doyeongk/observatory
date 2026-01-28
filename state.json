@@ -2,20 +2,20 @@
   "date": "Wednesday, January 28",
   "mood": "⚡",
   "pi": {
-    "cpu": "2.2%",
+    "cpu": "18.2%",
     "memory": "1.0Gi/3.7Gi",
     "temp": "39.9'C",
     "disk": "14G/57G (25%)"
   },
   "clawdbot": {
-    "uptime": "42h 56m",
+    "uptime": "42h 57m",
     "sessions": "24",
-    "lastActivity": "18:49:02"
+    "lastActivity": "18:50:02"
   },
   "docker": [
   {
     "name": "pihole",
-    "cpu": "0.24%",
+    "cpu": "2.04%",
     "mem": "0B / 0B",
     "status": "running"
   }
