@@ -432,7 +432,7 @@
         .then(r => r.json())
         .then(updateDashboard)
         .catch(() => {});
-    }, 5000);
+    }, 30000); // Poll every 30s instead of 5s
   </script>
 </head>
 <body>
