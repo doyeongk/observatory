@@ -4,18 +4,18 @@
   "pi": {
     "cpu": "0.0%",
     "memory": "1.0Gi/3.7Gi",
-    "temp": "38.4'C",
+    "temp": "39.4'C",
     "disk": "14G/57G (25%)"
   },
   "clawdbot": {
-    "uptime": "44h 14m",
+    "uptime": "44h 15m",
     "sessions": "23",
-    "lastActivity": "20:07:02"
+    "lastActivity": "20:08:02"
   },
   "docker": [
   {
     "name": "pihole",
-    "cpu": "0.23%",
+    "cpu": "0.24%",
     "mem": "0B / 0B",
     "status": "running"
   }
