@@ -24,13 +24,19 @@
       box-sizing: border-box;
     }
 
+    html {
+      height: 100%;
+      overflow: auto;
+    }
+
     body {
       font-family: 'JetBrains Mono', monospace;
       background: var(--bg-deep);
       color: var(--text-primary);
-      min-height: 100vh;
+      min-height: 100%;
+      position: relative;
       overflow-x: hidden;
-      overflow-y: auto;
+      overflow-y: scroll;
       -webkit-overflow-scrolling: touch;
     }
 
@@ -40,6 +46,7 @@
       inset: 0;
       overflow: hidden;
       z-index: 0;
+      pointer-events: none;
     }
 
     .stars {
@@ -84,6 +91,7 @@
       min-height: 100vh;
       position: relative;
       z-index: 1;
+      touch-action: pan-y;
     }
 
     /* HUD Stats Panel */
@@ -281,38 +289,26 @@
 
     /* Responsive */
     @media (max-width: 768px) {
-      html, body {
-        overflow-x: hidden;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-      }
-
-      .starfield {
-        pointer-events: none;
-      }
-
       .observatory {
         flex-direction: column;
         min-height: auto;
-        overflow: visible;
       }
 
       .hud {
-        position: relative;
+        position: static;
         width: 100%;
         height: auto;
-        bottom: auto;
         flex-direction: column;
         gap: 0.5rem;
         padding: 1rem;
         border-right: none;
         border-bottom: 1px solid var(--accent-dim);
-        overflow: visible;
       }
 
       .hud-title {
         width: 100%;
         margin-bottom: 0.5rem;
+        padding-bottom: 0.5rem;
       }
 
       .stat {
