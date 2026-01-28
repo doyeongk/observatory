@@ -30,6 +30,8 @@
       color: var(--text-primary);
       min-height: 100vh;
       overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
     }
 
     /* Starfield */
@@ -144,6 +146,12 @@
 
     .stat-value.updated {
       color: var(--accent);
+    }
+
+    .hud-divider {
+      height: 1px;
+      background: var(--accent-dim);
+      margin: 1rem 0 0.5rem 0;
     }
 
     .hud-footer {
@@ -273,15 +281,33 @@
 
     /* Responsive */
     @media (max-width: 768px) {
+      html, body {
+        overflow-x: hidden;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .starfield {
+        pointer-events: none;
+      }
+
+      .observatory {
+        flex-direction: column;
+        min-height: auto;
+        overflow: visible;
+      }
+
       .hud {
         position: relative;
         width: 100%;
-        flex-direction: row;
-        flex-wrap: wrap;
-        gap: 1rem;
+        height: auto;
+        bottom: auto;
+        flex-direction: column;
+        gap: 0.5rem;
         padding: 1rem;
         border-right: none;
         border-bottom: 1px solid var(--accent-dim);
+        overflow: visible;
       }
 
       .hud-title {
@@ -290,9 +316,11 @@
       }
 
       .stat {
-        margin-bottom: 0;
-        flex: 1;
-        min-width: 80px;
+        margin-bottom: 0.5rem;
+      }
+
+      .hud-divider {
+        margin: 0.5rem 0;
       }
 
       .hud-footer {
@@ -301,13 +329,21 @@
         padding-top: 0.75rem;
       }
 
-      .observatory {
-        flex-direction: column;
-      }
-
       .viewport {
         margin-left: 0;
         padding: 2rem 1rem;
+        min-height: auto;
+        justify-content: flex-start;
+      }
+
+      .canvas-window {
+        max-width: 100%;
+      }
+
+      #canvas-content {
+        min-height: 150px;
+        overflow-wrap: break-word;
+        word-wrap: break-word;
       }
     }
   </style>
@@ -338,6 +374,20 @@
       }
       if (data.date) {
         document.getElementById('date').textContent = data.date || '';
+      }
+      // Docker containers
+      const dockerEl = document.getElementById('docker-stats');
+      if (dockerEl && data.docker) {
+        if (data.docker.length === 0) {
+          dockerEl.innerHTML = '<div class="stat"><div class="stat-value" style="font-size: 0.7rem; color: var(--text-dim);">No containers</div></div>';
+        } else {
+          dockerEl.innerHTML = data.docker.map(c => `
+            <div class="stat">
+              <div class="stat-label">${c.name}</div>
+              <div class="stat-value" style="font-size: 0.75rem;">${c.cpu} · ${c.mem.split('/')[0]}</div>
+            </div>
+          `).join('');
+        }
       }
 
       previousData = JSON.parse(JSON.stringify(data));
@@ -419,6 +469,10 @@
         <div class="stat-label">Last Ping</div>
         <div class="stat-value" id="lastActivity">—</div>
       </div>
+
+      <div class="hud-divider"></div>
+      <div class="hud-title" style="margin-top: 0.5rem;">Docker</div>
+      <div id="docker-stats"></div>
 
       <div class="hud-footer">
         <a href="https://github.com/doyeongk/observatory">github</a>

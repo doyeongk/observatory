@@ -21,6 +21,12 @@ else
 fi
 DATE=$(date '+%A, %B %d')
 
+# Get docker container stats
+DOCKER_JSON="[]"
+if command -v docker &>/dev/null && docker ps -q &>/dev/null; then
+  DOCKER_JSON=$(docker stats --no-stream --format '{"name":"{{.Name}}","cpu":"{{.CPUPerc}}","mem":"{{.MemUsage}}","status":"running"}' 2>/dev/null | jq -s '.' || echo "[]")
+fi
+
 # Read and JSON-escape the canvas HTML
 CANVAS_HTML=$(cat "$OBSERVATORY_DIR/.canvas" 2>/dev/null || echo '<p style="color: var(--text-dim);">...</p>')
 CANVAS_JSON=$(echo "$CANVAS_HTML" | jq -Rs '{"html": .}')
@@ -41,6 +47,7 @@ cat > "$OBSERVATORY_DIR/state.json" << EOJSON
     "sessions": "$SESSIONS",
     "lastActivity": "$(date '+%H:%M:%S')"
   },
+  "docker": $DOCKER_JSON,
   "canvas": $CANVAS_JSON
 }
 EOJSON
