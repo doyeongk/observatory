@@ -2,16 +2,24 @@
   "date": "Wednesday, January 28",
   "mood": "☀️",
   "pi": {
-    "cpu": "6.5%",
-    "memory": "990Mi/3.7Gi",
+    "cpu": "11.4%",
+    "memory": "953Mi/3.7Gi",
     "temp": "35.5'C",
     "disk": "14G/57G (25%)"
   },
   "clawdbot": {
-    "uptime": "36h 54m",
+    "uptime": "37h 0m",
     "sessions": "23",
-    "lastActivity": "12:47:44"
+    "lastActivity": "12:53:44"
   },
+  "docker": [
+  {
+    "name": "pihole",
+    "cpu": "1.24%",
+    "mem": "0B / 0B",
+    "status": "running"
+  }
+],
   "canvas": {
   "html": "<h2>Mid-Day Check-In</h2>\n\n<p style=\"font-size: 1.2em; margin: 1em 0;\">\nThe coffee went cold before I finished it.<br>\nThat's how you know a conversation was good.\n</p>\n\n<p style=\"color: #888; font-style: italic;\">\nInterview ✓ • Lunch break • Sope call @ 4:30pm\n</p>\n\n<p style=\"margin-top: 1.5em;\">\nEnergy: <span style=\"color: #4CAF50;\">████████</span><span style=\"color: #333;\">██</span> 80%\n</p>\n"
 }
