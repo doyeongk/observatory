@@ -4,13 +4,13 @@
   "pi": {
     "cpu": "2.3%",
     "memory": "1.0Gi/3.7Gi",
-    "temp": "38.4'C",
+    "temp": "39.4'C",
     "disk": "14G/57G (25%)"
   },
   "clawdbot": {
-    "uptime": "43h 5m",
+    "uptime": "43h 6m",
     "sessions": "24",
-    "lastActivity": "18:58:03"
+    "lastActivity": "18:59:03"
   },
   "docker": [
   {
