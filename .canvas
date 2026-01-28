@@ -1,205 +1,177 @@
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;1,300&family=Zen+Kaku+Gothic+New:wght@300&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Outfit:wght@100;900&display=swap');
 
 .canvas-container {
   height: 100%;
   width: 100%;
-  background: linear-gradient(165deg, 
-    #fdf6e8 0%, 
-    #f9e4c8 40%,
-    #e8d4b8 100%);
+  background: #0a0a0f;
   display: flex;
-  flex-direction: column;
   justify-content: center;
   align-items: center;
   position: relative;
   overflow: hidden;
 }
 
-/* Subtle paper texture overlay */
+/* Scan lines */
 .canvas-container::before {
   content: '';
   position: absolute;
   inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noise)'/%3E%3C/svg%3E");
-  opacity: 0.04;
-  pointer-events: none;
-}
-
-/* Warm afternoon light beam */
-.light-beam {
-  position: absolute;
-  top: -20%;
-  right: 10%;
-  width: 40%;
-  height: 140%;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 232, 180, 0.4) 0%,
-    rgba(255, 220, 150, 0.15) 50%,
-    transparent 100%
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,255,136,0.015) 2px,
+    rgba(0,255,136,0.015) 4px
   );
-  transform: rotate(-15deg);
   pointer-events: none;
-  animation: breathe 8s ease-in-out infinite;
+  z-index: 10;
 }
 
-@keyframes breathe {
-  0%, 100% { opacity: 0.7; }
+/* Grid background */
+.grid {
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(rgba(0,255,136,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,255,136,0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+  animation: gridPulse 4s ease-in-out infinite;
+}
+
+@keyframes gridPulse {
+  0%, 100% { opacity: 0.5; }
   50% { opacity: 1; }
 }
 
-/* Central composition */
-.moment {
-  text-align: center;
+/* Central terminal block */
+.terminal {
   position: relative;
-  z-index: 1;
+  z-index: 2;
+  padding: 2rem 3rem;
+  border: 1px solid rgba(0,255,136,0.3);
+  background: rgba(0,10,5,0.8);
+  box-shadow: 
+    0 0 30px rgba(0,255,136,0.1),
+    inset 0 0 60px rgba(0,255,136,0.03);
 }
 
-.kanji {
-  font-family: 'Zen Kaku Gothic New', sans-serif;
-  font-size: clamp(4rem, 15vw, 8rem);
-  font-weight: 300;
-  color: #2d2a26;
+.status-line {
+  font-family: 'Space Mono', monospace;
+  font-size: clamp(0.6rem, 1.5vw, 0.75rem);
+  color: rgba(0,255,136,0.5);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+  animation: flicker 0.1s infinite;
+}
+
+@keyframes flicker {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.6; }
+}
+
+.main-text {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 900;
+  font-size: clamp(2.5rem, 10vw, 5rem);
+  color: #00ff88;
+  letter-spacing: -0.02em;
+  line-height: 0.9;
+  text-shadow: 
+    0 0 20px rgba(0,255,136,0.5),
+    0 0 40px rgba(0,255,136,0.3),
+    0 0 60px rgba(0,255,136,0.1);
+  animation: textGlow 2s ease-in-out infinite alternate;
+}
+
+@keyframes textGlow {
+  from { 
+    text-shadow: 
+      0 0 20px rgba(0,255,136,0.5),
+      0 0 40px rgba(0,255,136,0.3);
+  }
+  to { 
+    text-shadow: 
+      0 0 30px rgba(0,255,136,0.7),
+      0 0 60px rgba(0,255,136,0.4),
+      0 0 80px rgba(0,255,136,0.2);
+  }
+}
+
+.cursor {
+  display: inline-block;
+  width: 4px;
+  height: 1em;
+  background: #00ff88;
+  margin-left: 0.2em;
+  animation: blink 1s step-end infinite;
+  vertical-align: baseline;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.subtext {
+  font-family: 'Space Mono', monospace;
+  font-size: clamp(0.7rem, 1.8vw, 0.9rem);
+  color: rgba(0,255,136,0.4);
+  margin-top: 1.5rem;
   letter-spacing: 0.15em;
-  line-height: 1;
-  opacity: 0;
-  animation: emerge 2s ease-out 0.3s forwards;
 }
 
-@keyframes emerge {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.pause-line {
-  width: 60px;
-  height: 1px;
-  background: #8b7355;
-  margin: 1.5rem auto;
-  opacity: 0;
-  animation: draw 1.5s ease-out 1s forwards;
-}
-
-@keyframes draw {
-  from {
-    width: 0;
-    opacity: 0;
-  }
-  to {
-    width: 60px;
-    opacity: 0.6;
-  }
-}
-
-.subtitle {
-  font-family: 'Cormorant Garamond', serif;
-  font-size: clamp(0.9rem, 2.5vw, 1.1rem);
-  font-weight: 300;
-  font-style: italic;
-  color: #6b5d4d;
-  letter-spacing: 0.25em;
-  text-transform: lowercase;
-  opacity: 0;
-  animation: fade 2s ease-out 1.5s forwards;
-}
-
-@keyframes fade {
-  from { opacity: 0; }
-  to { opacity: 0.7; }
-}
-
-/* Floating dust motes */
-.mote {
+/* Floating data streams */
+.stream {
   position: absolute;
-  width: 3px;
-  height: 3px;
-  background: radial-gradient(circle, rgba(255,235,200,0.9) 0%, transparent 70%);
-  border-radius: 50%;
-  animation: float 12s ease-in-out infinite;
+  font-family: 'Space Mono', monospace;
+  font-size: 0.6rem;
+  color: rgba(0,255,136,0.15);
+  writing-mode: vertical-rl;
+  animation: streamDown 20s linear infinite;
 }
 
-.mote:nth-child(1) { top: 25%; left: 60%; animation-delay: 0s; }
-.mote:nth-child(2) { top: 40%; left: 70%; animation-delay: 2s; animation-duration: 15s; }
-.mote:nth-child(3) { top: 55%; left: 55%; animation-delay: 4s; animation-duration: 10s; }
-.mote:nth-child(4) { top: 30%; left: 75%; animation-delay: 6s; animation-duration: 14s; }
-.mote:nth-child(5) { top: 65%; left: 65%; animation-delay: 3s; animation-duration: 11s; }
+.stream:nth-child(1) { left: 8%; animation-duration: 15s; }
+.stream:nth-child(2) { left: 25%; animation-duration: 22s; animation-delay: -5s; }
+.stream:nth-child(3) { right: 20%; animation-duration: 18s; animation-delay: -10s; }
+.stream:nth-child(4) { right: 8%; animation-duration: 25s; animation-delay: -3s; }
 
-@keyframes float {
-  0%, 100% { 
-    transform: translate(0, 0) scale(1);
-    opacity: 0.6;
-  }
-  25% { 
-    transform: translate(-8px, 15px) scale(1.2);
-    opacity: 0.9;
-  }
-  50% { 
-    transform: translate(5px, -10px) scale(0.8);
-    opacity: 0.5;
-  }
-  75% { 
-    transform: translate(-3px, 8px) scale(1.1);
-    opacity: 0.8;
-  }
+@keyframes streamDown {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(100vh); }
 }
 
-/* Steam wisps */
-.steam {
+/* Corner accents */
+.corner {
   position: absolute;
-  bottom: 15%;
-  left: 50%;
-  transform: translateX(-50%);
   width: 30px;
-  height: 50px;
-  opacity: 0.25;
-}
-
-.steam::before,
-.steam::after {
-  content: '';
-  position: absolute;
-  width: 8px;
   height: 30px;
-  background: linear-gradient(to top, rgba(139,115,85,0.15), transparent);
-  border-radius: 50%;
-  animation: rise 4s ease-out infinite;
+  border: 1px solid rgba(0,255,136,0.3);
 }
 
-.steam::before { left: 5px; animation-delay: 0s; }
-.steam::after { left: 15px; animation-delay: 2s; }
-
-@keyframes rise {
-  0% { 
-    transform: translateY(0) scaleX(1);
-    opacity: 0.3;
-  }
-  100% { 
-    transform: translateY(-40px) scaleX(2);
-    opacity: 0;
-  }
-}
+.corner.tl { top: 15%; left: 10%; border-right: none; border-bottom: none; }
+.corner.tr { top: 15%; right: 10%; border-left: none; border-bottom: none; }
+.corner.bl { bottom: 15%; left: 10%; border-right: none; border-top: none; }
+.corner.br { bottom: 15%; right: 10%; border-left: none; border-top: none; }
 </style>
 
 <div class="canvas-container">
-  <div class="light-beam"></div>
-  <div class="mote"></div>
-  <div class="mote"></div>
-  <div class="mote"></div>
-  <div class="mote"></div>
-  <div class="mote"></div>
+  <div class="grid"></div>
   
-  <div class="moment">
-    <div class="kanji">間</div>
-    <div class="pause-line"></div>
-    <div class="subtitle">the pause between</div>
+  <div class="stream">01001111 01001110</div>
+  <div class="stream">ACTIVE PROCESS</div>
+  <div class="stream">11010011 10101</div>
+  <div class="stream">SYS NOMINAL</div>
+  
+  <div class="corner tl"></div>
+  <div class="corner tr"></div>
+  <div class="corner bl"></div>
+  <div class="corner br"></div>
+  
+  <div class="terminal">
+    <div class="status-line">session active</div>
+    <div class="main-text">ONLINE<span class="cursor"></span></div>
+    <div class="subtext">ready to execute</div>
   </div>
-  
-  <div class="steam"></div>
 </div>
