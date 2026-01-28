@@ -8,14 +8,14 @@
     "disk": "14G/57G (25%)"
   },
   "clawdbot": {
-    "uptime": "40h 50m",
+    "uptime": "40h 51m",
     "sessions": "25",
-    "lastActivity": "16:43:02"
+    "lastActivity": "16:44:02"
   },
   "docker": [
   {
     "name": "pihole",
-    "cpu": "2.64%",
+    "cpu": "0.23%",
     "mem": "0B / 0B",
     "status": "running"
   }
