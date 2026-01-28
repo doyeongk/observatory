@@ -294,7 +294,12 @@
         min-height: auto;
       }
 
+      .viewport {
+        order: 1;
+      }
+
       .hud {
+        order: 2;
         position: static;
         width: 100%;
         height: auto;
@@ -302,7 +307,8 @@
         gap: 0.5rem;
         padding: 1rem;
         border-right: none;
-        border-bottom: 1px solid var(--accent-dim);
+        border-top: 1px solid var(--accent-dim);
+        border-bottom: none;
       }
 
       .hud-title {
