@@ -208,8 +208,7 @@
     }
 
     .mood {
-      font-size: 2.5rem;
-      opacity: 0.9;
+      display: none;
     }
 
     .canvas-window {
@@ -374,10 +373,7 @@
           previousData.canvasHtml = data.canvas.html;
         }
       }
-      // Mood & date
-      if (data.mood) {
-        document.getElementById('mood').textContent = data.mood || '';
-      }
+      // Date only (mood removed)
       if (data.date) {
         document.getElementById('date').textContent = data.date || '';
       }
