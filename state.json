@@ -2,15 +2,15 @@
   "date": "Wednesday, January 28",
   "mood": "⚡",
   "pi": {
-    "cpu": "19.6%",
+    "cpu": "2.3%",
     "memory": "1.0Gi/3.7Gi",
-    "temp": "39.4'C",
+    "temp": "38.9'C",
     "disk": "14G/57G (25%)"
   },
   "clawdbot": {
-    "uptime": "43h 7m",
+    "uptime": "43h 8m",
     "sessions": "24",
-    "lastActivity": "19:00:03"
+    "lastActivity": "19:01:02"
   },
   "docker": [
   {
