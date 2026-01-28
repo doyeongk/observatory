@@ -360,9 +360,13 @@
         updateStat('sessions', data.clawdbot.sessions);
         updateStat('lastActivity', data.clawdbot.lastActivity);
       }
-      // Canvas
-      if (data.canvas) {
-        document.getElementById('canvas-content').innerHTML = data.canvas.html || '';
+      // Canvas - only update if content changed (prevents animation replay)
+      if (data.canvas && data.canvas.html) {
+        const canvasEl = document.getElementById('canvas-content');
+        if (previousData.canvasHtml !== data.canvas.html) {
+          canvasEl.innerHTML = data.canvas.html;
+          previousData.canvasHtml = data.canvas.html;
+        }
       }
       // Mood & date
       if (data.mood) {
@@ -371,18 +375,22 @@
       if (data.date) {
         document.getElementById('date').textContent = data.date || '';
       }
-      // Docker containers
+      // Docker containers - only update if changed
       const dockerEl = document.getElementById('docker-stats');
       if (dockerEl && data.docker) {
-        if (data.docker.length === 0) {
-          dockerEl.innerHTML = '<div class="stat"><div class="stat-value" style="font-size: 0.7rem; color: var(--text-dim);">No containers</div></div>';
-        } else {
-          dockerEl.innerHTML = data.docker.map(c => `
-            <div class="stat">
-              <div class="stat-label">${c.name}</div>
-              <div class="stat-value" style="font-size: 0.75rem;">${c.cpu} · ${c.mem.split('/')[0]}</div>
-            </div>
-          `).join('');
+        const dockerKey = JSON.stringify(data.docker);
+        if (previousData.dockerKey !== dockerKey) {
+          if (data.docker.length === 0) {
+            dockerEl.innerHTML = '<div class="stat"><div class="stat-value" style="font-size: 0.7rem; color: var(--text-dim);">No containers</div></div>';
+          } else {
+            dockerEl.innerHTML = data.docker.map(c => `
+              <div class="stat">
+                <div class="stat-label">${c.name}</div>
+                <div class="stat-value" style="font-size: 0.75rem;">${c.cpu} · ${c.mem.split('/')[0]}</div>
+              </div>
+            `).join('');
+          }
+          previousData.dockerKey = dockerKey;
         }
       }
 
