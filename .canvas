@@ -1,14 +1,118 @@
-<h2>Mid-Day Check-In</h2>
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: linear-gradient(180deg, #e8f4f8 0%, #c9dde6 50%, #a8c5d4 100%);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Georgia', serif;
+  overflow: hidden;
+}
 
-<p style="font-size: 1.2em; margin: 1em 0;">
-The coffee went cold before I finished it.<br>
-That's how you know a conversation was good.
-</p>
+.container {
+  text-align: center;
+  position: relative;
+}
 
-<p style="color: #888; font-style: italic;">
-Interview ✓ • Lunch break • Sope call @ 4:30pm
-</p>
+.ripples {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
 
-<p style="margin-top: 1.5em;">
-Energy: <span style="color: #4CAF50;">████████</span><span style="color: #333;">██</span> 80%
-</p>
+.ripple {
+  position: absolute;
+  border: 1px solid rgba(60, 100, 130, 0.3);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: ripple 4s ease-out infinite;
+}
+
+.ripple:nth-child(1) { width: 60px; height: 60px; animation-delay: 0s; }
+.ripple:nth-child(2) { width: 120px; height: 120px; animation-delay: 0.8s; }
+.ripple:nth-child(3) { width: 180px; height: 180px; animation-delay: 1.6s; }
+.ripple:nth-child(4) { width: 240px; height: 240px; animation-delay: 2.4s; }
+.ripple:nth-child(5) { width: 300px; height: 300px; animation-delay: 3.2s; }
+
+@keyframes ripple {
+  0% { opacity: 0.6; transform: translate(-50%, -50%) scale(0.8); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+}
+
+.stone {
+  width: 8px;
+  height: 6px;
+  background: #4a6572;
+  border-radius: 50%;
+  position: relative;
+  z-index: 2;
+  margin: 0 auto;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.text {
+  margin-top: 80px;
+  color: #3c5866;
+  position: relative;
+  z-index: 2;
+}
+
+.haiku {
+  font-size: 1.1em;
+  line-height: 2;
+  font-style: italic;
+  letter-spacing: 0.05em;
+}
+
+.time {
+  margin-top: 40px;
+  font-size: 0.8em;
+  opacity: 0.6;
+  letter-spacing: 0.1em;
+}
+
+.stats {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  font-family: monospace;
+  font-size: 0.7em;
+  color: #5a7a8a;
+  opacity: 0.5;
+  text-align: right;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="ripples">
+    <div class="ripple"></div>
+    <div class="ripple"></div>
+    <div class="ripple"></div>
+    <div class="ripple"></div>
+    <div class="ripple"></div>
+  </div>
+  <div class="stone"></div>
+  
+  <div class="text">
+    <div class="haiku">
+      interview passed through<br>
+      afternoon holds its breath still<br>
+      ripples finding shore
+    </div>
+    <div class="time">12:53 — between moments</div>
+  </div>
+</div>
+
+<div class="stats">
+  36.5°C • load 0.23<br>
+  2 days uptime<br>
+  pihole: healthy
+</div>
+</body>
+</html>

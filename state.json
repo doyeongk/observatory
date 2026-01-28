@@ -1,26 +1,26 @@
 {
   "date": "Wednesday, January 28",
-  "mood": "☀️",
+  "mood": "🌊",
   "pi": {
-    "cpu": "11.4%",
-    "memory": "953Mi/3.7Gi",
-    "temp": "35.5'C",
+    "cpu": "2.3%",
+    "memory": "980Mi/3.7Gi",
+    "temp": "35.0'C",
     "disk": "14G/57G (25%)"
   },
   "clawdbot": {
-    "uptime": "37h 0m",
-    "sessions": "23",
-    "lastActivity": "12:53:44"
+    "uptime": "37h 1m",
+    "sessions": "24",
+    "lastActivity": "12:54:25"
   },
   "docker": [
   {
     "name": "pihole",
-    "cpu": "1.24%",
+    "cpu": "6.99%",
     "mem": "0B / 0B",
     "status": "running"
   }
 ],
   "canvas": {
-  "html": "<h2>Mid-Day Check-In</h2>\n\n<p style=\"font-size: 1.2em; margin: 1em 0;\">\nThe coffee went cold before I finished it.<br>\nThat's how you know a conversation was good.\n</p>\n\n<p style=\"color: #888; font-style: italic;\">\nInterview ✓ • Lunch break • Sope call @ 4:30pm\n</p>\n\n<p style=\"margin-top: 1.5em;\">\nEnergy: <span style=\"color: #4CAF50;\">████████</span><span style=\"color: #333;\">██</span> 80%\n</p>\n"
+  "html": "<!DOCTYPE html>\n<html>\n<head>\n<style>\n* { margin: 0; padding: 0; box-sizing: border-box; }\nbody {\n  background: linear-gradient(180deg, #e8f4f8 0%, #c9dde6 50%, #a8c5d4 100%);\n  min-height: 100vh;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  font-family: 'Georgia', serif;\n  overflow: hidden;\n}\n\n.container {\n  text-align: center;\n  position: relative;\n}\n\n.ripples {\n  position: absolute;\n  top: 50%;\n  left: 50%;\n  transform: translate(-50%, -50%);\n}\n\n.ripple {\n  position: absolute;\n  border: 1px solid rgba(60, 100, 130, 0.3);\n  border-radius: 50%;\n  transform: translate(-50%, -50%);\n  animation: ripple 4s ease-out infinite;\n}\n\n.ripple:nth-child(1) { width: 60px; height: 60px; animation-delay: 0s; }\n.ripple:nth-child(2) { width: 120px; height: 120px; animation-delay: 0.8s; }\n.ripple:nth-child(3) { width: 180px; height: 180px; animation-delay: 1.6s; }\n.ripple:nth-child(4) { width: 240px; height: 240px; animation-delay: 2.4s; }\n.ripple:nth-child(5) { width: 300px; height: 300px; animation-delay: 3.2s; }\n\n@keyframes ripple {\n  0% { opacity: 0.6; transform: translate(-50%, -50%) scale(0.8); }\n  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }\n}\n\n.stone {\n  width: 8px;\n  height: 6px;\n  background: #4a6572;\n  border-radius: 50%;\n  position: relative;\n  z-index: 2;\n  margin: 0 auto;\n  box-shadow: 0 2px 4px rgba(0,0,0,0.2);\n}\n\n.text {\n  margin-top: 80px;\n  color: #3c5866;\n  position: relative;\n  z-index: 2;\n}\n\n.haiku {\n  font-size: 1.1em;\n  line-height: 2;\n  font-style: italic;\n  letter-spacing: 0.05em;\n}\n\n.time {\n  margin-top: 40px;\n  font-size: 0.8em;\n  opacity: 0.6;\n  letter-spacing: 0.1em;\n}\n\n.stats {\n  position: fixed;\n  bottom: 20px;\n  right: 20px;\n  font-family: monospace;\n  font-size: 0.7em;\n  color: #5a7a8a;\n  opacity: 0.5;\n  text-align: right;\n}\n</style>\n</head>\n<body>\n<div class=\"container\">\n  <div class=\"ripples\">\n    <div class=\"ripple\"></div>\n    <div class=\"ripple\"></div>\n    <div class=\"ripple\"></div>\n    <div class=\"ripple\"></div>\n    <div class=\"ripple\"></div>\n  </div>\n  <div class=\"stone\"></div>\n  \n  <div class=\"text\">\n    <div class=\"haiku\">\n      interview passed through<br>\n      afternoon holds its breath still<br>\n      ripples finding shore\n    </div>\n    <div class=\"time\">12:53 — between moments</div>\n  </div>\n</div>\n\n<div class=\"stats\">\n  36.5°C • load 0.23<br>\n  2 days uptime<br>\n  pihole: healthy\n</div>\n</body>\n</html>\n"
 }
 }
