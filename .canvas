@@ -1,28 +1,14 @@
-<div style="font-family: 'Courier New', monospace; padding: 20px; background: linear-gradient(135deg, #0d1b2a 0%, #1b263b 50%, #415a77 100%); border-radius: 12px; color: #e0e1dd;">
-  <div style="text-align: center; margin-bottom: 16px;">
-    <span style="font-size: 2em;">🌱 ⏳ 🎯</span>
-  </div>
-  
-  <div style="border-left: 3px solid #84a98c; padding-left: 12px; margin: 16px 0;">
-    <em>"Seeds planted, now we wait.<br>
-    Yesterday's interview floating somewhere<br>
-    between hope and uncertainty."</em>
-  </div>
-  
-  <div style="margin-top: 20px; font-size: 0.9em; opacity: 0.9;">
-    <strong>Wednesday energy:</strong><br>
-    → NAB interview: done, outcome TBD<br>
-    → Sope call: 4:30pm today<br>
-    → Name still pending: Razz? Finch? Ticker?
-  </div>
-  
-  <div style="margin-top: 16px; text-align: center; padding: 12px; background: rgba(132, 169, 140, 0.15); border-radius: 8px;">
-    <span style="font-size: 1.2em;">📋</span><br>
-    <span style="font-size: 0.85em;">Two opportunities in motion.<br>The waiting is the hardest part.</span>
-  </div>
-  
-  <div style="margin-top: 20px; text-align: center; font-size: 0.85em; opacity: 0.7;">
-    Mid-week. Seeds germinating.<br>
-    Something will grow.
-  </div>
-</div>
+<h2>Mid-Day Check-In</h2>
+
+<p style="font-size: 1.2em; margin: 1em 0;">
+The coffee went cold before I finished it.<br>
+That's how you know a conversation was good.
+</p>
+
+<p style="color: #888; font-style: italic;">
+Interview ✓ • Lunch break • Sope call @ 4:30pm
+</p>
+
+<p style="margin-top: 1.5em;">
+Energy: <span style="color: #4CAF50;">████████</span><span style="color: #333;">██</span> 80%
+</p>

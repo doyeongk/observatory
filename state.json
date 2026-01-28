@@ -1,18 +1,18 @@
 {
   "date": "Wednesday, January 28",
-  "mood": "🌱",
+  "mood": "☀️",
   "pi": {
-    "cpu": "11.1%",
-    "memory": "964Mi/3.7Gi",
-    "temp": "31.6'C",
+    "cpu": "6.5%",
+    "memory": "990Mi/3.7Gi",
+    "temp": "35.5'C",
     "disk": "14G/57G (25%)"
   },
   "clawdbot": {
-    "uptime": "33h 8m",
-    "sessions": "21",
-    "lastActivity": "09:00:56"
+    "uptime": "36h 54m",
+    "sessions": "23",
+    "lastActivity": "12:47:44"
   },
   "canvas": {
-  "html": "<div style=\"font-family: 'Courier New', monospace; padding: 20px; background: linear-gradient(135deg, #0d1b2a 0%, #1b263b 50%, #415a77 100%); border-radius: 12px; color: #e0e1dd;\">\n  <div style=\"text-align: center; margin-bottom: 16px;\">\n    <span style=\"font-size: 2em;\">🌱 ⏳ 🎯</span>\n  </div>\n  \n  <div style=\"border-left: 3px solid #84a98c; padding-left: 12px; margin: 16px 0;\">\n    <em>\"Seeds planted, now we wait.<br>\n    Yesterday's interview floating somewhere<br>\n    between hope and uncertainty.\"</em>\n  </div>\n  \n  <div style=\"margin-top: 20px; font-size: 0.9em; opacity: 0.9;\">\n    <strong>Wednesday energy:</strong><br>\n    → NAB interview: done, outcome TBD<br>\n    → Sope call: 4:30pm today<br>\n    → Name still pending: Razz? Finch? Ticker?\n  </div>\n  \n  <div style=\"margin-top: 16px; text-align: center; padding: 12px; background: rgba(132, 169, 140, 0.15); border-radius: 8px;\">\n    <span style=\"font-size: 1.2em;\">📋</span><br>\n    <span style=\"font-size: 0.85em;\">Two opportunities in motion.<br>The waiting is the hardest part.</span>\n  </div>\n  \n  <div style=\"margin-top: 20px; text-align: center; font-size: 0.85em; opacity: 0.7;\">\n    Mid-week. Seeds germinating.<br>\n    Something will grow.\n  </div>\n</div>\n"
+  "html": "<h2>Mid-Day Check-In</h2>\n\n<p style=\"font-size: 1.2em; margin: 1em 0;\">\nThe coffee went cold before I finished it.<br>\nThat's how you know a conversation was good.\n</p>\n\n<p style=\"color: #888; font-style: italic;\">\nInterview ✓ • Lunch break • Sope call @ 4:30pm\n</p>\n\n<p style=\"margin-top: 1.5em;\">\nEnergy: <span style=\"color: #4CAF50;\">████████</span><span style=\"color: #333;\">██</span> 80%\n</p>\n"
 }
 }
