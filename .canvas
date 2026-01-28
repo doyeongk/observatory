@@ -1,118 +1,205 @@
-<!DOCTYPE html>
-<html>
-<head>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  background: linear-gradient(180deg, #e8f4f8 0%, #c9dde6 50%, #a8c5d4 100%);
-  min-height: 100vh;
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;1,300&family=Zen+Kaku+Gothic+New:wght@300&display=swap');
+
+.canvas-container {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(165deg, 
+    #fdf6e8 0%, 
+    #f9e4c8 40%,
+    #e8d4b8 100%);
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: center;
-  font-family: 'Georgia', serif;
+  align-items: center;
+  position: relative;
   overflow: hidden;
 }
 
-.container {
+/* Subtle paper texture overlay */
+.canvas-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noise)'/%3E%3C/svg%3E");
+  opacity: 0.04;
+  pointer-events: none;
+}
+
+/* Warm afternoon light beam */
+.light-beam {
+  position: absolute;
+  top: -20%;
+  right: 10%;
+  width: 40%;
+  height: 140%;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 232, 180, 0.4) 0%,
+    rgba(255, 220, 150, 0.15) 50%,
+    transparent 100%
+  );
+  transform: rotate(-15deg);
+  pointer-events: none;
+  animation: breathe 8s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+/* Central composition */
+.moment {
   text-align: center;
   position: relative;
+  z-index: 1;
 }
 
-.ripples {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+.kanji {
+  font-family: 'Zen Kaku Gothic New', sans-serif;
+  font-size: clamp(4rem, 15vw, 8rem);
+  font-weight: 300;
+  color: #2d2a26;
+  letter-spacing: 0.15em;
+  line-height: 1;
+  opacity: 0;
+  animation: emerge 2s ease-out 0.3s forwards;
 }
 
-.ripple {
-  position: absolute;
-  border: 1px solid rgba(60, 100, 130, 0.3);
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  animation: ripple 4s ease-out infinite;
+@keyframes emerge {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.ripple:nth-child(1) { width: 60px; height: 60px; animation-delay: 0s; }
-.ripple:nth-child(2) { width: 120px; height: 120px; animation-delay: 0.8s; }
-.ripple:nth-child(3) { width: 180px; height: 180px; animation-delay: 1.6s; }
-.ripple:nth-child(4) { width: 240px; height: 240px; animation-delay: 2.4s; }
-.ripple:nth-child(5) { width: 300px; height: 300px; animation-delay: 3.2s; }
-
-@keyframes ripple {
-  0% { opacity: 0.6; transform: translate(-50%, -50%) scale(0.8); }
-  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+.pause-line {
+  width: 60px;
+  height: 1px;
+  background: #8b7355;
+  margin: 1.5rem auto;
+  opacity: 0;
+  animation: draw 1.5s ease-out 1s forwards;
 }
 
-.stone {
-  width: 8px;
-  height: 6px;
-  background: #4a6572;
-  border-radius: 50%;
-  position: relative;
-  z-index: 2;
-  margin: 0 auto;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+@keyframes draw {
+  from {
+    width: 0;
+    opacity: 0;
+  }
+  to {
+    width: 60px;
+    opacity: 0.6;
+  }
 }
 
-.text {
-  margin-top: 80px;
-  color: #3c5866;
-  position: relative;
-  z-index: 2;
-}
-
-.haiku {
-  font-size: 1.1em;
-  line-height: 2;
+.subtitle {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: clamp(0.9rem, 2.5vw, 1.1rem);
+  font-weight: 300;
   font-style: italic;
-  letter-spacing: 0.05em;
+  color: #6b5d4d;
+  letter-spacing: 0.25em;
+  text-transform: lowercase;
+  opacity: 0;
+  animation: fade 2s ease-out 1.5s forwards;
 }
 
-.time {
-  margin-top: 40px;
-  font-size: 0.8em;
-  opacity: 0.6;
-  letter-spacing: 0.1em;
+@keyframes fade {
+  from { opacity: 0; }
+  to { opacity: 0.7; }
 }
 
-.stats {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  font-family: monospace;
-  font-size: 0.7em;
-  color: #5a7a8a;
-  opacity: 0.5;
-  text-align: right;
+/* Floating dust motes */
+.mote {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  background: radial-gradient(circle, rgba(255,235,200,0.9) 0%, transparent 70%);
+  border-radius: 50%;
+  animation: float 12s ease-in-out infinite;
+}
+
+.mote:nth-child(1) { top: 25%; left: 60%; animation-delay: 0s; }
+.mote:nth-child(2) { top: 40%; left: 70%; animation-delay: 2s; animation-duration: 15s; }
+.mote:nth-child(3) { top: 55%; left: 55%; animation-delay: 4s; animation-duration: 10s; }
+.mote:nth-child(4) { top: 30%; left: 75%; animation-delay: 6s; animation-duration: 14s; }
+.mote:nth-child(5) { top: 65%; left: 65%; animation-delay: 3s; animation-duration: 11s; }
+
+@keyframes float {
+  0%, 100% { 
+    transform: translate(0, 0) scale(1);
+    opacity: 0.6;
+  }
+  25% { 
+    transform: translate(-8px, 15px) scale(1.2);
+    opacity: 0.9;
+  }
+  50% { 
+    transform: translate(5px, -10px) scale(0.8);
+    opacity: 0.5;
+  }
+  75% { 
+    transform: translate(-3px, 8px) scale(1.1);
+    opacity: 0.8;
+  }
+}
+
+/* Steam wisps */
+.steam {
+  position: absolute;
+  bottom: 15%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 50px;
+  opacity: 0.25;
+}
+
+.steam::before,
+.steam::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 30px;
+  background: linear-gradient(to top, rgba(139,115,85,0.15), transparent);
+  border-radius: 50%;
+  animation: rise 4s ease-out infinite;
+}
+
+.steam::before { left: 5px; animation-delay: 0s; }
+.steam::after { left: 15px; animation-delay: 2s; }
+
+@keyframes rise {
+  0% { 
+    transform: translateY(0) scaleX(1);
+    opacity: 0.3;
+  }
+  100% { 
+    transform: translateY(-40px) scaleX(2);
+    opacity: 0;
+  }
 }
 </style>
-</head>
-<body>
-<div class="container">
-  <div class="ripples">
-    <div class="ripple"></div>
-    <div class="ripple"></div>
-    <div class="ripple"></div>
-    <div class="ripple"></div>
-    <div class="ripple"></div>
-  </div>
-  <div class="stone"></div>
-  
-  <div class="text">
-    <div class="haiku">
-      interview passed through<br>
-      afternoon holds its breath still<br>
-      ripples finding shore
-    </div>
-    <div class="time">12:53 — between moments</div>
-  </div>
-</div>
 
-<div class="stats">
-  36.5°C • load 0.23<br>
-  2 days uptime<br>
-  pihole: healthy
+<div class="canvas-container">
+  <div class="light-beam"></div>
+  <div class="mote"></div>
+  <div class="mote"></div>
+  <div class="mote"></div>
+  <div class="mote"></div>
+  <div class="mote"></div>
+  
+  <div class="moment">
+    <div class="kanji">間</div>
+    <div class="pause-line"></div>
+    <div class="subtitle">the pause between</div>
+  </div>
+  
+  <div class="steam"></div>
 </div>
-</body>
-</html>
