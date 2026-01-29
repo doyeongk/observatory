@@ -3,310 +3,314 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vigil</title>
+  <title>Aureole</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500&family=Cormorant+Garamond:ital,wght@1,300&display=swap" rel="stylesheet">
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
     :root {
-      --deep-indigo: #0d1321;
-      --slate-blue: #1d2d44;
-      --twilight: #3e5c76;
-      --mist: #748cab;
-      --ember: #d4a373;
-      --coal: #0a0f14;
+      --void: #0e0c08;
+      --deep: #181410;
+      --gold: #c9943e;
+      --amber: #d6a84e;
+      --pale: #e8cc8a;
+      --cream: #f2e4c8;
+      --rose: #b07060;
+      --blush: rgba(176, 112, 96, 0.5);
     }
 
     body {
-      font-family: 'Cormorant Garamond', Georgia, serif;
-      background: var(--coal);
+      background: var(--void);
       min-height: 100vh;
       overflow: hidden;
-      position: relative;
     }
 
+    /* --- Warm atmosphere --- */
     .atmosphere {
       position: fixed;
       inset: 0;
-      background: 
-        radial-gradient(ellipse 80% 50% at 50% 100%, rgba(13, 19, 33, 0.9) 0%, transparent 70%),
-        radial-gradient(ellipse 60% 40% at 20% 20%, rgba(62, 92, 118, 0.15) 0%, transparent 50%),
-        radial-gradient(ellipse 40% 30% at 80% 30%, rgba(116, 140, 171, 0.08) 0%, transparent 50%),
-        linear-gradient(180deg, var(--coal) 0%, var(--deep-indigo) 50%, var(--slate-blue) 100%);
+      background:
+        radial-gradient(ellipse 45% 45% at 50% 44%, rgba(201, 148, 62, 0.06) 0%, transparent 70%),
+        radial-gradient(ellipse 90% 60% at 50% 50%, rgba(24, 20, 16, 0.5) 0%, var(--void) 100%);
       z-index: 0;
     }
 
+    /* --- Film grain --- */
     .grain {
       position: fixed;
       inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-      opacity: 0.03;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      opacity: 0.035;
       pointer-events: none;
-      z-index: 100;
+      z-index: 200;
+      mix-blend-mode: overlay;
     }
 
-    .embers {
+    /* --- Soft central glow --- */
+    .core-glow {
       position: fixed;
-      inset: 0;
-      z-index: 1;
-    }
-
-    .ember {
-      position: absolute;
-      width: 3px;
-      height: 3px;
-      background: var(--ember);
-      border-radius: 50%;
-      opacity: 0;
-      animation: float-ember 12s ease-in-out infinite;
-      box-shadow: 0 0 8px var(--ember), 0 0 20px rgba(212, 163, 115, 0.3);
-    }
-
-    .ember:nth-child(1) { left: 15%; animation-delay: 0s; }
-    .ember:nth-child(2) { left: 35%; animation-delay: 2s; }
-    .ember:nth-child(3) { left: 55%; animation-delay: 4s; }
-    .ember:nth-child(4) { left: 75%; animation-delay: 6s; }
-    .ember:nth-child(5) { left: 25%; animation-delay: 8s; }
-    .ember:nth-child(6) { left: 65%; animation-delay: 10s; }
-    .ember:nth-child(7) { left: 45%; animation-delay: 1s; }
-    .ember:nth-child(8) { left: 85%; animation-delay: 3s; }
-
-    @keyframes float-ember {
-      0%, 100% {
-        bottom: -5%;
-        opacity: 0;
-        transform: translateX(0);
-      }
-      10% {
-        opacity: 0.7;
-      }
-      50% {
-        opacity: 0.4;
-      }
-      90% {
-        opacity: 0;
-      }
-      100% {
-        bottom: 105%;
-        transform: translateX(20px);
-      }
-    }
-
-    .beacon {
-      position: fixed;
-      top: 50%;
+      top: 44%;
       left: 50%;
       transform: translate(-50%, -50%);
-      z-index: 2;
+      width: min(65vw, 65vh);
+      height: min(65vw, 65vh);
+      background: radial-gradient(circle,
+        rgba(201, 148, 62, 0.07) 0%,
+        rgba(201, 148, 62, 0.025) 35%,
+        transparent 65%
+      );
+      border-radius: 50%;
+      z-index: 1;
+      animation: glow-breathe 12s ease-in-out infinite;
     }
 
-    .beacon-core {
+    @keyframes glow-breathe {
+      0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.65; }
+      50% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+    }
+
+    /* --- Central eye --- */
+    .eye {
+      position: fixed;
+      top: 44%;
+      left: 50%;
+      transform: translate(-50%, -50%);
       width: 4px;
       height: 4px;
-      background: rgba(212, 163, 115, 0.9);
+      background: var(--cream);
       border-radius: 50%;
-      position: relative;
-      animation: pulse-core 4s ease-in-out infinite;
+      z-index: 8;
+      box-shadow:
+        0 0 12px var(--gold),
+        0 0 35px rgba(201, 148, 62, 0.35),
+        0 0 70px rgba(201, 148, 62, 0.12);
+      animation: eye-breathe 6s ease-in-out infinite;
     }
 
-    .beacon-core::before {
-      content: '';
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 40px;
-      height: 40px;
-      background: radial-gradient(circle, rgba(212, 163, 115, 0.15) 0%, transparent 70%);
-      border-radius: 50%;
-      animation: pulse-glow 4s ease-in-out infinite;
+    @keyframes eye-breathe {
+      0%, 100% { opacity: 0.75; transform: translate(-50%, -50%) scale(1); }
+      50% { opacity: 1; transform: translate(-50%, -50%) scale(1.4); }
     }
 
-    .beacon-core::after {
-      content: '';
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 120px;
-      height: 120px;
-      background: radial-gradient(circle, rgba(212, 163, 115, 0.05) 0%, transparent 60%);
-      border-radius: 50%;
-      animation: pulse-outer 4s ease-in-out infinite 0.5s;
-    }
-
-    @keyframes pulse-core {
-      0%, 100% { opacity: 0.7; }
-      50% { opacity: 1; }
-    }
-
-    @keyframes pulse-glow {
-      0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-      50% { transform: translate(-50%, -50%) scale(1.2); opacity: 0.6; }
-    }
-
-    @keyframes pulse-outer {
-      0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
-      50% { transform: translate(-50%, -50%) scale(1.3); opacity: 0.3; }
-    }
-
-    .rings {
+    /* --- Ring container (slow rotation) --- */
+    #ring {
       position: fixed;
-      top: 50%;
+      top: 44%;
       left: 50%;
       transform: translate(-50%, -50%);
-      z-index: 1;
+      width: 0; height: 0;
+      z-index: 5;
+      animation: ring-rotate 200s linear infinite;
     }
 
-    .ring {
+    @keyframes ring-rotate {
+      to { transform: translate(-50%, -50%) rotate(360deg); }
+    }
+
+    .mote {
       position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      border: 1px solid rgba(116, 140, 171, 0.1);
       border-radius: 50%;
-      animation: expand-ring 8s ease-out infinite;
+      will-change: transform, opacity;
     }
 
-    .ring:nth-child(1) { animation-delay: 0s; }
-    .ring:nth-child(2) { animation-delay: 2s; }
-    .ring:nth-child(3) { animation-delay: 4s; }
-    .ring:nth-child(4) { animation-delay: 6s; }
-
-    @keyframes expand-ring {
-      0% {
-        width: 20px;
-        height: 20px;
-        opacity: 0.4;
-      }
-      100% {
-        width: 500px;
-        height: 500px;
-        opacity: 0;
-      }
+    /* --- Ambient dust --- */
+    #dust {
+      position: fixed;
+      inset: 0;
+      z-index: 3;
+      pointer-events: none;
     }
 
+    .speck {
+      position: absolute;
+      width: 1.5px;
+      height: 1.5px;
+      background: rgba(232, 204, 138, 0.2);
+      border-radius: 50%;
+    }
+
+    /* --- Typography --- */
     .content {
       position: fixed;
-      bottom: 15%;
-      left: 0;
-      right: 0;
+      top: 44%;
+      left: 50%;
+      transform: translate(-50%, -50%);
       text-align: center;
       z-index: 10;
-      padding: 0 2rem;
+      pointer-events: none;
     }
 
     .title {
-      font-size: clamp(2.5rem, 8vw, 4.5rem);
-      font-weight: 300;
-      letter-spacing: 0.5em;
+      font-family: 'Cinzel', serif;
+      font-size: clamp(1.8rem, 5.5vw, 3.2rem);
+      font-weight: 400;
+      letter-spacing: 0.55em;
+      text-indent: 0.55em;
       text-transform: uppercase;
-      color: var(--mist);
-      margin-bottom: 1.5rem;
+      color: var(--gold);
       opacity: 0;
-      animation: fade-in 2s ease-out forwards 0.5s;
-      text-shadow: 0 0 40px rgba(116, 140, 171, 0.3);
+      animation: unveil 3s ease-out forwards 1.2s;
+      text-shadow: 0 0 50px rgba(201, 148, 62, 0.12);
+    }
+
+    .divider {
+      display: block;
+      width: 50px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(201, 148, 62, 0.5), transparent);
+      margin: 1.1rem auto;
+      opacity: 0;
+      animation: unveil 2s ease-out forwards 2s;
     }
 
     .subtitle {
-      font-size: clamp(0.875rem, 2vw, 1.1rem);
+      font-family: 'Cormorant Garamond', serif;
+      font-size: clamp(0.8rem, 1.8vw, 1.05rem);
       font-weight: 300;
       font-style: italic;
-      letter-spacing: 0.2em;
-      color: rgba(116, 140, 171, 0.5);
+      letter-spacing: 0.15em;
+      color: rgba(201, 148, 62, 0.3);
       opacity: 0;
-      animation: fade-in 2s ease-out forwards 1s;
+      animation: unveil 2.5s ease-out forwards 2.6s;
     }
 
-    @keyframes fade-in {
+    @keyframes unveil {
       to { opacity: 1; }
     }
 
-    .time-marker {
-      position: fixed;
-      bottom: 2rem;
-      right: 2rem;
-      font-size: 0.75rem;
-      letter-spacing: 0.3em;
-      color: rgba(116, 140, 171, 0.25);
-      z-index: 10;
-    }
-
-    .horizon {
-      position: fixed;
-      bottom: 30%;
-      left: 0;
-      right: 0;
-      height: 1px;
-      background: linear-gradient(90deg, 
-        transparent 0%, 
-        rgba(116, 140, 171, 0.1) 20%,
-        rgba(116, 140, 171, 0.2) 50%,
-        rgba(116, 140, 171, 0.1) 80%,
-        transparent 100%
-      );
-      z-index: 1;
-    }
-
+    /* --- Breath line (top) --- */
     .breath {
       position: fixed;
-      top: 2rem;
+      top: 2.5rem;
       left: 50%;
       transform: translateX(-50%);
-      width: 60px;
-      height: 2px;
-      background: rgba(212, 163, 115, 0.2);
+      width: 50px;
+      height: 1px;
+      background: rgba(201, 148, 62, 0.15);
       z-index: 10;
-      animation: breathe 6s ease-in-out infinite;
+      animation: breathe-line 7s ease-in-out infinite;
     }
 
-    @keyframes breathe {
-      0%, 100% { width: 60px; opacity: 0.2; }
-      50% { width: 100px; opacity: 0.4; }
+    @keyframes breathe-line {
+      0%, 100% { width: 50px; opacity: 0.15; }
+      50% { width: 85px; opacity: 0.3; }
+    }
+
+    /* --- Stamp --- */
+    .stamp {
+      position: fixed;
+      bottom: 2rem;
+      right: 2.5rem;
+      font-family: 'Cinzel', serif;
+      font-size: 0.6rem;
+      letter-spacing: 0.35em;
+      color: rgba(201, 148, 62, 0.1);
+      z-index: 10;
+    }
+
+    /* --- Horizon echo --- */
+    .horizon {
+      position: fixed;
+      bottom: 32%;
+      left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg,
+        transparent 5%,
+        rgba(201, 148, 62, 0.04) 30%,
+        rgba(201, 148, 62, 0.07) 50%,
+        rgba(201, 148, 62, 0.04) 70%,
+        transparent 95%
+      );
+      z-index: 1;
     }
   </style>
 </head>
 <body>
   <div class="atmosphere"></div>
   <div class="grain"></div>
-  
+  <div class="core-glow"></div>
+  <div class="eye"></div>
   <div class="breath"></div>
-  
-  <div class="embers">
-    <div class="ember"></div>
-    <div class="ember"></div>
-    <div class="ember"></div>
-    <div class="ember"></div>
-    <div class="ember"></div>
-    <div class="ember"></div>
-    <div class="ember"></div>
-    <div class="ember"></div>
-  </div>
-  
-  <div class="rings">
-    <div class="ring"></div>
-    <div class="ring"></div>
-    <div class="ring"></div>
-    <div class="ring"></div>
-  </div>
-  
-  <div class="beacon">
-    <div class="beacon-core"></div>
-  </div>
-  
   <div class="horizon"></div>
-  
+  <div id="ring"></div>
+  <div id="dust"></div>
+
   <div class="content">
-    <h1 class="title">Vigil</h1>
-    <p class="subtitle">the quiet hours between questions</p>
+    <h1 class="title">Aureole</h1>
+    <span class="divider"></span>
+    <p class="subtitle">the light that forms around waking</p>
   </div>
-  
-  <div class="time-marker">29.01.26 — 21:00</div>
+
+  <div class="stamp">30 · 01 · 26 — 09:00</div>
+
+  <script>
+    const ring = document.getElementById('ring');
+    const dustEl = document.getElementById('dust');
+    const vh = Math.min(window.innerWidth, window.innerHeight);
+
+    // --- Three concentric particle layers ---
+    const layers = [
+      { count: 30, radius: vh * 0.24, sizeRange: [1.5, 3],   opRange: [0.25, 0.65], cssVar: '--gold',  blur: 6  },
+      { count: 22, radius: vh * 0.32, sizeRange: [2, 4],      opRange: [0.12, 0.35], cssVar: '--amber', blur: 10 },
+      { count: 15, radius: vh * 0.39, sizeRange: [2.5, 4.5],  opRange: [0.06, 0.2],  cssVar: '--rose',  blur: 14 },
+    ];
+
+    let css = '';
+    let n = 0;
+
+    layers.forEach(layer => {
+      for (let i = 0; i < layer.count; i++) {
+        const angle = (i / layer.count) * Math.PI * 2 + (Math.random() - 0.5) * 0.45;
+        const r = layer.radius + (Math.random() - 0.5) * vh * 0.035;
+        const x = Math.cos(angle) * r;
+        const y = Math.sin(angle) * r * 0.92; // slight vertical compression → ellipse
+        const sz = layer.sizeRange[0] + Math.random() * (layer.sizeRange[1] - layer.sizeRange[0]);
+        const dur = 8 + Math.random() * 12;
+        const delay = Math.random() * -dur;
+        const dx = (Math.random() - 0.5) * 22;
+        const dy = (Math.random() - 0.5) * 22;
+        const oLo = layer.opRange[0] + Math.random() * (layer.opRange[1] - layer.opRange[0]) * 0.4;
+        const oHi = layer.opRange[0] + Math.random() * (layer.opRange[1] - layer.opRange[0]);
+
+        const dot = document.createElement('div');
+        dot.className = 'mote';
+        dot.style.cssText = `
+          left:${x}px;top:${y}px;width:${sz}px;height:${sz}px;
+          background:var(${layer.cssVar});
+          box-shadow:0 0 ${layer.blur}px var(${layer.cssVar});
+          animation:p${n} ${dur}s ease-in-out infinite;
+          animation-delay:${delay}s;
+        `;
+
+        css += `@keyframes p${n}{0%,100%{transform:translate(0,0);opacity:${oLo.toFixed(2)}}50%{transform:translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px);opacity:${oHi.toFixed(2)}}}`;
+        ring.appendChild(dot);
+        n++;
+      }
+    });
+
+    // --- Ambient dust motes ---
+    for (let i = 0; i < 35; i++) {
+      const sp = document.createElement('div');
+      sp.className = 'speck';
+      const sx = Math.random() * 100;
+      const sy = Math.random() * 100;
+      const dur = 18 + Math.random() * 28;
+      const delay = Math.random() * -dur;
+      const driftX = (Math.random() - 0.5) * 20;
+      const driftY = -15 - Math.random() * 30;
+      const oMid = 0.08 + Math.random() * 0.18;
+
+      sp.style.cssText = `left:${sx}%;top:${sy}%;animation:d${i} ${dur}s linear infinite;animation-delay:${delay}s;`;
+      css += `@keyframes d${i}{0%{transform:translate(0,0);opacity:0}12%{opacity:${oMid.toFixed(2)}}88%{opacity:${(oMid * 0.3).toFixed(2)}}100%{transform:translate(${driftX.toFixed(1)}px,${driftY.toFixed(1)}px);opacity:0}}`;
+      dustEl.appendChild(sp);
+    }
+
+    // Inject all keyframes
+    const s = document.createElement('style');
+    s.textContent = css;
+    document.head.appendChild(s);
+  </script>
 </body>
 </html>
