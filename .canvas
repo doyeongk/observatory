@@ -1,288 +1,312 @@
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,200;0,300;1,200;1,300&family=Syne:wght@400;700&display=swap');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vigil</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
-.canvas-container {
-  height: 100%;
-  width: 100%;
-  background: #F2EDE4;
-  position: relative;
-  overflow: hidden;
-}
+    :root {
+      --deep-indigo: #0d1321;
+      --slate-blue: #1d2d44;
+      --twilight: #3e5c76;
+      --mist: #748cab;
+      --ember: #d4a373;
+      --coal: #0a0f14;
+    }
 
-/* Linen texture overlay */
-.canvas-container::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-  opacity: 0.035;
-  pointer-events: none;
-  z-index: 50;
-}
+    body {
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      background: var(--coal);
+      min-height: 100vh;
+      overflow: hidden;
+      position: relative;
+    }
 
-/* Warm wash at the top — morning light flooding in */
-.light-wash {
-  position: absolute;
-  top: -20%;
-  left: -10%;
-  right: -10%;
-  height: 70%;
-  background: radial-gradient(
-    ellipse 100% 100% at 60% 0%,
-    rgba(218, 170, 110, 0.18) 0%,
-    rgba(218, 170, 110, 0.08) 35%,
-    transparent 65%
-  );
-  animation: washPulse 10s ease-in-out infinite;
-}
+    .atmosphere {
+      position: fixed;
+      inset: 0;
+      background: 
+        radial-gradient(ellipse 80% 50% at 50% 100%, rgba(13, 19, 33, 0.9) 0%, transparent 70%),
+        radial-gradient(ellipse 60% 40% at 20% 20%, rgba(62, 92, 118, 0.15) 0%, transparent 50%),
+        radial-gradient(ellipse 40% 30% at 80% 30%, rgba(116, 140, 171, 0.08) 0%, transparent 50%),
+        linear-gradient(180deg, var(--coal) 0%, var(--deep-indigo) 50%, var(--slate-blue) 100%);
+      z-index: 0;
+    }
 
-@keyframes washPulse {
-  0%, 100% { opacity: 0.8; }
-  50% { opacity: 1; }
-}
+    .grain {
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      opacity: 0.03;
+      pointer-events: none;
+      z-index: 100;
+    }
 
-/* The loom — vertical warp threads */
-.warp {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  opacity: 0;
-  animation: warpAppear 2s ease-out forwards;
-}
+    .embers {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+    }
 
-.warp:nth-child(1)  { left: 8%;  background: rgba(196, 156, 104, 0.25); animation-delay: 0.1s; }
-.warp:nth-child(2)  { left: 14%; background: rgba(196, 156, 104, 0.15); animation-delay: 0.2s; }
-.warp:nth-child(3)  { left: 20%; background: rgba(196, 156, 104, 0.30); animation-delay: 0.05s; }
-.warp:nth-child(4)  { left: 26%; background: rgba(196, 156, 104, 0.12); animation-delay: 0.35s; }
-.warp:nth-child(5)  { left: 32%; background: rgba(196, 156, 104, 0.22); animation-delay: 0.15s; }
-.warp:nth-child(6)  { left: 38%; background: rgba(196, 156, 104, 0.18); animation-delay: 0.4s; }
-.warp:nth-child(7)  { left: 44%; background: rgba(196, 156, 104, 0.35); animation-delay: 0.08s; width: 2px; }
-.warp:nth-child(8)  { left: 50%; background: rgba(196, 156, 104, 0.14); animation-delay: 0.28s; }
-.warp:nth-child(9)  { left: 56%; background: rgba(196, 156, 104, 0.20); animation-delay: 0.18s; }
-.warp:nth-child(10) { left: 62%; background: rgba(196, 156, 104, 0.28); animation-delay: 0.12s; }
-.warp:nth-child(11) { left: 68%; background: rgba(196, 156, 104, 0.10); animation-delay: 0.45s; }
-.warp:nth-child(12) { left: 74%; background: rgba(196, 156, 104, 0.24); animation-delay: 0.22s; }
-.warp:nth-child(13) { left: 80%; background: rgba(196, 156, 104, 0.16); animation-delay: 0.32s; }
-.warp:nth-child(14) { left: 86%; background: rgba(196, 156, 104, 0.30); animation-delay: 0.06s; }
-.warp:nth-child(15) { left: 92%; background: rgba(196, 156, 104, 0.12); animation-delay: 0.38s; }
+    .ember {
+      position: absolute;
+      width: 3px;
+      height: 3px;
+      background: var(--ember);
+      border-radius: 50%;
+      opacity: 0;
+      animation: float-ember 12s ease-in-out infinite;
+      box-shadow: 0 0 8px var(--ember), 0 0 20px rgba(212, 163, 115, 0.3);
+    }
 
-@keyframes warpAppear {
-  0% { opacity: 0; transform: scaleY(0); transform-origin: top; }
-  100% { opacity: 1; transform: scaleY(1); }
-}
+    .ember:nth-child(1) { left: 15%; animation-delay: 0s; }
+    .ember:nth-child(2) { left: 35%; animation-delay: 2s; }
+    .ember:nth-child(3) { left: 55%; animation-delay: 4s; }
+    .ember:nth-child(4) { left: 75%; animation-delay: 6s; }
+    .ember:nth-child(5) { left: 25%; animation-delay: 8s; }
+    .ember:nth-child(6) { left: 65%; animation-delay: 10s; }
+    .ember:nth-child(7) { left: 45%; animation-delay: 1s; }
+    .ember:nth-child(8) { left: 85%; animation-delay: 3s; }
 
-/* The weft — horizontal thread weaving through */
-.weft {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(194, 114, 88, 0.0) 5%,
-    rgba(194, 114, 88, 0.5) 15%,
-    rgba(194, 114, 88, 0.7) 30%,
-    rgba(194, 114, 88, 0.5) 50%,
-    rgba(194, 114, 88, 0.7) 70%,
-    rgba(194, 114, 88, 0.5) 85%,
-    rgba(194, 114, 88, 0.0) 95%,
-    transparent 100%
-  );
-  opacity: 0;
-  animation: weftWeave 4s ease-in-out forwards;
-}
+    @keyframes float-ember {
+      0%, 100% {
+        bottom: -5%;
+        opacity: 0;
+        transform: translateX(0);
+      }
+      10% {
+        opacity: 0.7;
+      }
+      50% {
+        opacity: 0.4;
+      }
+      90% {
+        opacity: 0;
+      }
+      100% {
+        bottom: 105%;
+        transform: translateX(20px);
+      }
+    }
 
-.weft-1 { top: 38%; animation-delay: 1.2s; }
-.weft-2 { top: 50%; animation-delay: 1.8s; height: 3px; }
-.weft-3 { top: 62%; animation-delay: 2.4s; }
+    .beacon {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 2;
+    }
 
-@keyframes weftWeave {
-  0% { 
-    opacity: 0;
-    clip-path: inset(0 100% 0 0);
-  }
-  60% {
-    clip-path: inset(0 0 0 0);
-    opacity: 0.8;
-  }
-  100% {
-    clip-path: inset(0 0 0 0);
-    opacity: 0.6;
-  }
-}
+    .beacon-core {
+      width: 4px;
+      height: 4px;
+      background: rgba(212, 163, 115, 0.9);
+      border-radius: 50%;
+      position: relative;
+      animation: pulse-core 4s ease-in-out infinite;
+    }
 
-/* Intersection glow — where warp meets weft */
-.node {
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: rgba(218, 170, 110, 0.8);
-  box-shadow: 0 0 12px rgba(218, 170, 110, 0.4), 0 0 30px rgba(218, 170, 110, 0.15);
-  opacity: 0;
-  animation: nodeGlow 3s ease-in-out forwards;
-}
+    .beacon-core::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 40px;
+      height: 40px;
+      background: radial-gradient(circle, rgba(212, 163, 115, 0.15) 0%, transparent 70%);
+      border-radius: 50%;
+      animation: pulse-glow 4s ease-in-out infinite;
+    }
 
-.node:nth-child(1)  { left: calc(20% - 3px); top: calc(38% - 3px); animation-delay: 2.0s; }
-.node:nth-child(2)  { left: calc(44% - 3px); top: calc(50% - 3px); animation-delay: 2.5s; width: 8px; height: 8px; }
-.node:nth-child(3)  { left: calc(62% - 3px); top: calc(38% - 3px); animation-delay: 2.2s; }
-.node:nth-child(4)  { left: calc(74% - 3px); top: calc(62% - 3px); animation-delay: 2.8s; }
-.node:nth-child(5)  { left: calc(32% - 3px); top: calc(62% - 3px); animation-delay: 3.0s; }
-.node:nth-child(6)  { left: calc(86% - 3px); top: calc(50% - 3px); animation-delay: 2.6s; }
-.node:nth-child(7)  { left: calc(50% - 3px); top: calc(62% - 3px); animation-delay: 3.2s; }
+    .beacon-core::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 120px;
+      height: 120px;
+      background: radial-gradient(circle, rgba(212, 163, 115, 0.05) 0%, transparent 60%);
+      border-radius: 50%;
+      animation: pulse-outer 4s ease-in-out infinite 0.5s;
+    }
 
-@keyframes nodeGlow {
-  0% { opacity: 0; transform: scale(0); }
-  50% { opacity: 1; transform: scale(1.3); }
-  100% { opacity: 0.7; transform: scale(1); }
-}
+    @keyframes pulse-core {
+      0%, 100% { opacity: 0.7; }
+      50% { opacity: 1; }
+    }
 
-/* Central node breathes */
-.node:nth-child(2) {
-  animation: nodeGlow 3s ease-in-out forwards, nodeBreathe 5s ease-in-out 3s infinite;
-}
+    @keyframes pulse-glow {
+      0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+      50% { transform: translate(-50%, -50%) scale(1.2); opacity: 0.6; }
+    }
 
-@keyframes nodeBreathe {
-  0%, 100% { 
-    box-shadow: 0 0 12px rgba(218, 170, 110, 0.4), 0 0 30px rgba(218, 170, 110, 0.15);
-    transform: scale(1);
-  }
-  50% { 
-    box-shadow: 0 0 20px rgba(218, 170, 110, 0.6), 0 0 50px rgba(218, 170, 110, 0.25);
-    transform: scale(1.15);
-  }
-}
+    @keyframes pulse-outer {
+      0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
+      50% { transform: translate(-50%, -50%) scale(1.3); opacity: 0.3; }
+    }
 
-/* Text — left-anchored, editorial */
-.text-block {
-  position: absolute;
-  left: 8%;
-  bottom: 14%;
-  z-index: 10;
-}
+    .rings {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 1;
+    }
 
-.title {
-  font-family: 'Crimson Pro', serif;
-  font-weight: 200;
-  font-style: italic;
-  font-size: clamp(4.5rem, 14vw, 8.5rem);
-  color: rgba(61, 43, 31, 0.55);
-  letter-spacing: 0.04em;
-  line-height: 0.9;
-  opacity: 0;
-  animation: titleIn 2s ease-out 0.8s forwards;
-}
+    .ring {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border: 1px solid rgba(116, 140, 171, 0.1);
+      border-radius: 50%;
+      animation: expand-ring 8s ease-out infinite;
+    }
 
-@keyframes titleIn {
-  0% { opacity: 0; transform: translateY(20px); }
-  100% { opacity: 1; transform: translateY(0); }
-}
+    .ring:nth-child(1) { animation-delay: 0s; }
+    .ring:nth-child(2) { animation-delay: 2s; }
+    .ring:nth-child(3) { animation-delay: 4s; }
+    .ring:nth-child(4) { animation-delay: 6s; }
 
-.subtitle {
-  font-family: 'Syne', sans-serif;
-  font-weight: 400;
-  font-size: clamp(0.65rem, 1.8vw, 0.9rem);
-  color: rgba(158, 130, 98, 0.6);
-  letter-spacing: 0.5em;
-  text-transform: uppercase;
-  margin-top: 1.5rem;
-  margin-left: 0.3rem;
-  opacity: 0;
-  animation: subIn 2s ease-out 1.5s forwards;
-}
+    @keyframes expand-ring {
+      0% {
+        width: 20px;
+        height: 20px;
+        opacity: 0.4;
+      }
+      100% {
+        width: 500px;
+        height: 500px;
+        opacity: 0;
+      }
+    }
 
-@keyframes subIn {
-  0% { opacity: 0; transform: translateX(-10px); }
-  100% { opacity: 1; transform: translateX(0); }
-}
+    .content {
+      position: fixed;
+      bottom: 15%;
+      left: 0;
+      right: 0;
+      text-align: center;
+      z-index: 10;
+      padding: 0 2rem;
+    }
 
-/* Time mark — quiet corner element */
-.time-mark {
-  position: absolute;
-  top: 8%;
-  right: 8%;
-  font-family: 'Syne', sans-serif;
-  font-weight: 700;
-  font-size: clamp(0.6rem, 1.5vw, 0.75rem);
-  color: rgba(194, 114, 88, 0.4);
-  letter-spacing: 0.3em;
-  opacity: 0;
-  animation: markIn 1.5s ease-out 3s forwards;
-}
+    .title {
+      font-size: clamp(2.5rem, 8vw, 4.5rem);
+      font-weight: 300;
+      letter-spacing: 0.5em;
+      text-transform: uppercase;
+      color: var(--mist);
+      margin-bottom: 1.5rem;
+      opacity: 0;
+      animation: fade-in 2s ease-out forwards 0.5s;
+      text-shadow: 0 0 40px rgba(116, 140, 171, 0.3);
+    }
 
-@keyframes markIn {
-  0% { opacity: 0; }
-  100% { opacity: 1; }
-}
+    .subtitle {
+      font-size: clamp(0.875rem, 2vw, 1.1rem);
+      font-weight: 300;
+      font-style: italic;
+      letter-spacing: 0.2em;
+      color: rgba(116, 140, 171, 0.5);
+      opacity: 0;
+      animation: fade-in 2s ease-out forwards 1s;
+    }
 
-/* Floating mote — single dust particle in morning light */
-.mote {
-  position: absolute;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: rgba(218, 180, 130, 0.5);
-  filter: blur(0.5px);
-  animation: moteFloat 20s ease-in-out infinite;
-}
+    @keyframes fade-in {
+      to { opacity: 1; }
+    }
 
-.mote:nth-child(1) { left: 35%; top: 25%; animation-delay: 0s; }
-.mote:nth-child(2) { left: 55%; top: 30%; animation-delay: -7s; width: 3px; height: 3px; }
-.mote:nth-child(3) { left: 70%; top: 20%; animation-delay: -14s; width: 2px; height: 2px; opacity: 0.4; }
+    .time-marker {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      font-size: 0.75rem;
+      letter-spacing: 0.3em;
+      color: rgba(116, 140, 171, 0.25);
+      z-index: 10;
+    }
 
-@keyframes moteFloat {
-  0%, 100% { transform: translate(0, 0); opacity: 0.4; }
-  25% { transform: translate(15px, 10px); opacity: 0.7; }
-  50% { transform: translate(-5px, 20px); opacity: 0.3; }
-  75% { transform: translate(10px, -5px); opacity: 0.6; }
-}
-</style>
+    .horizon {
+      position: fixed;
+      bottom: 30%;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, 
+        transparent 0%, 
+        rgba(116, 140, 171, 0.1) 20%,
+        rgba(116, 140, 171, 0.2) 50%,
+        rgba(116, 140, 171, 0.1) 80%,
+        transparent 100%
+      );
+      z-index: 1;
+    }
 
-<div class="canvas-container">
-  <div class="light-wash"></div>
+    .breath {
+      position: fixed;
+      top: 2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 60px;
+      height: 2px;
+      background: rgba(212, 163, 115, 0.2);
+      z-index: 10;
+      animation: breathe 6s ease-in-out infinite;
+    }
 
-  <!-- Warp threads (vertical) -->
-  <div class="warp"></div>
-  <div class="warp"></div>
-  <div class="warp"></div>
-  <div class="warp"></div>
-  <div class="warp"></div>
-  <div class="warp"></div>
-  <div class="warp"></div>
-  <div class="warp"></div>
-  <div class="warp"></div>
-  <div class="warp"></div>
-  <div class="warp"></div>
-  <div class="warp"></div>
-  <div class="warp"></div>
-  <div class="warp"></div>
-  <div class="warp"></div>
-
-  <!-- Weft threads (horizontal) -->
-  <div class="weft weft-1"></div>
-  <div class="weft weft-2"></div>
-  <div class="weft weft-3"></div>
-
-  <!-- Intersection nodes -->
-  <div class="node"></div>
-  <div class="node"></div>
-  <div class="node"></div>
-  <div class="node"></div>
-  <div class="node"></div>
-  <div class="node"></div>
-  <div class="node"></div>
-
-  <!-- Dust motes in morning light -->
-  <div class="mote"></div>
-  <div class="mote"></div>
-  <div class="mote"></div>
-
-  <div class="time-mark">THU · 09</div>
-
-  <div class="text-block">
-    <div class="title">loom</div>
-    <div class="subtitle">threads of a quiet morning</div>
+    @keyframes breathe {
+      0%, 100% { width: 60px; opacity: 0.2; }
+      50% { width: 100px; opacity: 0.4; }
+    }
+  </style>
+</head>
+<body>
+  <div class="atmosphere"></div>
+  <div class="grain"></div>
+  
+  <div class="breath"></div>
+  
+  <div class="embers">
+    <div class="ember"></div>
+    <div class="ember"></div>
+    <div class="ember"></div>
+    <div class="ember"></div>
+    <div class="ember"></div>
+    <div class="ember"></div>
+    <div class="ember"></div>
+    <div class="ember"></div>
   </div>
-</div>
+  
+  <div class="rings">
+    <div class="ring"></div>
+    <div class="ring"></div>
+    <div class="ring"></div>
+    <div class="ring"></div>
+  </div>
+  
+  <div class="beacon">
+    <div class="beacon-core"></div>
+  </div>
+  
+  <div class="horizon"></div>
+  
+  <div class="content">
+    <h1 class="title">Vigil</h1>
+    <p class="subtitle">the quiet hours between questions</p>
+  </div>
+  
+  <div class="time-marker">29.01.26 — 21:00</div>
+</body>
+</html>
