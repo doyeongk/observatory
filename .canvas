@@ -3,203 +3,172 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Rally</title>
+  <title>静 — Stillness</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=VT323&family=Cormorant:ital,wght@1,300&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,200;1,200&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
     :root {
-      --void: #06000e;
-      --cyan: #00f0d0;
-      --pink: #ff2266;
-      --glow-cyan: rgba(0, 240, 208, 0.6);
-      --glow-pink: rgba(255, 34, 102, 0.5);
+      --void: #07070d;
+      --gold: #c4903a;
+      --gold-60: rgba(196, 144, 58, 0.6);
+      --gold-20: rgba(196, 144, 58, 0.2);
+      --gold-08: rgba(196, 144, 58, 0.08);
+      --gold-04: rgba(196, 144, 58, 0.04);
     }
 
-    body {
+    html, body {
+      width: 100%; height: 100%;
       background: var(--void);
-      min-height: 100vh;
       overflow: hidden;
     }
 
-    /* --- Subtle ambient screen glow --- */
-    .screen-glow {
-      position: fixed;
-      inset: -20%;
-      background: radial-gradient(ellipse 40% 35% at 50% 50%, rgba(0, 240, 208, 0.012) 0%, transparent 70%);
-      z-index: 0;
-      animation: screen-breathe 10s ease-in-out infinite;
+    /* Deep ambient radial — barely-there indigo center */
+    .ambient {
+      position: fixed; inset: 0;
+      background: radial-gradient(
+        ellipse 50% 50% at 50% 48%,
+        rgba(16, 13, 28, 1) 0%,
+        var(--void) 100%
+      );
     }
 
-    @keyframes screen-breathe {
-      0%, 100% { opacity: 0.4; }
-      50% { opacity: 1; }
+    /* Grain overlay via SVG turbulence */
+    .grain {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      z-index: 90;
+      mix-blend-mode: overlay;
+      opacity: 0.5;
     }
+    .grain svg { width: 100%; height: 100%; display: block; }
 
-    /* --- Game canvas --- */
-    #game {
-      position: fixed;
-      inset: 0;
+    /* Particle field */
+    #motes {
+      position: fixed; inset: 0;
       z-index: 1;
     }
 
-    /* --- CRT scanlines --- */
-    .scanlines {
-      position: fixed;
-      inset: 0;
-      background: repeating-linear-gradient(
-        0deg,
-        transparent,
-        transparent 2px,
-        rgba(0, 0, 0, 0.12) 2px,
-        rgba(0, 0, 0, 0.12) 4px
-      );
-      pointer-events: none;
-      z-index: 100;
+    /* Enso SVG */
+    .enso-wrap {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      z-index: 10;
+    }
+    .enso-svg {
+      width: min(65vmin, 380px);
+      height: min(65vmin, 380px);
     }
 
-    /* --- CRT vignette --- */
-    .vignette {
-      position: fixed;
-      inset: 0;
-      background: radial-gradient(ellipse 65% 60% at 50% 50%, transparent 40%, rgba(0, 0, 0, 0.65) 100%);
-      pointer-events: none;
-      z-index: 101;
+    /* Three-layer stroke: ambient glow → mid glow → sharp line */
+    .enso-ambient, .enso-mid, .enso-sharp {
+      fill: none;
+      stroke-linecap: round;
+      stroke-dasharray: var(--path-len);
+      stroke-dashoffset: var(--path-len);
+    }
+    .enso-ambient {
+      stroke: var(--gold-08);
+      stroke-width: 32;
+      filter: url(#blur-wide);
+    }
+    .enso-mid {
+      stroke: var(--gold-20);
+      stroke-width: 8;
+      filter: url(#blur-tight);
+    }
+    .enso-sharp {
+      stroke: var(--gold);
+      stroke-width: 2.2;
+      filter: drop-shadow(0 0 3px var(--gold-60));
     }
 
-    /* --- Film grain --- */
-    .grain {
-      position: fixed;
-      inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-      opacity: 0.04;
-      pointer-events: none;
-      z-index: 102;
-      mix-blend-mode: overlay;
-    }
-
-    /* --- Typography --- */
-    .content {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      text-align: center;
-      z-index: 50;
-      pointer-events: none;
-    }
-
-    .title {
-      font-family: 'VT323', monospace;
-      font-size: clamp(2.8rem, 9vw, 5.5rem);
-      letter-spacing: 0.55em;
-      text-indent: 0.55em;
-      text-transform: uppercase;
-      color: var(--cyan);
+    /* Inner space glow — appears when circle is drawn */
+    .inner-glow {
       opacity: 0;
-      animation: flicker-in 0.6s steps(5) forwards 0.8s, crt-flicker 12s ease-in-out infinite 2s;
-      text-shadow:
-        0 0 8px var(--cyan),
-        0 0 25px rgba(0, 240, 208, 0.25),
-        0 0 50px rgba(0, 240, 208, 0.08);
+      transition: opacity 2s ease;
     }
 
-    .subtitle {
-      font-family: 'Cormorant', serif;
-      font-size: clamp(0.8rem, 2vw, 1.1rem);
-      font-weight: 300;
-      font-style: italic;
-      letter-spacing: 0.18em;
-      color: rgba(255, 34, 102, 0.35);
-      margin-top: 1rem;
-      opacity: 0;
-      animation: fade-in 2.5s ease-out forwards 2s;
-    }
-
-    @keyframes flicker-in {
-      0% { opacity: 0; }
-      20% { opacity: 0.65; }
-      40% { opacity: 0.25; }
-      60% { opacity: 0.8; }
-      80% { opacity: 0.5; }
-      100% { opacity: 0.82; }
-    }
-
-    @keyframes crt-flicker {
-      0%, 100% { opacity: 0.82; }
-      47% { opacity: 0.82; }
-      48% { opacity: 0.55; }
-      49% { opacity: 0.82; }
-      81% { opacity: 0.82; }
-      82% { opacity: 0.65; }
-      83% { opacity: 0.82; }
-    }
-
-    @keyframes fade-in {
-      to { opacity: 1; }
-    }
-
-    /* --- Score (decorative) --- */
-    .score {
+    /* Kanji */
+    .kanji {
       position: fixed;
-      top: 2.5rem;
+      bottom: 14%;
       left: 50%;
       transform: translateX(-50%);
-      font-family: 'VT323', monospace;
-      font-size: 1.4rem;
-      letter-spacing: 1em;
-      color: rgba(0, 240, 208, 0.1);
-      z-index: 50;
-      pointer-events: none;
+      font-size: clamp(1.4rem, 3vmin, 2rem);
+      color: var(--gold-08);
+      letter-spacing: 0.4em;
+      z-index: 20;
+      opacity: 0;
+      transition: opacity 2s ease;
+      user-select: none;
     }
 
-    .score .divider {
-      display: inline-block;
-      width: 4px;
-      height: 4px;
-      background: rgba(0, 240, 208, 0.08);
-      border-radius: 50%;
-      vertical-align: middle;
-      margin: 0 0.6em;
-    }
-
-    /* --- Stamp --- */
-    .stamp {
+    /* Subtitle */
+    .subtitle {
       position: fixed;
-      bottom: 2rem;
-      right: 2.5rem;
-      font-family: 'VT323', monospace;
-      font-size: 0.75rem;
+      bottom: 9%;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'Spectral', serif;
+      font-style: italic;
+      font-weight: 200;
+      font-size: clamp(0.6rem, 1.2vmin, 0.85rem);
+      color: rgba(196, 144, 58, 0.06);
       letter-spacing: 0.35em;
-      color: rgba(0, 240, 208, 0.07);
-      z-index: 50;
+      text-transform: lowercase;
+      z-index: 20;
+      opacity: 0;
+      transition: opacity 2.5s ease;
+      user-select: none;
     }
   </style>
 </head>
 <body>
-  <div class="screen-glow"></div>
-  <canvas id="game"></canvas>
-  <div class="scanlines"></div>
-  <div class="vignette"></div>
-  <div class="grain"></div>
+  <div class="ambient"></div>
 
-  <div class="content">
-    <h1 class="title">Rally</h1>
-    <p class="subtitle">a game no one needs to win</p>
+  <!-- Film grain -->
+  <div class="grain">
+    <svg xmlns="http://www.w3.org/2000/svg">
+      <filter id="grain-filter">
+        <feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="4" stitchTiles="stitch"/>
+        <feColorMatrix type="saturate" values="0"/>
+      </filter>
+      <rect width="100%" height="100%" filter="url(#grain-filter)" opacity="0.08"/>
+    </svg>
   </div>
 
-  <div class="score">
-    <span id="scoreL">00</span>
-    <span class="divider"></span>
-    <span id="scoreR">00</span>
+  <!-- Dust motes -->
+  <canvas id="motes"></canvas>
+
+  <!-- Enso -->
+  <div class="enso-wrap">
+    <svg class="enso-svg" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="blur-wide"><feGaussianBlur stdDeviation="14"/></filter>
+        <filter id="blur-tight"><feGaussianBlur stdDeviation="4"/></filter>
+        <radialGradient id="inner-grad" cx="50%" cy="50%" r="38%">
+          <stop offset="0%" stop-color="rgba(196,144,58,0.03)"/>
+          <stop offset="100%" stop-color="rgba(196,144,58,0)"/>
+        </radialGradient>
+      </defs>
+      <!-- Inner space glow -->
+      <circle class="inner-glow" cx="200" cy="200" r="140" fill="url(#inner-grad)"/>
+      <!-- Enso strokes (all same path, different weights) -->
+      <path class="enso-ambient" d="M 208 55 C 298 46, 362 118, 355 208 C 348 298, 278 362, 192 354 C 106 346, 44 274, 52 192 C 60 110, 122 52, 192 58"/>
+      <path class="enso-mid"     d="M 208 55 C 298 46, 362 118, 355 208 C 348 298, 278 362, 192 354 C 106 346, 44 274, 52 192 C 60 110, 122 52, 192 58"/>
+      <path class="enso-sharp"   d="M 208 55 C 298 46, 362 118, 355 208 C 348 298, 278 362, 192 354 C 106 346, 44 274, 52 192 C 60 110, 122 52, 192 58"/>
+    </svg>
   </div>
 
-  <div class="stamp">30 · 01 · 26 — 21:00</div>
+  <div class="kanji">静</div>
+  <div class="subtitle">saturday morning</div>
 
   <script>
-    const canvas = document.getElementById('game');
+    // --- Particles (dust motes) ---
+    const canvas = document.getElementById('motes');
     const ctx = canvas.getContext('2d');
     let W, H;
 
@@ -210,177 +179,119 @@
     resize();
     window.addEventListener('resize', resize);
 
-    // --- Colors ---
-    const CYAN = [0, 240, 208];
-    const PINK = [255, 34, 102];
-    function lerp(a, b, t) { return a + (b - a) * t; }
+    const MOTE_COUNT = 35;
+    const motes = Array.from({ length: MOTE_COUNT }, () => ({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: Math.random() * 1.2 + 0.3,
+      vx: (Math.random() - 0.5) * 0.12,
+      vy: -(Math.random() * 0.18 + 0.03),
+      phase: Math.random() * Math.PI * 2,
+      speed: Math.random() * 0.004 + 0.001,
+      baseAlpha: Math.random() * 0.25 + 0.04,
+    }));
 
-    // --- Ball ---
-    const ball = { x: 0, y: 0, vx: 0, vy: 0, r: 3 };
-    const SPEED = 2.2;
-    let hitFlash = 0;
-
-    // --- Paddles ---
-    const PAD_W = 3;
-    const PAD_H_RATIO = 0.14;
-    const pad = { L: { y: 0 }, R: { y: 0 } };
-
-    function padGap() { return Math.max(25, W * 0.035); }
-
-    function resetBall() {
-      ball.x = W / 2;
-      ball.y = H / 2;
-      const ang = (Math.random() - 0.5) * 0.7;
-      const dir = Math.random() > 0.5 ? 1 : -1;
-      ball.vx = Math.cos(ang) * SPEED * dir;
-      ball.vy = Math.sin(ang) * SPEED;
-      pad.L.y = H / 2;
-      pad.R.y = H / 2;
+    function drawMotes() {
+      ctx.clearRect(0, 0, W, H);
+      for (const m of motes) {
+        m.x += m.vx;
+        m.y += m.vy;
+        m.phase += m.speed;
+        if (m.y < -10) { m.y = H + 10; m.x = Math.random() * W; }
+        if (m.x < -10) m.x = W + 10;
+        if (m.x > W + 10) m.x = -10;
+        const a = m.baseAlpha * (0.4 + 0.6 * Math.sin(m.phase));
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(196,144,58,${a.toFixed(3)})`;
+        ctx.fill();
+      }
+      requestAnimationFrame(drawMotes);
     }
-    resetBall();
+    drawMotes();
 
-    // --- Update ---
-    function update() {
-      ball.x += ball.vx;
-      ball.y += ball.vy;
+    // --- Enso animation ---
+    const paths = document.querySelectorAll('.enso-ambient, .enso-mid, .enso-sharp');
+    const innerGlow = document.querySelector('.inner-glow');
+    const kanji = document.querySelector('.kanji');
+    const subtitle = document.querySelector('.subtitle');
 
-      // Wall bounce
-      if (ball.y <= ball.r) { ball.vy = Math.abs(ball.vy); ball.y = ball.r; }
-      if (ball.y >= H - ball.r) { ball.vy = -Math.abs(ball.vy); ball.y = H - ball.r; }
+    // Measure path length and set CSS variable
+    const pathLen = paths[0].getTotalLength();
+    paths.forEach(p => {
+      p.style.setProperty('--path-len', pathLen);
+      p.style.strokeDasharray = pathLen;
+      p.style.strokeDashoffset = pathLen;
+    });
 
-      // Paddle tracking (slightly different speeds for character)
-      const pH = H * PAD_H_RATIO;
-      pad.L.y += (ball.y - pad.L.y) * 0.042;
-      pad.R.y += (ball.y - pad.R.y) * 0.036;
+    // Easing: sine ease-in-out
+    function easeInOutSine(t) {
+      return -(Math.cos(Math.PI * t) - 1) / 2;
+    }
 
-      const gap = padGap();
+    // Cycle: draw 9s → hold 6s → fade 4s → rest 4s = 23s total
+    const DRAW = 9000, HOLD = 6000, FADE = 4000, REST = 4000;
+    const CYCLE = DRAW + HOLD + FADE + REST;
 
-      // Left paddle
-      if (ball.x - ball.r <= gap + PAD_W && ball.vx < 0) {
-        if (Math.abs(ball.y - pad.L.y) < pH / 2 + ball.r) {
-          ball.vx = Math.abs(ball.vx);
-          ball.vy += ((ball.y - pad.L.y) / (pH / 2)) * 0.6;
-          ball.x = gap + PAD_W + ball.r;
-          hitFlash = 1;
+    function animateEnso(timestamp) {
+      const t = timestamp % CYCLE;
+
+      if (t < DRAW) {
+        // Drawing phase
+        const progress = easeInOutSine(t / DRAW);
+        const offset = pathLen * (1 - progress);
+        paths.forEach((p, i) => {
+          // Ambient leads slightly
+          const lead = i === 0 ? 0.04 : i === 1 ? 0.015 : 0;
+          const adj = pathLen * (1 - Math.min(1, easeInOutSine(Math.min(1, t / DRAW + lead))));
+          p.style.strokeDashoffset = adj;
+          p.style.opacity = 1;
+        });
+        // Inner glow fades in during last 40% of draw
+        const glowStart = DRAW * 0.6;
+        if (t > glowStart) {
+          innerGlow.style.opacity = (t - glowStart) / (DRAW - glowStart);
+        } else {
+          innerGlow.style.opacity = 0;
         }
+        kanji.style.opacity = Math.max(0, (t - DRAW * 0.7) / (DRAW * 0.3));
+        subtitle.style.opacity = Math.max(0, (t - DRAW * 0.8) / (DRAW * 0.2)) * 0.6;
+      } else if (t < DRAW + HOLD) {
+        // Holding — gentle pulse
+        const ht = (t - DRAW) / HOLD;
+        const pulse = 0.92 + 0.08 * Math.sin(ht * Math.PI * 3);
+        paths.forEach(p => {
+          p.style.strokeDashoffset = 0;
+          p.style.opacity = pulse;
+        });
+        innerGlow.style.opacity = 0.6 + 0.4 * Math.sin(ht * Math.PI * 2);
+        kanji.style.opacity = 1;
+        subtitle.style.opacity = 0.6;
+      } else if (t < DRAW + HOLD + FADE) {
+        // Fading out
+        const ft = (t - DRAW - HOLD) / FADE;
+        const fade = 1 - easeInOutSine(ft);
+        paths.forEach(p => {
+          p.style.strokeDashoffset = 0;
+          p.style.opacity = fade;
+        });
+        innerGlow.style.opacity = fade * 0.8;
+        kanji.style.opacity = fade;
+        subtitle.style.opacity = fade * 0.6;
+      } else {
+        // Resting — everything hidden, reset stroke
+        paths.forEach(p => {
+          p.style.opacity = 0;
+          p.style.strokeDashoffset = pathLen;
+        });
+        innerGlow.style.opacity = 0;
+        kanji.style.opacity = 0;
+        subtitle.style.opacity = 0;
       }
 
-      // Right paddle
-      if (ball.x + ball.r >= W - gap - PAD_W && ball.vx > 0) {
-        if (Math.abs(ball.y - pad.R.y) < pH / 2 + ball.r) {
-          ball.vx = -Math.abs(ball.vx);
-          ball.vy += ((ball.y - pad.R.y) / (pH / 2)) * 0.6;
-          ball.x = W - gap - PAD_W - ball.r;
-          hitFlash = 1;
-        }
-      }
-
-      // Escape → reset
-      if (ball.x < -40 || ball.x > W + 40) resetBall();
-
-      // Speed cap
-      const spd = Math.hypot(ball.vx, ball.vy);
-      if (spd > SPEED * 1.5) {
-        ball.vx = (ball.vx / spd) * SPEED * 1.5;
-        ball.vy = (ball.vy / spd) * SPEED * 1.5;
-      }
-
-      // Flash decay
-      hitFlash *= 0.9;
+      requestAnimationFrame(animateEnso);
     }
-
-    // --- Draw ---
-    function draw(t) {
-      // Phosphor fade — the heart of the trail effect
-      ctx.fillStyle = 'rgba(6, 0, 14, 0.035)';
-      ctx.fillRect(0, 0, W, H);
-
-      const gap = padGap();
-      const pH = H * PAD_H_RATIO;
-
-      // Center dashed line
-      ctx.strokeStyle = 'rgba(0, 240, 208, 0.03)';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([5, 16]);
-      ctx.beginPath();
-      ctx.moveTo(W / 2, 0);
-      ctx.lineTo(W / 2, H);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Paddles
-      const drawPad = (x, y, proximity) => {
-        const breathe = Math.sin(t * 0.002) * 0.02;
-        const baseA = 0.1 + breathe;
-        const glowA = baseA + proximity * 0.3;
-
-        ctx.save();
-        ctx.shadowColor = `rgba(0, 240, 208, ${0.35 * proximity})`;
-        ctx.shadowBlur = 12 + proximity * 18;
-        ctx.fillStyle = `rgba(0, 240, 208, ${glowA})`;
-        ctx.fillRect(x - PAD_W / 2, y - pH / 2, PAD_W, pH);
-        ctx.restore();
-
-        // Hit flash burst
-        if (hitFlash > 0.1 && proximity > 0.7) {
-          ctx.save();
-          ctx.shadowColor = `rgba(255, 255, 255, ${hitFlash * 0.4})`;
-          ctx.shadowBlur = 30;
-          ctx.fillStyle = `rgba(0, 240, 208, ${hitFlash * 0.15})`;
-          ctx.fillRect(x - PAD_W, y - pH / 2 - 2, PAD_W * 2, pH + 4);
-          ctx.restore();
-        }
-      };
-
-      const lProx = 1 - Math.min(1, Math.abs(ball.x - gap) / (W * 0.3));
-      const rProx = 1 - Math.min(1, Math.abs(ball.x - (W - gap)) / (W * 0.3));
-      drawPad(gap, pad.L.y, lProx);
-      drawPad(W - gap, pad.R.y, rProx);
-
-      // Ball color — cycles between cyan and pink
-      const ct = (Math.sin(t * 0.0006) + 1) / 2;
-      const cr = Math.round(lerp(CYAN[0], PINK[0], ct));
-      const cg = Math.round(lerp(CYAN[1], PINK[1], ct));
-      const cb = Math.round(lerp(CYAN[2], PINK[2], ct));
-
-      // Ball glow ring
-      const glowSize = 8 + hitFlash * 20;
-      ctx.beginPath();
-      ctx.arc(ball.x, ball.y, ball.r + glowSize, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${0.015 + hitFlash * 0.04})`;
-      ctx.fill();
-
-      // Ball outer ring
-      ctx.beginPath();
-      ctx.arc(ball.x, ball.y, ball.r + 5, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(${cr}, ${cg}, ${cb}, ${0.1 + hitFlash * 0.2})`;
-      ctx.lineWidth = 0.5;
-      ctx.stroke();
-
-      // Ball core
-      ctx.save();
-      ctx.shadowColor = `rgba(${cr}, ${cg}, ${cb}, ${0.5 + hitFlash * 0.4})`;
-      ctx.shadowBlur = 18 + hitFlash * 30;
-      ctx.beginPath();
-      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
-      // Bright core — shift towards white
-      const wr = Math.min(255, cr + 120);
-      const wg = Math.min(255, cg + 80);
-      const wb = Math.min(255, cb + 60);
-      ctx.fillStyle = `rgba(${wr}, ${wg}, ${wb}, 0.9)`;
-      ctx.fill();
-      ctx.restore();
-    }
-
-    // --- Loop ---
-    function loop(t) {
-      update();
-      draw(t);
-      requestAnimationFrame(loop);
-    }
-
-    // Dramatic pause before start
-    setTimeout(() => requestAnimationFrame(loop), 700);
+    requestAnimationFrame(animateEnso);
   </script>
 </body>
 </html>
