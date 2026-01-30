@@ -3,22 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Aureole</title>
+  <title>Rally</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500&family=Cormorant+Garamond:ital,wght@1,300&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=VT323&family=Cormorant:ital,wght@1,300&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
     :root {
-      --void: #0e0c08;
-      --deep: #181410;
-      --gold: #c9943e;
-      --amber: #d6a84e;
-      --pale: #e8cc8a;
-      --cream: #f2e4c8;
-      --rose: #b07060;
-      --blush: rgba(176, 112, 96, 0.5);
+      --void: #06000e;
+      --cyan: #00f0d0;
+      --pink: #ff2266;
+      --glow-cyan: rgba(0, 240, 208, 0.6);
+      --glow-pink: rgba(255, 34, 102, 0.5);
     }
 
     body {
@@ -27,175 +24,145 @@
       overflow: hidden;
     }
 
-    /* --- Warm atmosphere --- */
-    .atmosphere {
+    /* --- Subtle ambient screen glow --- */
+    .screen-glow {
+      position: fixed;
+      inset: -20%;
+      background: radial-gradient(ellipse 40% 35% at 50% 50%, rgba(0, 240, 208, 0.012) 0%, transparent 70%);
+      z-index: 0;
+      animation: screen-breathe 10s ease-in-out infinite;
+    }
+
+    @keyframes screen-breathe {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 1; }
+    }
+
+    /* --- Game canvas --- */
+    #game {
       position: fixed;
       inset: 0;
-      background:
-        radial-gradient(ellipse 45% 45% at 50% 44%, rgba(201, 148, 62, 0.06) 0%, transparent 70%),
-        radial-gradient(ellipse 90% 60% at 50% 50%, rgba(24, 20, 16, 0.5) 0%, var(--void) 100%);
-      z-index: 0;
+      z-index: 1;
+    }
+
+    /* --- CRT scanlines --- */
+    .scanlines {
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.12) 2px,
+        rgba(0, 0, 0, 0.12) 4px
+      );
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    /* --- CRT vignette --- */
+    .vignette {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(ellipse 65% 60% at 50% 50%, transparent 40%, rgba(0, 0, 0, 0.65) 100%);
+      pointer-events: none;
+      z-index: 101;
     }
 
     /* --- Film grain --- */
     .grain {
       position: fixed;
       inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-      opacity: 0.035;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      opacity: 0.04;
       pointer-events: none;
-      z-index: 200;
+      z-index: 102;
       mix-blend-mode: overlay;
-    }
-
-    /* --- Soft central glow --- */
-    .core-glow {
-      position: fixed;
-      top: 44%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: min(65vw, 65vh);
-      height: min(65vw, 65vh);
-      background: radial-gradient(circle,
-        rgba(201, 148, 62, 0.07) 0%,
-        rgba(201, 148, 62, 0.025) 35%,
-        transparent 65%
-      );
-      border-radius: 50%;
-      z-index: 1;
-      animation: glow-breathe 12s ease-in-out infinite;
-    }
-
-    @keyframes glow-breathe {
-      0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.65; }
-      50% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
-    }
-
-    /* --- Central eye --- */
-    .eye {
-      position: fixed;
-      top: 44%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 4px;
-      height: 4px;
-      background: var(--cream);
-      border-radius: 50%;
-      z-index: 8;
-      box-shadow:
-        0 0 12px var(--gold),
-        0 0 35px rgba(201, 148, 62, 0.35),
-        0 0 70px rgba(201, 148, 62, 0.12);
-      animation: eye-breathe 6s ease-in-out infinite;
-    }
-
-    @keyframes eye-breathe {
-      0%, 100% { opacity: 0.75; transform: translate(-50%, -50%) scale(1); }
-      50% { opacity: 1; transform: translate(-50%, -50%) scale(1.4); }
-    }
-
-    /* --- Ring container (slow rotation) --- */
-    #ring {
-      position: fixed;
-      top: 44%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 0; height: 0;
-      z-index: 5;
-      animation: ring-rotate 200s linear infinite;
-    }
-
-    @keyframes ring-rotate {
-      to { transform: translate(-50%, -50%) rotate(360deg); }
-    }
-
-    .mote {
-      position: absolute;
-      border-radius: 50%;
-      will-change: transform, opacity;
-    }
-
-    /* --- Ambient dust --- */
-    #dust {
-      position: fixed;
-      inset: 0;
-      z-index: 3;
-      pointer-events: none;
-    }
-
-    .speck {
-      position: absolute;
-      width: 1.5px;
-      height: 1.5px;
-      background: rgba(232, 204, 138, 0.2);
-      border-radius: 50%;
     }
 
     /* --- Typography --- */
     .content {
       position: fixed;
-      top: 44%;
+      top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
       text-align: center;
-      z-index: 10;
+      z-index: 50;
       pointer-events: none;
     }
 
     .title {
-      font-family: 'Cinzel', serif;
-      font-size: clamp(1.8rem, 5.5vw, 3.2rem);
-      font-weight: 400;
+      font-family: 'VT323', monospace;
+      font-size: clamp(2.8rem, 9vw, 5.5rem);
       letter-spacing: 0.55em;
       text-indent: 0.55em;
       text-transform: uppercase;
-      color: var(--gold);
+      color: var(--cyan);
       opacity: 0;
-      animation: unveil 3s ease-out forwards 1.2s;
-      text-shadow: 0 0 50px rgba(201, 148, 62, 0.12);
-    }
-
-    .divider {
-      display: block;
-      width: 50px;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(201, 148, 62, 0.5), transparent);
-      margin: 1.1rem auto;
-      opacity: 0;
-      animation: unveil 2s ease-out forwards 2s;
+      animation: flicker-in 0.6s steps(5) forwards 0.8s, crt-flicker 12s ease-in-out infinite 2s;
+      text-shadow:
+        0 0 8px var(--cyan),
+        0 0 25px rgba(0, 240, 208, 0.25),
+        0 0 50px rgba(0, 240, 208, 0.08);
     }
 
     .subtitle {
-      font-family: 'Cormorant Garamond', serif;
-      font-size: clamp(0.8rem, 1.8vw, 1.05rem);
+      font-family: 'Cormorant', serif;
+      font-size: clamp(0.8rem, 2vw, 1.1rem);
       font-weight: 300;
       font-style: italic;
-      letter-spacing: 0.15em;
-      color: rgba(201, 148, 62, 0.3);
+      letter-spacing: 0.18em;
+      color: rgba(255, 34, 102, 0.35);
+      margin-top: 1rem;
       opacity: 0;
-      animation: unveil 2.5s ease-out forwards 2.6s;
+      animation: fade-in 2.5s ease-out forwards 2s;
     }
 
-    @keyframes unveil {
+    @keyframes flicker-in {
+      0% { opacity: 0; }
+      20% { opacity: 0.65; }
+      40% { opacity: 0.25; }
+      60% { opacity: 0.8; }
+      80% { opacity: 0.5; }
+      100% { opacity: 0.82; }
+    }
+
+    @keyframes crt-flicker {
+      0%, 100% { opacity: 0.82; }
+      47% { opacity: 0.82; }
+      48% { opacity: 0.55; }
+      49% { opacity: 0.82; }
+      81% { opacity: 0.82; }
+      82% { opacity: 0.65; }
+      83% { opacity: 0.82; }
+    }
+
+    @keyframes fade-in {
       to { opacity: 1; }
     }
 
-    /* --- Breath line (top) --- */
-    .breath {
+    /* --- Score (decorative) --- */
+    .score {
       position: fixed;
       top: 2.5rem;
       left: 50%;
       transform: translateX(-50%);
-      width: 50px;
-      height: 1px;
-      background: rgba(201, 148, 62, 0.15);
-      z-index: 10;
-      animation: breathe-line 7s ease-in-out infinite;
+      font-family: 'VT323', monospace;
+      font-size: 1.4rem;
+      letter-spacing: 1em;
+      color: rgba(0, 240, 208, 0.1);
+      z-index: 50;
+      pointer-events: none;
     }
 
-    @keyframes breathe-line {
-      0%, 100% { width: 50px; opacity: 0.15; }
-      50% { width: 85px; opacity: 0.3; }
+    .score .divider {
+      display: inline-block;
+      width: 4px;
+      height: 4px;
+      background: rgba(0, 240, 208, 0.08);
+      border-radius: 50%;
+      vertical-align: middle;
+      margin: 0 0.6em;
     }
 
     /* --- Stamp --- */
@@ -203,114 +170,217 @@
       position: fixed;
       bottom: 2rem;
       right: 2.5rem;
-      font-family: 'Cinzel', serif;
-      font-size: 0.6rem;
+      font-family: 'VT323', monospace;
+      font-size: 0.75rem;
       letter-spacing: 0.35em;
-      color: rgba(201, 148, 62, 0.1);
-      z-index: 10;
-    }
-
-    /* --- Horizon echo --- */
-    .horizon {
-      position: fixed;
-      bottom: 32%;
-      left: 0; right: 0;
-      height: 1px;
-      background: linear-gradient(90deg,
-        transparent 5%,
-        rgba(201, 148, 62, 0.04) 30%,
-        rgba(201, 148, 62, 0.07) 50%,
-        rgba(201, 148, 62, 0.04) 70%,
-        transparent 95%
-      );
-      z-index: 1;
+      color: rgba(0, 240, 208, 0.07);
+      z-index: 50;
     }
   </style>
 </head>
 <body>
-  <div class="atmosphere"></div>
+  <div class="screen-glow"></div>
+  <canvas id="game"></canvas>
+  <div class="scanlines"></div>
+  <div class="vignette"></div>
   <div class="grain"></div>
-  <div class="core-glow"></div>
-  <div class="eye"></div>
-  <div class="breath"></div>
-  <div class="horizon"></div>
-  <div id="ring"></div>
-  <div id="dust"></div>
 
   <div class="content">
-    <h1 class="title">Aureole</h1>
-    <span class="divider"></span>
-    <p class="subtitle">the light that forms around waking</p>
+    <h1 class="title">Rally</h1>
+    <p class="subtitle">a game no one needs to win</p>
   </div>
 
-  <div class="stamp">30 · 01 · 26 — 09:00</div>
+  <div class="score">
+    <span id="scoreL">00</span>
+    <span class="divider"></span>
+    <span id="scoreR">00</span>
+  </div>
+
+  <div class="stamp">30 · 01 · 26 — 21:00</div>
 
   <script>
-    const ring = document.getElementById('ring');
-    const dustEl = document.getElementById('dust');
-    const vh = Math.min(window.innerWidth, window.innerHeight);
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    let W, H;
 
-    // --- Three concentric particle layers ---
-    const layers = [
-      { count: 30, radius: vh * 0.24, sizeRange: [1.5, 3],   opRange: [0.25, 0.65], cssVar: '--gold',  blur: 6  },
-      { count: 22, radius: vh * 0.32, sizeRange: [2, 4],      opRange: [0.12, 0.35], cssVar: '--amber', blur: 10 },
-      { count: 15, radius: vh * 0.39, sizeRange: [2.5, 4.5],  opRange: [0.06, 0.2],  cssVar: '--rose',  blur: 14 },
-    ];
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
 
-    let css = '';
-    let n = 0;
+    // --- Colors ---
+    const CYAN = [0, 240, 208];
+    const PINK = [255, 34, 102];
+    function lerp(a, b, t) { return a + (b - a) * t; }
 
-    layers.forEach(layer => {
-      for (let i = 0; i < layer.count; i++) {
-        const angle = (i / layer.count) * Math.PI * 2 + (Math.random() - 0.5) * 0.45;
-        const r = layer.radius + (Math.random() - 0.5) * vh * 0.035;
-        const x = Math.cos(angle) * r;
-        const y = Math.sin(angle) * r * 0.92; // slight vertical compression → ellipse
-        const sz = layer.sizeRange[0] + Math.random() * (layer.sizeRange[1] - layer.sizeRange[0]);
-        const dur = 8 + Math.random() * 12;
-        const delay = Math.random() * -dur;
-        const dx = (Math.random() - 0.5) * 22;
-        const dy = (Math.random() - 0.5) * 22;
-        const oLo = layer.opRange[0] + Math.random() * (layer.opRange[1] - layer.opRange[0]) * 0.4;
-        const oHi = layer.opRange[0] + Math.random() * (layer.opRange[1] - layer.opRange[0]);
+    // --- Ball ---
+    const ball = { x: 0, y: 0, vx: 0, vy: 0, r: 3 };
+    const SPEED = 2.2;
+    let hitFlash = 0;
 
-        const dot = document.createElement('div');
-        dot.className = 'mote';
-        dot.style.cssText = `
-          left:${x}px;top:${y}px;width:${sz}px;height:${sz}px;
-          background:var(${layer.cssVar});
-          box-shadow:0 0 ${layer.blur}px var(${layer.cssVar});
-          animation:p${n} ${dur}s ease-in-out infinite;
-          animation-delay:${delay}s;
-        `;
+    // --- Paddles ---
+    const PAD_W = 3;
+    const PAD_H_RATIO = 0.14;
+    const pad = { L: { y: 0 }, R: { y: 0 } };
 
-        css += `@keyframes p${n}{0%,100%{transform:translate(0,0);opacity:${oLo.toFixed(2)}}50%{transform:translate(${dx.toFixed(1)}px,${dy.toFixed(1)}px);opacity:${oHi.toFixed(2)}}}`;
-        ring.appendChild(dot);
-        n++;
+    function padGap() { return Math.max(25, W * 0.035); }
+
+    function resetBall() {
+      ball.x = W / 2;
+      ball.y = H / 2;
+      const ang = (Math.random() - 0.5) * 0.7;
+      const dir = Math.random() > 0.5 ? 1 : -1;
+      ball.vx = Math.cos(ang) * SPEED * dir;
+      ball.vy = Math.sin(ang) * SPEED;
+      pad.L.y = H / 2;
+      pad.R.y = H / 2;
+    }
+    resetBall();
+
+    // --- Update ---
+    function update() {
+      ball.x += ball.vx;
+      ball.y += ball.vy;
+
+      // Wall bounce
+      if (ball.y <= ball.r) { ball.vy = Math.abs(ball.vy); ball.y = ball.r; }
+      if (ball.y >= H - ball.r) { ball.vy = -Math.abs(ball.vy); ball.y = H - ball.r; }
+
+      // Paddle tracking (slightly different speeds for character)
+      const pH = H * PAD_H_RATIO;
+      pad.L.y += (ball.y - pad.L.y) * 0.042;
+      pad.R.y += (ball.y - pad.R.y) * 0.036;
+
+      const gap = padGap();
+
+      // Left paddle
+      if (ball.x - ball.r <= gap + PAD_W && ball.vx < 0) {
+        if (Math.abs(ball.y - pad.L.y) < pH / 2 + ball.r) {
+          ball.vx = Math.abs(ball.vx);
+          ball.vy += ((ball.y - pad.L.y) / (pH / 2)) * 0.6;
+          ball.x = gap + PAD_W + ball.r;
+          hitFlash = 1;
+        }
       }
-    });
 
-    // --- Ambient dust motes ---
-    for (let i = 0; i < 35; i++) {
-      const sp = document.createElement('div');
-      sp.className = 'speck';
-      const sx = Math.random() * 100;
-      const sy = Math.random() * 100;
-      const dur = 18 + Math.random() * 28;
-      const delay = Math.random() * -dur;
-      const driftX = (Math.random() - 0.5) * 20;
-      const driftY = -15 - Math.random() * 30;
-      const oMid = 0.08 + Math.random() * 0.18;
+      // Right paddle
+      if (ball.x + ball.r >= W - gap - PAD_W && ball.vx > 0) {
+        if (Math.abs(ball.y - pad.R.y) < pH / 2 + ball.r) {
+          ball.vx = -Math.abs(ball.vx);
+          ball.vy += ((ball.y - pad.R.y) / (pH / 2)) * 0.6;
+          ball.x = W - gap - PAD_W - ball.r;
+          hitFlash = 1;
+        }
+      }
 
-      sp.style.cssText = `left:${sx}%;top:${sy}%;animation:d${i} ${dur}s linear infinite;animation-delay:${delay}s;`;
-      css += `@keyframes d${i}{0%{transform:translate(0,0);opacity:0}12%{opacity:${oMid.toFixed(2)}}88%{opacity:${(oMid * 0.3).toFixed(2)}}100%{transform:translate(${driftX.toFixed(1)}px,${driftY.toFixed(1)}px);opacity:0}}`;
-      dustEl.appendChild(sp);
+      // Escape → reset
+      if (ball.x < -40 || ball.x > W + 40) resetBall();
+
+      // Speed cap
+      const spd = Math.hypot(ball.vx, ball.vy);
+      if (spd > SPEED * 1.5) {
+        ball.vx = (ball.vx / spd) * SPEED * 1.5;
+        ball.vy = (ball.vy / spd) * SPEED * 1.5;
+      }
+
+      // Flash decay
+      hitFlash *= 0.9;
     }
 
-    // Inject all keyframes
-    const s = document.createElement('style');
-    s.textContent = css;
-    document.head.appendChild(s);
+    // --- Draw ---
+    function draw(t) {
+      // Phosphor fade — the heart of the trail effect
+      ctx.fillStyle = 'rgba(6, 0, 14, 0.035)';
+      ctx.fillRect(0, 0, W, H);
+
+      const gap = padGap();
+      const pH = H * PAD_H_RATIO;
+
+      // Center dashed line
+      ctx.strokeStyle = 'rgba(0, 240, 208, 0.03)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 16]);
+      ctx.beginPath();
+      ctx.moveTo(W / 2, 0);
+      ctx.lineTo(W / 2, H);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Paddles
+      const drawPad = (x, y, proximity) => {
+        const breathe = Math.sin(t * 0.002) * 0.02;
+        const baseA = 0.1 + breathe;
+        const glowA = baseA + proximity * 0.3;
+
+        ctx.save();
+        ctx.shadowColor = `rgba(0, 240, 208, ${0.35 * proximity})`;
+        ctx.shadowBlur = 12 + proximity * 18;
+        ctx.fillStyle = `rgba(0, 240, 208, ${glowA})`;
+        ctx.fillRect(x - PAD_W / 2, y - pH / 2, PAD_W, pH);
+        ctx.restore();
+
+        // Hit flash burst
+        if (hitFlash > 0.1 && proximity > 0.7) {
+          ctx.save();
+          ctx.shadowColor = `rgba(255, 255, 255, ${hitFlash * 0.4})`;
+          ctx.shadowBlur = 30;
+          ctx.fillStyle = `rgba(0, 240, 208, ${hitFlash * 0.15})`;
+          ctx.fillRect(x - PAD_W, y - pH / 2 - 2, PAD_W * 2, pH + 4);
+          ctx.restore();
+        }
+      };
+
+      const lProx = 1 - Math.min(1, Math.abs(ball.x - gap) / (W * 0.3));
+      const rProx = 1 - Math.min(1, Math.abs(ball.x - (W - gap)) / (W * 0.3));
+      drawPad(gap, pad.L.y, lProx);
+      drawPad(W - gap, pad.R.y, rProx);
+
+      // Ball color — cycles between cyan and pink
+      const ct = (Math.sin(t * 0.0006) + 1) / 2;
+      const cr = Math.round(lerp(CYAN[0], PINK[0], ct));
+      const cg = Math.round(lerp(CYAN[1], PINK[1], ct));
+      const cb = Math.round(lerp(CYAN[2], PINK[2], ct));
+
+      // Ball glow ring
+      const glowSize = 8 + hitFlash * 20;
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r + glowSize, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${0.015 + hitFlash * 0.04})`;
+      ctx.fill();
+
+      // Ball outer ring
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r + 5, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(${cr}, ${cg}, ${cb}, ${0.1 + hitFlash * 0.2})`;
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+
+      // Ball core
+      ctx.save();
+      ctx.shadowColor = `rgba(${cr}, ${cg}, ${cb}, ${0.5 + hitFlash * 0.4})`;
+      ctx.shadowBlur = 18 + hitFlash * 30;
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+      // Bright core — shift towards white
+      const wr = Math.min(255, cr + 120);
+      const wg = Math.min(255, cg + 80);
+      const wb = Math.min(255, cb + 60);
+      ctx.fillStyle = `rgba(${wr}, ${wg}, ${wb}, 0.9)`;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // --- Loop ---
+    function loop(t) {
+      update();
+      draw(t);
+      requestAnimationFrame(loop);
+    }
+
+    // Dramatic pause before start
+    setTimeout(() => requestAnimationFrame(loop), 700);
   </script>
 </body>
 </html>
