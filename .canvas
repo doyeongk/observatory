@@ -3,172 +3,342 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>静 — Stillness</title>
+  <title>漂 — Drift</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,200;1,200&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@1,300&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
     :root {
-      --void: #07070d;
-      --gold: #c4903a;
-      --gold-60: rgba(196, 144, 58, 0.6);
-      --gold-20: rgba(196, 144, 58, 0.2);
-      --gold-08: rgba(196, 144, 58, 0.08);
-      --gold-04: rgba(196, 144, 58, 0.04);
+      --abyss: #020810;
+      --cyan: rgba(0, 210, 240, 1);
+      --cyan-dim: rgba(0, 210, 240, 0.12);
+      --teal: rgba(0, 190, 170, 1);
+      --teal-dim: rgba(0, 190, 170, 0.10);
+      --violet: rgba(120, 80, 255, 1);
+      --violet-dim: rgba(120, 80, 255, 0.08);
+      --amber: rgba(255, 200, 60, 1);
+      --amber-dim: rgba(255, 200, 60, 0.06);
     }
 
     html, body {
       width: 100%; height: 100%;
-      background: var(--void);
+      background: var(--abyss);
       overflow: hidden;
     }
 
-    /* Deep ambient radial — barely-there indigo center */
-    .ambient {
+    /* Layered ocean depth */
+    .depth {
       position: fixed; inset: 0;
-      background: radial-gradient(
-        ellipse 50% 50% at 50% 48%,
-        rgba(16, 13, 28, 1) 0%,
-        var(--void) 100%
-      );
+      background:
+        radial-gradient(ellipse 55% 45% at 38% 32%, rgba(6, 22, 50, 0.5) 0%, transparent 100%),
+        radial-gradient(ellipse 40% 50% at 68% 62%, rgba(4, 14, 34, 0.35) 0%, transparent 100%),
+        radial-gradient(ellipse 80% 80% at 50% 50%, rgba(3, 10, 24, 1) 0%, var(--abyss) 100%);
     }
 
-    /* Grain overlay via SVG turbulence */
+    /* Distant light shaft — refracted sunlight memory */
+    .shaft {
+      position: fixed;
+      top: -35%;
+      left: 33%;
+      width: 18%;
+      height: 95%;
+      background: linear-gradient(
+        178deg,
+        rgba(0, 150, 200, 0.02) 0%,
+        rgba(0, 120, 170, 0.008) 45%,
+        transparent 100%
+      );
+      transform: skewX(-4deg);
+      filter: blur(45px);
+      pointer-events: none;
+      z-index: 1;
+      animation: shaft-breathe 35s ease-in-out infinite;
+    }
+
+    @keyframes shaft-breathe {
+      0%, 100% { transform: skewX(-4deg) translateX(0); opacity: 0.8; }
+      50% { transform: skewX(-2deg) translateX(15px); opacity: 1; }
+    }
+
+    /* === ORGANISMS — each one unique === */
+
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    /* 1. Large cyan — the quiet watcher. Upper left. */
+    .orb-1 {
+      width: 160px; height: 160px;
+      top: 20%; left: 15%;
+      z-index: 3;
+      background: radial-gradient(circle at 42% 38%,
+        rgba(0, 220, 250, 0.16) 0%,
+        rgba(0, 200, 240, 0.06) 35%,
+        rgba(0, 180, 220, 0.015) 60%,
+        transparent 80%
+      );
+      box-shadow:
+        0 0 100px 40px rgba(0, 210, 240, 0.03),
+        inset 0 0 40px rgba(0, 220, 250, 0.05);
+      animation: drift-1 32s ease-in-out infinite, pulse-gentle 7s ease-in-out infinite;
+    }
+
+    /* 2. Medium teal — the signaler. Blooms periodically. Center right. */
+    .orb-2 {
+      width: 95px; height: 95px;
+      top: 48%; left: 62%;
+      z-index: 4;
+      background: radial-gradient(circle at 50% 45%,
+        rgba(0, 200, 180, 0.14) 0%,
+        rgba(0, 180, 160, 0.05) 40%,
+        transparent 75%
+      );
+      box-shadow:
+        0 0 70px 25px rgba(0, 190, 170, 0.025),
+        inset 0 0 25px rgba(0, 200, 180, 0.04);
+      animation: drift-2 24s ease-in-out infinite, bloom 16s ease-in-out infinite;
+    }
+
+    /* 3. Small violet — the wanderer. Flickers. Lower left. */
+    .orb-3 {
+      width: 45px; height: 45px;
+      top: 68%; left: 22%;
+      z-index: 3;
+      background: radial-gradient(circle,
+        rgba(130, 90, 255, 0.2) 0%,
+        rgba(120, 80, 240, 0.06) 45%,
+        transparent 75%
+      );
+      box-shadow: 0 0 40px 15px rgba(120, 80, 255, 0.02);
+      animation: drift-3 20s ease-in-out infinite, flicker 3s ease-in-out infinite;
+    }
+
+    /* 4. Ripple — sends out rings. Upper right. */
+    .orb-4 {
+      width: 70px; height: 70px;
+      top: 18%; left: 72%;
+      z-index: 3;
+      background: radial-gradient(circle,
+        rgba(0, 180, 220, 0.1) 0%,
+        rgba(0, 160, 200, 0.03) 50%,
+        transparent 75%
+      );
+      animation: drift-4 28s ease-in-out infinite, pulse-gentle 5s ease-in-out infinite;
+    }
+    .orb-4::before, .orb-4::after {
+      content: '';
+      position: absolute;
+      inset: -20%;
+      border-radius: 50%;
+      border: 1px solid rgba(0, 200, 230, 0.04);
+      animation: ripple-out 7s ease-out infinite;
+    }
+    .orb-4::after {
+      animation-delay: 3.5s;
+    }
+
+    @keyframes ripple-out {
+      0% { transform: scale(0.8); opacity: 1; border-width: 1.5px; }
+      100% { transform: scale(2.8); opacity: 0; border-width: 0.5px; }
+    }
+
+    /* 5. Tiny amber — the ember. Barely there, floating up. Center. */
+    .orb-5 {
+      width: 24px; height: 24px;
+      top: 55%; left: 45%;
+      z-index: 3;
+      background: radial-gradient(circle,
+        rgba(255, 210, 80, 0.18) 0%,
+        rgba(255, 190, 60, 0.04) 50%,
+        transparent 80%
+      );
+      box-shadow: 0 0 30px 10px rgba(255, 200, 60, 0.015);
+      animation: float-up 40s linear infinite, pulse-dim 5s ease-in-out infinite;
+    }
+
+    /* 6. Medium blue — the deep one. Slow, steady. Lower right. */
+    .orb-6 {
+      width: 110px; height: 110px;
+      top: 70%; left: 75%;
+      z-index: 3;
+      background: radial-gradient(circle at 55% 48%,
+        rgba(30, 100, 255, 0.11) 0%,
+        rgba(20, 80, 220, 0.04) 40%,
+        transparent 75%
+      );
+      box-shadow:
+        0 0 80px 30px rgba(30, 100, 255, 0.02),
+        inset 0 0 30px rgba(30, 100, 255, 0.03);
+      animation: drift-6 36s ease-in-out infinite, pulse-gentle 8s ease-in-out infinite 2s;
+    }
+
+    /* === DRIFT KEYFRAMES — organic, asymmetric paths === */
+
+    @keyframes drift-1 {
+      0%   { transform: translate(0, 0) scale(1); }
+      18%  { transform: translate(22px, -18px) scale(1.02); }
+      38%  { transform: translate(-8px, 28px) scale(0.97); }
+      55%  { transform: translate(18px, 12px) scale(1.01); }
+      72%  { transform: translate(-16px, -22px) scale(0.99); }
+      88%  { transform: translate(6px, 8px) scale(1.01); }
+      100% { transform: translate(0, 0) scale(1); }
+    }
+
+    @keyframes drift-2 {
+      0%   { transform: translate(0, 0); }
+      22%  { transform: translate(-18px, 12px); }
+      45%  { transform: translate(14px, -20px); }
+      68%  { transform: translate(22px, 15px); }
+      85%  { transform: translate(-8px, -6px); }
+      100% { transform: translate(0, 0); }
+    }
+
+    @keyframes drift-3 {
+      0%   { transform: translate(0, 0) rotate(0deg); }
+      30%  { transform: translate(15px, -10px) rotate(5deg); }
+      60%  { transform: translate(-12px, 18px) rotate(-3deg); }
+      100% { transform: translate(0, 0) rotate(0deg); }
+    }
+
+    @keyframes drift-4 {
+      0%   { transform: translate(0, 0); }
+      35%  { transform: translate(-12px, 20px); }
+      65%  { transform: translate(8px, -14px); }
+      100% { transform: translate(0, 0); }
+    }
+
+    @keyframes drift-6 {
+      0%   { transform: translate(0, 0) scale(1); }
+      25%  { transform: translate(-20px, -15px) scale(1.03); }
+      50%  { transform: translate(12px, 22px) scale(0.98); }
+      75%  { transform: translate(-8px, 10px) scale(1.01); }
+      100% { transform: translate(0, 0) scale(1); }
+    }
+
+    /* === PULSE & BLOOM KEYFRAMES === */
+
+    @keyframes pulse-gentle {
+      0%, 100% { opacity: 0.7; }
+      50% { opacity: 1; }
+    }
+
+    @keyframes pulse-dim {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 0.8; }
+    }
+
+    @keyframes bloom {
+      0%, 70%, 100% { opacity: 0.6; filter: brightness(1); }
+      80% { opacity: 1; filter: brightness(1.8); }
+      90% { opacity: 0.85; filter: brightness(1.2); }
+    }
+
+    @keyframes flicker {
+      0%, 100% { opacity: 0.5; }
+      15% { opacity: 0.9; }
+      30% { opacity: 0.3; }
+      50% { opacity: 0.7; }
+      70% { opacity: 0.4; }
+      85% { opacity: 0.8; }
+    }
+
+    @keyframes float-up {
+      0% { transform: translateY(0) translateX(0); }
+      25% { transform: translateY(-25vh) translateX(8px); }
+      50% { transform: translateY(-50vh) translateX(-5px); }
+      75% { transform: translateY(-75vh) translateX(10px); }
+      100% { transform: translateY(-100vh) translateX(0); }
+    }
+
+    /* === PARTICLE CANVAS === */
+    #plankton {
+      position: fixed; inset: 0;
+      z-index: 5;
+    }
+
+    /* === FILM GRAIN === */
     .grain {
       position: fixed; inset: 0;
       pointer-events: none;
       z-index: 90;
       mix-blend-mode: overlay;
-      opacity: 0.5;
+      opacity: 0.28;
     }
     .grain svg { width: 100%; height: 100%; display: block; }
 
-    /* Particle field */
-    #motes {
-      position: fixed; inset: 0;
-      z-index: 1;
-    }
-
-    /* Enso SVG */
-    .enso-wrap {
-      position: fixed; inset: 0;
-      display: flex; align-items: center; justify-content: center;
-      z-index: 10;
-    }
-    .enso-svg {
-      width: min(65vmin, 380px);
-      height: min(65vmin, 380px);
-    }
-
-    /* Three-layer stroke: ambient glow → mid glow → sharp line */
-    .enso-ambient, .enso-mid, .enso-sharp {
-      fill: none;
-      stroke-linecap: round;
-      stroke-dasharray: var(--path-len);
-      stroke-dashoffset: var(--path-len);
-    }
-    .enso-ambient {
-      stroke: var(--gold-08);
-      stroke-width: 32;
-      filter: url(#blur-wide);
-    }
-    .enso-mid {
-      stroke: var(--gold-20);
-      stroke-width: 8;
-      filter: url(#blur-tight);
-    }
-    .enso-sharp {
-      stroke: var(--gold);
-      stroke-width: 2.2;
-      filter: drop-shadow(0 0 3px var(--gold-60));
-    }
-
-    /* Inner space glow — appears when circle is drawn */
-    .inner-glow {
-      opacity: 0;
-      transition: opacity 2s ease;
-    }
-
-    /* Kanji */
+    /* === TEXT — ghost whispers === */
     .kanji {
       position: fixed;
-      bottom: 14%;
+      bottom: 13%;
       left: 50%;
       transform: translateX(-50%);
-      font-size: clamp(1.4rem, 3vmin, 2rem);
-      color: var(--gold-08);
-      letter-spacing: 0.4em;
+      font-size: clamp(1.8rem, 4vmin, 2.6rem);
+      color: rgba(0, 200, 230, 0.045);
+      letter-spacing: 0.5em;
       z-index: 20;
-      opacity: 0;
-      transition: opacity 2s ease;
       user-select: none;
+      animation: text-breathe 12s ease-in-out infinite;
     }
 
-    /* Subtitle */
     .subtitle {
       position: fixed;
-      bottom: 9%;
+      bottom: 8%;
       left: 50%;
       transform: translateX(-50%);
-      font-family: 'Spectral', serif;
+      font-family: 'Cormorant', serif;
       font-style: italic;
-      font-weight: 200;
-      font-size: clamp(0.6rem, 1.2vmin, 0.85rem);
-      color: rgba(196, 144, 58, 0.06);
-      letter-spacing: 0.35em;
+      font-weight: 300;
+      font-size: clamp(0.5rem, 1vmin, 0.75rem);
+      color: rgba(0, 180, 210, 0.03);
+      letter-spacing: 0.45em;
       text-transform: lowercase;
       z-index: 20;
-      opacity: 0;
-      transition: opacity 2.5s ease;
       user-select: none;
+      animation: text-breathe 12s ease-in-out infinite 2s;
+    }
+
+    @keyframes text-breathe {
+      0%, 100% { opacity: 0.45; }
+      50% { opacity: 1; }
     }
   </style>
 </head>
 <body>
-  <div class="ambient"></div>
+  <div class="depth"></div>
+  <div class="shaft"></div>
+
+  <!-- Deep-sea organisms -->
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+  <div class="orb orb-4"></div>
+  <div class="orb orb-5"></div>
+  <div class="orb orb-6"></div>
 
   <!-- Film grain -->
   <div class="grain">
     <svg xmlns="http://www.w3.org/2000/svg">
-      <filter id="grain-filter">
-        <feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="4" stitchTiles="stitch"/>
+      <filter id="grain-f">
+        <feTurbulence type="fractalNoise" baseFrequency="0.6" numOctaves="4" stitchTiles="stitch"/>
         <feColorMatrix type="saturate" values="0"/>
       </filter>
-      <rect width="100%" height="100%" filter="url(#grain-filter)" opacity="0.08"/>
+      <rect width="100%" height="100%" filter="url(#grain-f)" opacity="0.055"/>
     </svg>
   </div>
 
-  <!-- Dust motes -->
-  <canvas id="motes"></canvas>
+  <!-- Plankton -->
+  <canvas id="plankton"></canvas>
 
-  <!-- Enso -->
-  <div class="enso-wrap">
-    <svg class="enso-svg" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <filter id="blur-wide"><feGaussianBlur stdDeviation="14"/></filter>
-        <filter id="blur-tight"><feGaussianBlur stdDeviation="4"/></filter>
-        <radialGradient id="inner-grad" cx="50%" cy="50%" r="38%">
-          <stop offset="0%" stop-color="rgba(196,144,58,0.03)"/>
-          <stop offset="100%" stop-color="rgba(196,144,58,0)"/>
-        </radialGradient>
-      </defs>
-      <!-- Inner space glow -->
-      <circle class="inner-glow" cx="200" cy="200" r="140" fill="url(#inner-grad)"/>
-      <!-- Enso strokes (all same path, different weights) -->
-      <path class="enso-ambient" d="M 208 55 C 298 46, 362 118, 355 208 C 348 298, 278 362, 192 354 C 106 346, 44 274, 52 192 C 60 110, 122 52, 192 58"/>
-      <path class="enso-mid"     d="M 208 55 C 298 46, 362 118, 355 208 C 348 298, 278 362, 192 354 C 106 346, 44 274, 52 192 C 60 110, 122 52, 192 58"/>
-      <path class="enso-sharp"   d="M 208 55 C 298 46, 362 118, 355 208 C 348 298, 278 362, 192 354 C 106 346, 44 274, 52 192 C 60 110, 122 52, 192 58"/>
-    </svg>
-  </div>
-
-  <div class="kanji">静</div>
-  <div class="subtitle">saturday morning</div>
+  <div class="kanji">漂</div>
+  <div class="subtitle">saturday night</div>
 
   <script>
-    // --- Particles (dust motes) ---
-    const canvas = document.getElementById('motes');
+    // === Bioluminescent plankton field ===
+    const canvas = document.getElementById('plankton');
     const ctx = canvas.getContext('2d');
     let W, H;
 
@@ -179,119 +349,92 @@
     resize();
     window.addEventListener('resize', resize);
 
-    const MOTE_COUNT = 35;
-    const motes = Array.from({ length: MOTE_COUNT }, () => ({
-      x: Math.random() * W,
-      y: Math.random() * H,
-      r: Math.random() * 1.2 + 0.3,
-      vx: (Math.random() - 0.5) * 0.12,
-      vy: -(Math.random() * 0.18 + 0.03),
-      phase: Math.random() * Math.PI * 2,
-      speed: Math.random() * 0.004 + 0.001,
-      baseAlpha: Math.random() * 0.25 + 0.04,
-    }));
+    // Color presets — deep sea bioluminescence
+    const COLORS = [
+      { h: 187, s: 100, l: 50 },  // vivid cyan
+      { h: 180, s: 80, l: 42 },   // dark cyan
+      { h: 174, s: 70, l: 38 },   // teal
+      { h: 195, s: 90, l: 55 },   // light blue
+      { h: 210, s: 85, l: 48 },   // blue
+      { h: 260, s: 70, l: 60 },   // soft violet
+    ];
 
-    function drawMotes() {
-      ctx.clearRect(0, 0, W, H);
-      for (const m of motes) {
-        m.x += m.vx;
-        m.y += m.vy;
-        m.phase += m.speed;
-        if (m.y < -10) { m.y = H + 10; m.x = Math.random() * W; }
-        if (m.x < -10) m.x = W + 10;
-        if (m.x > W + 10) m.x = -10;
-        const a = m.baseAlpha * (0.4 + 0.6 * Math.sin(m.phase));
-        ctx.beginPath();
-        ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(196,144,58,${a.toFixed(3)})`;
-        ctx.fill();
-      }
-      requestAnimationFrame(drawMotes);
-    }
-    drawMotes();
-
-    // --- Enso animation ---
-    const paths = document.querySelectorAll('.enso-ambient, .enso-mid, .enso-sharp');
-    const innerGlow = document.querySelector('.inner-glow');
-    const kanji = document.querySelector('.kanji');
-    const subtitle = document.querySelector('.subtitle');
-
-    // Measure path length and set CSS variable
-    const pathLen = paths[0].getTotalLength();
-    paths.forEach(p => {
-      p.style.setProperty('--path-len', pathLen);
-      p.style.strokeDasharray = pathLen;
-      p.style.strokeDashoffset = pathLen;
+    const PARTICLE_COUNT = 55;
+    const particles = Array.from({ length: PARTICLE_COUNT }, () => {
+      const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+      return {
+        x: Math.random() * (W || 800),
+        y: Math.random() * (H || 600),
+        r: Math.random() * 1.4 + 0.25,
+        vx: (Math.random() - 0.5) * 0.12,
+        vy: (Math.random() - 0.5) * 0.08,
+        phase: Math.random() * Math.PI * 2,
+        speed: Math.random() * 0.003 + 0.0008,
+        baseAlpha: Math.random() * 0.28 + 0.04,
+        h: color.h + (Math.random() - 0.5) * 12,
+        s: color.s + (Math.random() - 0.5) * 15,
+        l: color.l + (Math.random() - 0.5) * 10,
+        // Occasional bright flash timer
+        flashCooldown: Math.random() * 600 + 200,
+        flashCounter: 0,
+        flashing: false,
+        flashDuration: 0,
+      };
     });
 
-    // Easing: sine ease-in-out
-    function easeInOutSine(t) {
-      return -(Math.cos(Math.PI * t) - 1) / 2;
-    }
+    function drawPlankton(timestamp) {
+      ctx.clearRect(0, 0, W, H);
 
-    // Cycle: draw 9s → hold 6s → fade 4s → rest 4s = 23s total
-    const DRAW = 9000, HOLD = 6000, FADE = 4000, REST = 4000;
-    const CYCLE = DRAW + HOLD + FADE + REST;
+      for (const p of particles) {
+        // Organic drift — layered sine waves
+        p.x += p.vx + Math.sin(timestamp * 0.00025 + p.phase) * 0.04;
+        p.y += p.vy + Math.cos(timestamp * 0.00018 + p.phase * 1.3) * 0.03;
+        p.phase += p.speed;
 
-    function animateEnso(timestamp) {
-      const t = timestamp % CYCLE;
+        // Wrap edges
+        if (p.x < -15) p.x = W + 15;
+        if (p.x > W + 15) p.x = -15;
+        if (p.y < -15) p.y = H + 15;
+        if (p.y > H + 15) p.y = -15;
 
-      if (t < DRAW) {
-        // Drawing phase
-        const progress = easeInOutSine(t / DRAW);
-        const offset = pathLen * (1 - progress);
-        paths.forEach((p, i) => {
-          // Ambient leads slightly
-          const lead = i === 0 ? 0.04 : i === 1 ? 0.015 : 0;
-          const adj = pathLen * (1 - Math.min(1, easeInOutSine(Math.min(1, t / DRAW + lead))));
-          p.style.strokeDashoffset = adj;
-          p.style.opacity = 1;
-        });
-        // Inner glow fades in during last 40% of draw
-        const glowStart = DRAW * 0.6;
-        if (t > glowStart) {
-          innerGlow.style.opacity = (t - glowStart) / (DRAW - glowStart);
-        } else {
-          innerGlow.style.opacity = 0;
+        // Flash logic — random bright pulse
+        p.flashCounter++;
+        if (p.flashCounter >= p.flashCooldown && !p.flashing) {
+          p.flashing = true;
+          p.flashDuration = 0;
+          p.flashCounter = 0;
+          p.flashCooldown = Math.random() * 800 + 300;
         }
-        kanji.style.opacity = Math.max(0, (t - DRAW * 0.7) / (DRAW * 0.3));
-        subtitle.style.opacity = Math.max(0, (t - DRAW * 0.8) / (DRAW * 0.2)) * 0.6;
-      } else if (t < DRAW + HOLD) {
-        // Holding — gentle pulse
-        const ht = (t - DRAW) / HOLD;
-        const pulse = 0.92 + 0.08 * Math.sin(ht * Math.PI * 3);
-        paths.forEach(p => {
-          p.style.strokeDashoffset = 0;
-          p.style.opacity = pulse;
-        });
-        innerGlow.style.opacity = 0.6 + 0.4 * Math.sin(ht * Math.PI * 2);
-        kanji.style.opacity = 1;
-        subtitle.style.opacity = 0.6;
-      } else if (t < DRAW + HOLD + FADE) {
-        // Fading out
-        const ft = (t - DRAW - HOLD) / FADE;
-        const fade = 1 - easeInOutSine(ft);
-        paths.forEach(p => {
-          p.style.strokeDashoffset = 0;
-          p.style.opacity = fade;
-        });
-        innerGlow.style.opacity = fade * 0.8;
-        kanji.style.opacity = fade;
-        subtitle.style.opacity = fade * 0.6;
-      } else {
-        // Resting — everything hidden, reset stroke
-        paths.forEach(p => {
-          p.style.opacity = 0;
-          p.style.strokeDashoffset = pathLen;
-        });
-        innerGlow.style.opacity = 0;
-        kanji.style.opacity = 0;
-        subtitle.style.opacity = 0;
+        let flashMult = 1;
+        if (p.flashing) {
+          p.flashDuration++;
+          const t = p.flashDuration / 40;
+          flashMult = 1 + 2.5 * Math.sin(Math.min(t, 1) * Math.PI);
+          if (p.flashDuration > 40) {
+            p.flashing = false;
+          }
+        }
+
+        const a = Math.min(1, p.baseAlpha * (0.3 + 0.7 * Math.sin(p.phase)) * flashMult);
+
+        // Core dot
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r * (p.flashing ? 1.3 : 1), 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${p.h}, ${p.s}%, ${p.l}%, ${a.toFixed(3)})`;
+        ctx.fill();
+
+        // Soft halo on larger particles or flashing ones
+        if (p.r > 0.7 || p.flashing) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r * (p.flashing ? 5 : 3.5), 0, Math.PI * 2);
+          ctx.fillStyle = `hsla(${p.h}, ${p.s}%, ${p.l}%, ${(a * 0.1).toFixed(4)})`;
+          ctx.fill();
+        }
       }
 
-      requestAnimationFrame(animateEnso);
+      requestAnimationFrame(drawPlankton);
     }
-    requestAnimationFrame(animateEnso);
+    requestAnimationFrame(drawPlankton);
   </script>
 </body>
 </html>
