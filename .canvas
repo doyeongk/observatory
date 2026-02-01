@@ -3,109 +3,132 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vigil</title>
+  <title>Overture</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300&family=DM+Mono:wght@300&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@1,6..96,400&family=JetBrains+Mono:wght@200&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
     html, body {
       width: 100%; height: 100%;
-      background: #060507;
+      background: #07050f;
       overflow: hidden;
       cursor: default;
     }
 
-    canvas#field { position: fixed; inset: 0; z-index: 1; }
+    canvas#scene { position: fixed; inset: 0; z-index: 1; }
 
-    /* Central glow — the stage warming up */
-    .stage-glow {
+    /* Stage light — warm downward wash from above */
+    .stage-light {
       position: fixed;
-      top: 50%;
+      top: -10%;
       left: 50%;
-      transform: translate(-50%, -50%);
-      width: 40vmin;
-      height: 40vmin;
-      border-radius: 50%;
-      background: radial-gradient(
-        circle,
-        rgba(194, 136, 58, 0.06) 0%,
-        rgba(194, 136, 58, 0.02) 30%,
-        transparent 70%
-      );
+      transform: translateX(-50%);
+      width: 50vmin;
+      height: 75vmin;
       z-index: 2;
       pointer-events: none;
-      animation: stage-breathe 8s ease-in-out infinite;
+      background: radial-gradient(
+        ellipse 50% 65% at 50% 15%,
+        rgba(210, 165, 80, 0.04) 0%,
+        rgba(196, 148, 58, 0.018) 35%,
+        rgba(160, 110, 50, 0.005) 65%,
+        transparent 100%
+      );
+      animation: light-pulse 10s ease-in-out infinite;
     }
 
-    /* Ghost number — 500 */
-    .ghost-count {
+    @keyframes light-pulse {
+      0%, 100% { opacity: 0.55; transform: translateX(-50%) scaleX(1); }
+      50% { opacity: 1; transform: translateX(-50%) scaleX(1.05); }
+    }
+
+    /* Dawn ambient — warm wash from right */
+    .dawn-ambient {
       position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -52%);
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+      background: radial-gradient(
+        ellipse 45% 55% at 88% 50%,
+        rgba(180, 130, 50, 0.022) 0%,
+        rgba(150, 100, 40, 0.008) 45%,
+        transparent 80%
+      );
+    }
+
+    /* Stage edge — the horizon between speaker and audience */
+    .stage-edge {
+      position: fixed;
+      top: 38%;
+      left: 0; right: 0;
+      height: 1px;
       z-index: 3;
       pointer-events: none;
-      font-family: 'Cormorant Garamond', serif;
-      font-weight: 300;
-      font-size: clamp(12rem, 32vmin, 24rem);
-      color: rgba(194, 136, 58, 0.0);
-      letter-spacing: -0.03em;
-      line-height: 0.85;
-      user-select: none;
-      animation: ghost-500 25s ease-in-out infinite;
+      background: linear-gradient(
+        90deg,
+        transparent 12%,
+        rgba(196, 148, 58, 0.035) 32%,
+        rgba(210, 170, 90, 0.07) 50%,
+        rgba(196, 148, 58, 0.035) 68%,
+        transparent 88%
+      );
+      animation: edge-glow 8s ease-in-out infinite;
     }
 
-    /* Bottom text */
+    @keyframes edge-glow {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 1; }
+    }
+
+    /* Text — asymmetric editorial, top-left */
     .text-layer {
       position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
+      top: 7%;
+      left: 5%;
       z-index: 10;
       pointer-events: none;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding-bottom: 8%;
-      gap: 0.8em;
     }
 
-    .title-label {
-      font-family: 'Cormorant Garamond', serif;
-      font-weight: 300;
+    .text-layer::before {
+      content: '';
+      position: absolute;
+      inset: -2em -3em;
+      background: radial-gradient(ellipse at 10% 20%, rgba(7, 5, 15, 0.6) 0%, transparent 70%);
+      z-index: -1;
+    }
+
+    .title {
+      font-family: 'Bodoni Moda', serif;
       font-style: italic;
-      font-size: clamp(0.7rem, 1.5vmin, 1.1rem);
-      letter-spacing: 0.5em;
+      font-weight: 400;
+      font-size: clamp(2.2rem, 6.5vmin, 5rem);
+      letter-spacing: 0.03em;
+      color: rgba(220, 182, 110, 0);
+      line-height: 1;
+      animation: title-reveal 22s ease-in-out infinite;
+    }
+
+    .subtitle {
+      margin-top: 1.1em;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 200;
+      font-size: clamp(0.3rem, 0.62vmin, 0.48rem);
+      letter-spacing: 0.45em;
       text-transform: lowercase;
-      color: rgba(194, 156, 98, 0.0);
-      animation: text-appear 16s ease-in-out infinite;
+      color: rgba(150, 140, 165, 0);
+      animation: sub-reveal 22s ease-in-out infinite 2.5s;
     }
 
-    .sub-label {
-      font-family: 'DM Mono', monospace;
-      font-weight: 300;
-      font-size: clamp(0.32rem, 0.6vmin, 0.45rem);
-      letter-spacing: 0.55em;
-      text-transform: lowercase;
-      color: rgba(140, 130, 150, 0.0);
-      animation: text-appear 16s ease-in-out infinite 4s;
+    @keyframes title-reveal {
+      0%, 100% { color: rgba(220, 182, 110, 0); }
+      15%, 85% { color: rgba(220, 182, 110, 0.32); }
     }
 
-    @keyframes stage-breathe {
-      0%, 100% { opacity: 0.6; transform: translate(-50%, -50%) scale(1); }
-      50% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
-    }
-
-    @keyframes ghost-500 {
-      0%, 100% { color: rgba(194, 136, 58, 0.0); }
-      35%, 65% { color: rgba(194, 136, 58, 0.018); }
-    }
-
-    @keyframes text-appear {
-      0%, 100% { opacity: 0; }
-      30%, 70% { opacity: 1; }
+    @keyframes sub-reveal {
+      0%, 100% { color: rgba(150, 140, 165, 0); }
+      15%, 85% { color: rgba(150, 140, 165, 0.42); }
     }
 
     /* Film grain */
@@ -114,48 +137,22 @@
       pointer-events: none;
       z-index: 90;
       mix-blend-mode: overlay;
-      opacity: 0.15;
+      opacity: 0.12;
     }
     .grain svg { width: 100%; height: 100%; display: block; }
-
-    /* Horizon line */
-    .horizon {
-      position: fixed;
-      top: 62%;
-      left: 0;
-      right: 0;
-      height: 1px;
-      z-index: 2;
-      pointer-events: none;
-      background: linear-gradient(
-        90deg,
-        transparent 5%,
-        rgba(194, 136, 58, 0.03) 30%,
-        rgba(194, 156, 98, 0.06) 50%,
-        rgba(194, 136, 58, 0.03) 70%,
-        transparent 95%
-      );
-      animation: horizon-pulse 12s ease-in-out infinite;
-    }
-
-    @keyframes horizon-pulse {
-      0%, 100% { opacity: 0.4; }
-      50% { opacity: 1; }
-    }
   </style>
 </head>
 <body>
 
-  <canvas id="field"></canvas>
+  <canvas id="scene"></canvas>
 
-  <div class="stage-glow"></div>
-  <div class="horizon"></div>
-
-  <div class="ghost-count">500</div>
+  <div class="stage-light"></div>
+  <div class="dawn-ambient"></div>
+  <div class="stage-edge"></div>
 
   <div class="text-layer">
-    <div class="title-label">vigil</div>
-    <div class="sub-label">the night before five hundred strangers listen</div>
+    <div class="title">Overture</div>
+    <div class="subtitle">they're already listening</div>
   </div>
 
   <div class="grain">
@@ -169,174 +166,187 @@
   </div>
 
   <script>
-    const canvas = document.getElementById('field');
+    const canvas = document.getElementById('scene');
     const ctx = canvas.getContext('2d');
-    let W, H, cx, cy;
+    let W, H;
 
     function resize() {
       W = canvas.width = window.innerWidth;
       H = canvas.height = window.innerHeight;
-      cx = W * 0.5;
-      cy = H * 0.48;
+      recalcTargets();
     }
-    resize();
-    window.addEventListener('resize', resize);
 
-    // === 500 SOULS — the audience gathering ===
-    const SOULS = 500;
+    // === 500 SOULS — the audience converging ===
+    const N = 500;
     const souls = [];
 
-    for (let i = 0; i < SOULS; i++) {
-      // Distribute in a rough ellipse/amphitheater around center
-      const angle = Math.random() * Math.PI * 2;
-      const dist = 60 + Math.random() * Math.min(W || 800, H || 600) * 0.42;
-      const orbitSpeed = (0.00003 + Math.random() * 0.00008) * (Math.random() > 0.5 ? 1 : -1);
+    for (let i = 0; i < N; i++) {
+      const rowFrac = Math.pow(Math.random(), 0.55);
+      const arcSpread = 0.26 + rowFrac * 0.24;
 
       souls.push({
-        angle,
-        dist,
-        orbitSpeed,
-        wobblePhase: Math.random() * Math.PI * 2,
-        wobbleSpeed: 0.0004 + Math.random() * 0.0008,
-        wobbleAmp: 2 + Math.random() * 8,
-        r: 0.3 + Math.random() * 1.1,
-        baseAlpha: 0.04 + Math.random() * 0.14,
-        pulsePhase: Math.random() * Math.PI * 2,
-        pulseSpeed: 0.0006 + Math.random() * 0.002,
-        // Color: warm near center, cool far out
-        warmth: 0,
         x: 0, y: 0,
+        startX: 0, startY: 0,
+        rowFrac,
+        angleFrac: 0.5 - arcSpread + Math.random() * arcSpread * 2,
+        targetX: 0, targetY: 0,
+        progress: 0,
+        convSpeed: 0.00015 + Math.random() * 0.0005,
+        size: 0.3 + Math.random() * 1.0,
+        baseAlpha: 0.04 + Math.random() * 0.11,
+        phase: Math.random() * Math.PI * 2,
+        pulseSpeed: 0.0005 + Math.random() * 0.0014,
+        driftPhase: Math.random() * Math.PI * 2,
+        driftSpeed: 0.0002 + Math.random() * 0.0005,
+        driftAmp: 1.5 + Math.random() * 4,
+        inited: false,
       });
     }
 
-    // === THE SPEAKER — one bright warm point ===
-    const speaker = {
-      x: 0, y: 0,
-      phase: 0,
-      breatheSpeed: 0.001,
-    };
+    function recalcTargets() {
+      const cx = W * 0.5;
+      const stageY = H * 0.38;
+      const unit = Math.min(W, H) * 0.01;
 
-    // === OCCASIONAL CONNECTIONS — thoughts between souls ===
-    const connections = [];
-    let connTimer = 0;
-    const CONN_INTERVAL = 200;
+      for (const s of souls) {
+        const dist = (9 + s.rowFrac * 36) * unit;
+        const angle = Math.PI * s.angleFrac;
+        s.targetX = cx + Math.cos(angle) * dist;
+        s.targetY = stageY + Math.sin(angle) * dist * 0.56;
 
-    function spawnConnection() {
-      const a = Math.floor(Math.random() * SOULS);
-      let b = Math.floor(Math.random() * SOULS);
-      while (b === a) b = Math.floor(Math.random() * SOULS);
-
-      const sa = souls[a], sb = souls[b];
-      const dx = sa.x - sb.x, dy = sa.y - sb.y;
-      const d = Math.hypot(dx, dy);
-      if (d < 120) {
-        connections.push({ a, b, life: 1, decay: 0.003 + Math.random() * 0.005 });
+        if (!s.inited) {
+          s.startX = Math.random() * W;
+          s.startY = Math.random() * H;
+          s.x = s.startX;
+          s.y = s.startY;
+          s.inited = true;
+        }
       }
     }
 
-    // === RENDER ===
+    resize();
+    window.addEventListener('resize', resize);
+
+    // === WHISPERS — connections between nearby seated souls ===
+    const whispers = [];
+    let whisperTimer = 0;
+
     function frame(ts) {
-      // Deep dark background with warm vignette
-      ctx.fillStyle = '#060507';
+      ctx.fillStyle = '#07050f';
       ctx.fillRect(0, 0, W, H);
 
-      // Warm center wash
-      const warmGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.min(W, H) * 0.55);
-      warmGlow.addColorStop(0, 'rgba(194, 136, 58, 0.018)');
-      warmGlow.addColorStop(0.2, 'rgba(180, 120, 50, 0.008)');
-      warmGlow.addColorStop(0.5, 'rgba(100, 70, 40, 0.003)');
-      warmGlow.addColorStop(1, 'transparent');
-      ctx.fillStyle = warmGlow;
+      const cx = W * 0.5;
+      const stageY = H * 0.38;
+
+      // Warm overhead wash
+      const topLight = ctx.createRadialGradient(cx, H * 0.08, 0, cx, H * 0.08, H * 0.7);
+      topLight.addColorStop(0, 'rgba(210, 165, 80, 0.022)');
+      topLight.addColorStop(0.3, 'rgba(196, 148, 58, 0.009)');
+      topLight.addColorStop(0.6, 'rgba(140, 90, 40, 0.003)');
+      topLight.addColorStop(1, 'transparent');
+      ctx.fillStyle = topLight;
       ctx.fillRect(0, 0, W, H);
 
-      // Cool upper wash — the dark sky above
-      const coolWash = ctx.createRadialGradient(W * 0.3, H * 0.15, 0, W * 0.3, H * 0.15, H * 0.5);
-      coolWash.addColorStop(0, 'rgba(60, 55, 90, 0.008)');
-      coolWash.addColorStop(1, 'transparent');
-      ctx.fillStyle = coolWash;
+      // Cool undertones in lower corners
+      const coolL = ctx.createRadialGradient(W * 0.05, H * 0.95, 0, W * 0.05, H * 0.95, H * 0.45);
+      coolL.addColorStop(0, 'rgba(40, 35, 75, 0.012)');
+      coolL.addColorStop(1, 'transparent');
+      ctx.fillStyle = coolL;
       ctx.fillRect(0, 0, W, H);
 
-      // === Update & draw speaker ===
-      speaker.phase += speaker.breatheSpeed;
-      speaker.x = cx + Math.sin(ts * 0.0001) * 3;
-      speaker.y = cy + Math.cos(ts * 0.00013) * 2;
-      const speakerPulse = 0.7 + Math.sin(speaker.phase) * 0.3;
+      const coolR = ctx.createRadialGradient(W * 0.95, H * 0.92, 0, W * 0.95, H * 0.92, H * 0.4);
+      coolR.addColorStop(0, 'rgba(35, 30, 68, 0.01)');
+      coolR.addColorStop(1, 'transparent');
+      ctx.fillStyle = coolR;
+      ctx.fillRect(0, 0, W, H);
 
-      // Speaker outer glow
-      const spGlow = ctx.createRadialGradient(speaker.x, speaker.y, 0, speaker.x, speaker.y, 45);
-      spGlow.addColorStop(0, `rgba(220, 170, 90, ${0.12 * speakerPulse})`);
-      spGlow.addColorStop(0.3, `rgba(194, 136, 58, ${0.04 * speakerPulse})`);
-      spGlow.addColorStop(0.7, `rgba(160, 110, 50, ${0.008 * speakerPulse})`);
+      // === THE SPEAKER — warm beacon at stage center ===
+      const spPulse = Math.sin(ts * 0.0007) * 0.5 + 0.5;
+      const spRadius = 32 + spPulse * 16;
+
+      // Outer glow
+      const spGlow = ctx.createRadialGradient(cx, stageY, 0, cx, stageY, spRadius);
+      spGlow.addColorStop(0, `rgba(245, 210, 135, ${0.2 + spPulse * 0.1})`);
+      spGlow.addColorStop(0.12, `rgba(220, 178, 95, ${0.08 + spPulse * 0.05})`);
+      spGlow.addColorStop(0.35, `rgba(196, 148, 58, ${0.02})`);
       spGlow.addColorStop(1, 'transparent');
       ctx.fillStyle = spGlow;
       ctx.beginPath();
-      ctx.arc(speaker.x, speaker.y, 45, 0, Math.PI * 2);
+      ctx.arc(cx, stageY, spRadius, 0, Math.PI * 2);
       ctx.fill();
 
-      // Speaker core
+      // Core
       ctx.beginPath();
-      ctx.arc(speaker.x, speaker.y, 2.5, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255, 220, 160, ${0.6 * speakerPulse})`;
+      ctx.arc(cx, stageY, 3.2, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 238, 185, ${0.55 + spPulse * 0.35})`;
       ctx.fill();
 
-      // === Update & draw souls ===
+      // === COLLECTIVE BREATH — syncs as souls settle ===
+      const collectivePulse = Math.sin(ts * 0.0004) * 0.5 + 0.5;
+
+      // === SOULS — converging into amphitheater ===
       for (const s of souls) {
-        s.angle += s.orbitSpeed;
-        const wobble = Math.sin(ts * s.wobbleSpeed + s.wobblePhase) * s.wobbleAmp;
+        s.progress = Math.min(1, s.progress + s.convSpeed);
+        const t = s.progress * s.progress * (3 - 2 * s.progress); // smoothstep
 
-        s.x = cx + Math.cos(s.angle) * (s.dist + wobble);
-        s.y = cy + Math.sin(s.angle) * (s.dist + wobble) * 0.65; // elliptical
+        const drift = Math.sin(ts * s.driftSpeed + s.driftPhase) * s.driftAmp;
+        const driftY = Math.cos(ts * s.driftSpeed * 0.7 + s.driftPhase) * s.driftAmp * 0.5;
 
-        // Distance from speaker for color
-        const dToCenter = Math.hypot(s.x - cx, s.y - cy);
-        const maxDist = Math.hypot(W * 0.45, H * 0.35);
-        s.warmth = 1 - Math.min(1, dToCenter / maxDist);
+        s.x = s.startX + (s.targetX - s.startX) * t + drift * t;
+        s.y = s.startY + (s.targetY - s.startY) * t + driftY * t;
 
-        const pulse = Math.sin(ts * s.pulseSpeed + s.pulsePhase) * 0.5 + 0.5;
-        const alpha = s.baseAlpha * (0.3 + pulse * 0.7);
+        const pulse = Math.sin(ts * s.pulseSpeed + s.phase) * 0.5 + 0.5;
+        const alpha = s.baseAlpha * (0.18 + t * 0.4 + pulse * 0.22 + collectivePulse * 0.15 * t);
 
-        // Color: warm amber near center → cool slate-blue far
-        const h = 32 + (1 - s.warmth) * 195; // amber → slate blue
-        const sat = 40 + s.warmth * 35;
-        const lit = 45 + s.warmth * 20 + pulse * 10;
+        // Blue (scattered) → amber (seated)
+        const warmth = t * 0.65 + pulse * 0.12;
+        const hue = 228 - warmth * 198;
+        const sat = 24 + warmth * 42;
+        const lit = 30 + warmth * 26 + pulse * 8;
 
-        // Soul glow (only for larger/brighter ones)
-        if (s.r > 0.7 && alpha > 0.08) {
-          const sg = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 8);
-          sg.addColorStop(0, `hsla(${h}, ${sat}%, ${lit}%, ${alpha * 0.15})`);
+        // Glow halo for brighter souls that have mostly settled
+        if (s.size > 0.65 && alpha > 0.05 && t > 0.35) {
+          const sg = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.size * 9);
+          sg.addColorStop(0, `hsla(${hue}, ${sat}%, ${lit}%, ${alpha * 0.1})`);
           sg.addColorStop(1, 'transparent');
           ctx.fillStyle = sg;
           ctx.beginPath();
-          ctx.arc(s.x, s.y, s.r * 8, 0, Math.PI * 2);
+          ctx.arc(s.x, s.y, s.size * 9, 0, Math.PI * 2);
           ctx.fill();
         }
 
-        // Soul core
+        // Core point
         ctx.beginPath();
-        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(${h}, ${sat}%, ${lit}%, ${alpha})`;
+        ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${hue}, ${sat}%, ${lit}%, ${alpha})`;
         ctx.fill();
       }
 
-      // === Connections — fleeting links between nearby souls ===
-      connTimer++;
-      if (connTimer >= CONN_INTERVAL) {
-        spawnConnection();
-        connTimer = 0;
+      // === WHISPERS — fleeting links between nearby seated souls ===
+      whisperTimer++;
+      if (whisperTimer > 100) {
+        whisperTimer = 0;
+        const a = Math.floor(Math.random() * N);
+        const b = Math.floor(Math.random() * N);
+        if (a !== b && souls[a].progress > 0.65 && souls[b].progress > 0.65) {
+          const dx = souls[a].x - souls[b].x;
+          const dy = souls[a].y - souls[b].y;
+          if (Math.hypot(dx, dy) < 75) {
+            whispers.push({ a, b, life: 1, decay: 0.004 + Math.random() * 0.006 });
+          }
+        }
       }
 
-      for (let i = connections.length - 1; i >= 0; i--) {
-        const c = connections[i];
-        c.life -= c.decay;
-        if (c.life <= 0) { connections.splice(i, 1); continue; }
+      for (let i = whispers.length - 1; i >= 0; i--) {
+        const w = whispers[i];
+        w.life -= w.decay;
+        if (w.life <= 0) { whispers.splice(i, 1); continue; }
 
-        const sa = souls[c.a], sb = souls[c.b];
-        const a = c.life * 0.025;
         ctx.beginPath();
-        ctx.moveTo(sa.x, sa.y);
-        ctx.lineTo(sb.x, sb.y);
-        ctx.strokeStyle = `rgba(194, 156, 98, ${a})`;
-        ctx.lineWidth = 0.3;
+        ctx.moveTo(souls[w.a].x, souls[w.a].y);
+        ctx.lineTo(souls[w.b].x, souls[w.b].y);
+        ctx.strokeStyle = `rgba(196, 162, 105, ${w.life * 0.02})`;
+        ctx.lineWidth = 0.35;
         ctx.stroke();
       }
 
