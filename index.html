@@ -259,6 +259,13 @@
       font-size: 0.85rem;
     }
 
+    #canvas-content iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+
     /* Animations */
     @keyframes fadeIn {
       from { opacity: 0; }
@@ -365,11 +372,15 @@
         updateStat('sessions', data.clawdbot.sessions);
         updateStat('lastActivity', data.clawdbot.lastActivity);
       }
-      // Canvas - only update if content changed (prevents animation replay)
+      // Canvas - use iframe srcdoc so scripts execute
       if (data.canvas && data.canvas.html) {
         const canvasEl = document.getElementById('canvas-content');
         if (previousData.canvasHtml !== data.canvas.html) {
-          canvasEl.innerHTML = data.canvas.html;
+          canvasEl.innerHTML = '';
+          const iframe = document.createElement('iframe');
+          iframe.srcdoc = data.canvas.html;
+          iframe.sandbox = 'allow-scripts';
+          canvasEl.appendChild(iframe);
           previousData.canvasHtml = data.canvas.html;
         }
       }
