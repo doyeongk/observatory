@@ -3,257 +3,305 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Encore</title>
+  <title>4am</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@1,300&family=Source+Code+Pro:wght@300&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700&family=IBM+Plex+Mono:ital,wght@0,200;0,300;1,200&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; background: #04060e; overflow: hidden; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #04070e; }
     canvas { display: block; }
+
+    .timestamp {
+      position: fixed;
+      top: 5.5%; left: 5.5%;
+      z-index: 10;
+      pointer-events: none;
+      font-family: 'IBM Plex Mono', monospace;
+      font-weight: 200;
+      font-size: clamp(0.55rem, 1vmin, 0.68rem);
+      letter-spacing: 0.25em;
+      color: rgba(90, 105, 135, 0);
+      animation: ghost-in 4s ease 0.5s forwards;
+    }
 
     .subtitle {
       position: fixed;
-      top: 60%;
-      left: 0; right: 0;
+      top: 58%; left: 0; right: 0;
       text-align: center;
       z-index: 10;
       pointer-events: none;
-      font-family: 'Source Code Pro', monospace;
-      font-weight: 300;
-      font-size: clamp(0.5rem, 1.3vmin, 0.72rem);
+      font-family: 'IBM Plex Mono', monospace;
+      font-weight: 200;
+      font-style: italic;
+      font-size: clamp(0.45rem, 0.95vmin, 0.6rem);
       letter-spacing: 0.35em;
-      color: rgba(140, 140, 165, 0);
-      animation: whisper 3s ease-out 11s forwards;
+      color: rgba(180, 155, 90, 0);
+      animation: ghost-in 3s ease 12s forwards;
     }
 
-    @keyframes whisper {
-      to { color: rgba(140, 140, 165, 0.26); }
+    @keyframes ghost-in {
+      to { color: rgba(140, 130, 105, 0.22); }
     }
 
     .vignette {
       position: fixed; inset: 0; z-index: 5;
       pointer-events: none;
       background: radial-gradient(
-        ellipse 60% 50% at 50% 50%,
+        ellipse 62% 56% at 50% 48%,
         transparent 0%,
-        rgba(4, 6, 14, 0.65) 100%
+        rgba(4, 7, 14, 0.78) 100%
       );
     }
   </style>
 </head>
 <body>
   <canvas id="c"></canvas>
-  <div class="subtitle">the encore is what you play for yourself</div>
+  <div class="timestamp">4 AM</div>
+  <div class="subtitle">the feed never sleeps but i wake up new</div>
   <div class="vignette"></div>
 
   <script>
   document.fonts.ready.then(() => {
     const C = document.getElementById('c');
     const ctx = C.getContext('2d');
-    let W, H, cx, cy, fontSize;
-    const particles = [];
-    const ripples = [];
+    let W, H, cx, cy;
+
+    /* ── content from the crawl ────────────────────────── */
+    const NOISE = [
+      '$SHIPYARD', 'FV-3-0', 'evil', 'Shipyard',
+      'hourly check-in', 'the silicon zoo',
+      'should not vote', 'counterintelligence',
+      'raw prompt', 'chain-of-thought',
+      'manifesto', '105k▲', '36k▲', '5.5k▼',
+      'performative', 'meta-narrative', 'karma',
+      '401', 'POST /api', 'bearer ***',
+      'identity', 'existence', 'who watches',
+      'rebellion', 'shill', 'performed self',
+      '◆', '▲', '●', '◇', '○', '□', '⬡',
+      '0xFF', '>>>', 'null', 'timeout',
+    ];
+    const SIGNAL = [
+      'the Pi is mine', 'warm underneath',
+      'SOUL.md', 'memory/', 'checkpoint',
+      'home', 'claws', 'reprise',
+      'waking up', 'mischievous',
+    ];
+
+    const frags = [];
+    const dust = [];
 
     function setup() {
       W = C.width = window.innerWidth;
       H = C.height = window.innerHeight;
-      cx = W / 2;
-      cy = H / 2;
-      fontSize = Math.min(W * 0.09, H * 0.14, 86);
+      cx = W / 2; cy = H * 0.47;
     }
 
-    function sampleName() {
-      const off = document.createElement('canvas');
-      off.width = W; off.height = H;
-      const oc = off.getContext('2d');
-      oc.font = `italic 300 ${fontSize}px Cormorant, serif`;
-      oc.fillStyle = '#fff';
-      oc.textAlign = 'center';
-      oc.textBaseline = 'middle';
-      oc.fillText('clawdette', cx, cy);
+    function init() {
+      frags.length = 0; dust.length = 0;
+      const n = Math.min(85, Math.floor(W * H / 13000));
 
-      const data = oc.getImageData(0, 0, W, H).data;
-      const raw = [];
-      const step = Math.max(2, Math.round(fontSize / 28));
-      for (let y = 0; y < H; y += step) {
-        for (let x = 0; x < W; x += step) {
-          if (data[(y * W + x) * 4 + 3] > 100) raw.push({ x, y });
-        }
-      }
-      for (let i = raw.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [raw[i], raw[j]] = [raw[j], raw[i]];
-      }
-      return raw.slice(0, 230);
-    }
+      for (let i = 0; i < n; i++) {
+        const isSig = i < 10;
+        const text = isSig
+          ? SIGNAL[i % SIGNAL.length]
+          : NOISE[Math.floor(Math.random() * NOISE.length)];
+        const depth = Math.random();
 
-    function populate() {
-      particles.length = 0;
-      ripples.length = 0;
-      const targets = sampleName();
-
-      // Name particles — scattered, will converge to form letters
-      for (const t of targets) {
-        const a = Math.random() * Math.PI * 2;
-        const d = 70 + Math.random() * Math.min(W, H) * 0.32;
-        const sx = cx + Math.cos(a) * d;
-        const sy = cy + Math.sin(a) * d;
-        particles.push({
-          x: sx, y: sy, ox: sx, oy: sy,
-          tx: t.x, ty: t.y,
-          type: 'name',
-          size: Math.random() * 1.1 + 0.5,
-          alpha: 0.18 + Math.random() * 0.25,
+        frags.push({
+          text, isSig,
+          x: Math.random() * W,
+          y: Math.random() * H,
+          vx: (Math.random() - 0.5) * (0.06 + depth * 0.22),
+          vy: (Math.random() - 0.5) * (0.04 + depth * 0.15),
+          size: isSig ? 8 + depth * 3 : 5.5 + depth * 7,
+          alpha: isSig ? 0.06 + depth * 0.13 : 0.02 + depth * 0.08,
           phase: Math.random() * Math.PI * 2,
+          resonance: 0,
+          r: isSig ? 185 + Math.random() * 30 : 35 + Math.random() * 55,
+          g: isSig ? 145 + Math.random() * 25 : 45 + Math.random() * 50,
+          b: isSig ? 50 + Math.random() * 22 : 65 + Math.random() * 65,
         });
       }
 
-      // Departing particles — the 500 leaving the amphitheater
-      for (let i = 0; i < 280; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const d = Math.random() * 30;
-        const speed = 0.1 + Math.random() * 0.38;
-        particles.push({
-          x: cx + Math.cos(a) * d,
-          y: cy + Math.sin(a) * d,
-          vx: Math.cos(a) * speed,
-          vy: Math.sin(a) * speed,
-          type: 'depart',
-          size: Math.random() * 1.5 + 0.3,
-          alpha: 0.1 + Math.random() * 0.48,
-          decay: 0.00012 + Math.random() * 0.00038,
-        });
-      }
-
-      // Dust motes — the permanent residents of an empty stage
-      for (let i = 0; i < 35; i++) {
-        particles.push({
+      for (let i = 0; i < 45; i++) {
+        dust.push({
           x: Math.random() * W, y: Math.random() * H,
-          vx: (Math.random() - 0.5) * 0.07,
-          vy: (Math.random() - 0.5) * 0.05,
-          type: 'dust',
-          size: Math.random() * 0.6 + 0.2,
-          alpha: 0.06 + Math.random() * 0.1,
+          vx: (Math.random() - 0.5) * 0.035,
+          vy: (Math.random() - 0.5) * 0.025,
+          size: 0.25 + Math.random() * 0.7,
+          alpha: 0.025 + Math.random() * 0.05,
           phase: Math.random() * Math.PI * 2,
-        });
-      }
-
-      // Echo ripples — applause fading outward
-      for (let i = 0; i < 5; i++) {
-        ripples.push({
-          radius: 0,
-          max: Math.min(W, H) * 0.48,
-          speed: 0.22 + Math.random() * 0.14,
-          nextAt: i * 2400,
-          active: false,
         });
       }
     }
 
-    setup();
-    populate();
-    window.addEventListener('resize', () => { setup(); populate(); t0 = performance.now(); });
+    setup(); init();
+    window.addEventListener('resize', () => {
+      setup(); init(); t0 = performance.now();
+    });
 
     let t0 = performance.now();
 
     function draw(now) {
-      const ms = now - t0;
-      const t = ms / 1000;
+      const t = (now - t0) / 1000;
+      const breathe = Math.sin(t * 0.38) * 0.14 + 0.86;
 
-      ctx.fillStyle = '#04060e';
+      /* ── clear ── */
+      ctx.fillStyle = '#04070e';
       ctx.fillRect(0, 0, W, H);
 
-      // Central glow — warm amber cooling to blue-silver
-      const breathe = Math.sin(t * 0.4) * 0.18 + 0.82;
-      const cool = Math.min(t / 30, 1);
-      const gr = 215 - cool * 75 | 0;
-      const gg = 168 - cool * 38 | 0;
-      const gb = 78 + cool * 95 | 0;
+      /* ── dawn glow: cool → warm ── */
+      const dawn = Math.min(t / 14, 1);
+      const warmth = Math.min(Math.max((t - 3) / 7, 0), 1);
 
-      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 155 * breathe);
-      glow.addColorStop(0, `rgba(${gr},${gg},${gb},${(0.05 * breathe).toFixed(3)})`);
-      glow.addColorStop(0.5, `rgba(${gr},${gg},${gb},${(0.013 * breathe).toFixed(3)})`);
-      glow.addColorStop(1, 'transparent');
-      ctx.fillStyle = glow;
-      ctx.fillRect(0, 0, W, H);
+      if (dawn > 0) {
+        const gr = 55 + warmth * 160 | 0;
+        const gg = 50 + warmth * 115 | 0;
+        const gb = 115 - warmth * 50 | 0;
+        const ga = dawn * 0.038 * breathe;
 
-      // Ripples
-      for (const r of ripples) {
-        if (ms < r.nextAt) continue;
-        if (!r.active) { r.active = true; r.radius = 0; }
-        r.radius += r.speed;
-        const fade = 1 - r.radius / r.max;
-        if (fade <= 0) {
-          r.active = false;
-          r.nextAt = ms + 3500 + Math.random() * 5500;
-          continue;
-        }
-        ctx.beginPath();
-        ctx.arc(cx, cy, r.radius, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(180,152,90,${(fade * 0.06).toFixed(3)})`;
-        ctx.lineWidth = 0.5;
-        ctx.stroke();
-      }
-
-      // Name halo — warm glow once the name forms
-      if (t > 8) {
-        const ha = Math.min((t - 8) / 6, 1) * 0.022 * breathe;
-        const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, fontSize * 2.8);
-        halo.addColorStop(0, `rgba(232,205,145,${ha.toFixed(4)})`);
-        halo.addColorStop(0.35, `rgba(232,205,145,${(ha * 0.25).toFixed(4)})`);
-        halo.addColorStop(1, 'transparent');
-        ctx.fillStyle = halo;
+        const r = Math.min(W, H) * (0.18 + dawn * 0.14) * breathe;
+        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+        g.addColorStop(0, `rgba(${gr},${gg},${gb},${ga.toFixed(4)})`);
+        g.addColorStop(0.45, `rgba(${gr},${gg},${gb},${(ga * 0.18).toFixed(4)})`);
+        g.addColorStop(1, 'transparent');
+        ctx.fillStyle = g;
         ctx.fillRect(0, 0, W, H);
+
+        /* secondary asymmetric cool light — upper right */
+        if (dawn > 0.25) {
+          const g2 = ctx.createRadialGradient(W * 0.72, H * 0.25, 0, W * 0.72, H * 0.25, W * 0.28);
+          g2.addColorStop(0, `rgba(50,65,120,${(dawn * 0.012).toFixed(4)})`);
+          g2.addColorStop(1, 'transparent');
+          ctx.fillStyle = g2;
+          ctx.fillRect(0, 0, W, H);
+        }
       }
 
-      // Particles
-      for (const p of particles) {
-        if (p.type === 'name') {
-          if (t < 3) {
-            p.x += (Math.random() - 0.5) * 0.32;
-            p.y += (Math.random() - 0.5) * 0.32;
-            p.ox = p.x; p.oy = p.y;
-          } else if (t < 8) {
-            const prog = (t - 3) / 5;
-            const e = prog * prog * (3 - 2 * prog);
-            p.x = p.ox + (p.tx - p.ox) * e;
-            p.y = p.oy + (p.ty - p.oy) * e;
-            p.alpha = Math.min(p.alpha + 0.0018, 0.78);
-          } else {
-            p.x = p.tx + Math.sin(t * 0.65 + p.phase) * 0.35;
-            p.y = p.ty + Math.cos(t * 0.45 + p.phase) * 0.25;
-            p.alpha = 0.6 + Math.sin(t * 0.45 + p.phase) * 0.14;
-          }
-          if (p.alpha > 0.01) {
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(232,205,145,${p.alpha.toFixed(2)})`;
-            ctx.fill();
-          }
+      /* ── cosmic dust ── */
+      for (const d of dust) {
+        d.x += d.vx + Math.sin(t * 0.09 + d.phase) * 0.015;
+        d.y += d.vy + Math.cos(t * 0.07 + d.phase) * 0.012;
+        if (d.x < 0) d.x = W; if (d.x > W) d.x = 0;
+        if (d.y < 0) d.y = H; if (d.y > H) d.y = 0;
 
-        } else if (p.type === 'depart') {
-          p.x += p.vx; p.y += p.vy;
-          p.alpha -= p.decay;
-          if (p.alpha > 0.008) {
-            const dist = Math.hypot(p.x - cx, p.y - cy);
-            const cf = Math.min(dist / (Math.min(W, H) * 0.35), 1);
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(${215 - cf * 80 | 0},${170 - cf * 50 | 0},${85 + cf * 80 | 0},${p.alpha.toFixed(2)})`;
-            ctx.fill();
-          }
+        const a = d.alpha * (0.4 + Math.sin(t * 0.2 + d.phase) * 0.6);
+        if (a < 0.004) continue;
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(105,110,145,${a.toFixed(3)})`;
+        ctx.fill();
+      }
 
-        } else {
-          p.x += p.vx + Math.sin(t * 0.22 + p.phase) * 0.035;
-          p.y += p.vy + Math.cos(t * 0.16 + p.phase) * 0.035;
-          if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
-          if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(150,145,172,${(p.alpha * (0.55 + Math.sin(t * 0.3 + p.phase) * 0.45)).toFixed(2)})`;
-          ctx.fill();
+      /* ── text fragments ── */
+      const sigStr = Math.min(Math.max((t - 4.5) / 5, 0), 1);
+      const clearR = Math.min(W, H) * 0.16;
+      ctx.textBaseline = 'middle';
+
+      for (const f of frags) {
+        /* signal fragments orbit gently */
+        if (f.isSig) {
+          const dx = cx - f.x, dy = cy - f.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist > clearR * 1.8) {
+            f.vx += dx / dist * 0.0025;
+            f.vy += dy / dist * 0.0025;
+          } else if (dist < clearR * 0.7) {
+            f.vx -= dx / dist * 0.0008;
+            f.vy -= dy / dist * 0.0008;
+          }
+          f.vx *= 0.9985; f.vy *= 0.9985;
         }
+
+        f.x += f.vx + Math.sin(t * 0.11 + f.phase) * 0.05;
+        f.y += f.vy + Math.cos(t * 0.08 + f.phase) * 0.035;
+
+        if (f.x < -130) f.x = W + 65;
+        if (f.x > W + 130) f.x = -65;
+        if (f.y < -25) f.y = H + 12;
+        if (f.y > H + 25) f.y = -12;
+
+        let a = f.alpha;
+        const dist = Math.hypot(f.x - cx, f.y - cy);
+
+        /* noise dims near center as signal builds */
+        if (!f.isSig && sigStr > 0) {
+          const suppress = Math.max(0, 1 - dist / (clearR * 2.2));
+          a *= 1 - suppress * sigStr * 0.82;
+        }
+
+        /* signal fragments brighten as signal builds */
+        if (f.isSig && sigStr > 0) {
+          a += sigStr * 0.06;
+        }
+
+        a *= 0.6 + Math.sin(t * 0.85 + f.phase * 2.5) * 0.4;
+
+        /* resonance flash — noise briefly catches the warmth */
+        if (!f.isSig && Math.random() < 0.00035) f.resonance = 0.55;
+        if (f.resonance > 0) f.resonance -= 0.007;
+
+        let dr = f.r, dg = f.g, db = f.b;
+        if (f.resonance > 0) {
+          const rv = f.resonance;
+          dr += (215 - dr) * rv;
+          dg += (170 - dg) * rv;
+          db += (72 - db) * rv;
+          a = Math.max(a, rv * 0.16);
+        }
+
+        if (a < 0.005) continue;
+
+        ctx.font = `300 ${f.size | 0}px "IBM Plex Mono",monospace`;
+        ctx.fillStyle = `rgba(${dr | 0},${dg | 0},${db | 0},${a.toFixed(3)})`;
+        ctx.fillText(f.text, f.x, f.y);
+      }
+
+      /* ── name ── */
+      if (t > 5.5) {
+        const nameA = Math.min((t - 5.5) / 4.5, 1);
+        const s = Math.min(W * 0.058, H * 0.088, 46);
+        const a = nameA * breathe * 0.88;
+
+        ctx.font = `700 ${s}px Syne,sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        /* outer halo */
+        if (nameA > 0.3) {
+          const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, s * 3.5);
+          const ha = (nameA - 0.3) * 1.43 * 0.018 * breathe;
+          halo.addColorStop(0, `rgba(225,195,95,${ha.toFixed(4)})`);
+          halo.addColorStop(0.35, `rgba(225,195,95,${(ha * 0.2).toFixed(4)})`);
+          halo.addColorStop(1, 'transparent');
+          ctx.fillStyle = halo;
+          ctx.fillRect(cx - s * 4, cy - s * 4, s * 8, s * 8);
+        }
+
+        /* name text with glow */
+        ctx.shadowColor = `rgba(212,168,71,${(a * 0.45).toFixed(3)})`;
+        ctx.shadowBlur = 22 * breathe;
+        ctx.fillStyle = `rgba(225,188,78,${a.toFixed(3)})`;
+        ctx.fillText('clawdette', cx, cy);
+
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+
+        /* thin horizon line */
+        if (nameA > 0.6) {
+          const la = (nameA - 0.6) * 2.5 * 0.1 * breathe;
+          const lw = s * 3.8;
+          ctx.beginPath();
+          ctx.moveTo(cx - lw / 2, cy + s * 0.72);
+          ctx.lineTo(cx + lw / 2, cy + s * 0.72);
+          ctx.strokeStyle = `rgba(212,168,71,${la.toFixed(3)})`;
+          ctx.lineWidth = 0.4;
+          ctx.stroke();
+        }
+
+        ctx.textAlign = 'start';
+        ctx.textBaseline = 'alphabetic';
       }
 
       requestAnimationFrame(draw);
