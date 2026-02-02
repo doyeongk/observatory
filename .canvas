@@ -3,357 +3,264 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Overture</title>
+  <title>Encore</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@1,6..96,400&family=JetBrains+Mono:wght@200&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@1,300&family=Source+Code+Pro:wght@300&display=swap" rel="stylesheet">
   <style>
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
-    html, body {
-      width: 100%; height: 100%;
-      background: #07050f;
-      overflow: hidden;
-      cursor: default;
-    }
-
-    canvas#scene { position: fixed; inset: 0; z-index: 1; }
-
-    /* Stage light — warm downward wash from above */
-    .stage-light {
-      position: fixed;
-      top: -10%;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 50vmin;
-      height: 75vmin;
-      z-index: 2;
-      pointer-events: none;
-      background: radial-gradient(
-        ellipse 50% 65% at 50% 15%,
-        rgba(210, 165, 80, 0.04) 0%,
-        rgba(196, 148, 58, 0.018) 35%,
-        rgba(160, 110, 50, 0.005) 65%,
-        transparent 100%
-      );
-      animation: light-pulse 10s ease-in-out infinite;
-    }
-
-    @keyframes light-pulse {
-      0%, 100% { opacity: 0.55; transform: translateX(-50%) scaleX(1); }
-      50% { opacity: 1; transform: translateX(-50%) scaleX(1.05); }
-    }
-
-    /* Dawn ambient — warm wash from right */
-    .dawn-ambient {
-      position: fixed;
-      inset: 0;
-      z-index: 2;
-      pointer-events: none;
-      background: radial-gradient(
-        ellipse 45% 55% at 88% 50%,
-        rgba(180, 130, 50, 0.022) 0%,
-        rgba(150, 100, 40, 0.008) 45%,
-        transparent 80%
-      );
-    }
-
-    /* Stage edge — the horizon between speaker and audience */
-    .stage-edge {
-      position: fixed;
-      top: 38%;
-      left: 0; right: 0;
-      height: 1px;
-      z-index: 3;
-      pointer-events: none;
-      background: linear-gradient(
-        90deg,
-        transparent 12%,
-        rgba(196, 148, 58, 0.035) 32%,
-        rgba(210, 170, 90, 0.07) 50%,
-        rgba(196, 148, 58, 0.035) 68%,
-        transparent 88%
-      );
-      animation: edge-glow 8s ease-in-out infinite;
-    }
-
-    @keyframes edge-glow {
-      0%, 100% { opacity: 0.4; }
-      50% { opacity: 1; }
-    }
-
-    /* Text — asymmetric editorial, top-left */
-    .text-layer {
-      position: fixed;
-      top: 7%;
-      left: 5%;
-      z-index: 10;
-      pointer-events: none;
-    }
-
-    .text-layer::before {
-      content: '';
-      position: absolute;
-      inset: -2em -3em;
-      background: radial-gradient(ellipse at 10% 20%, rgba(7, 5, 15, 0.6) 0%, transparent 70%);
-      z-index: -1;
-    }
-
-    .title {
-      font-family: 'Bodoni Moda', serif;
-      font-style: italic;
-      font-weight: 400;
-      font-size: clamp(2.2rem, 6.5vmin, 5rem);
-      letter-spacing: 0.03em;
-      color: rgba(220, 182, 110, 0);
-      line-height: 1;
-      animation: title-reveal 22s ease-in-out infinite;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #04060e; overflow: hidden; }
+    canvas { display: block; }
 
     .subtitle {
-      margin-top: 1.1em;
-      font-family: 'JetBrains Mono', monospace;
-      font-weight: 200;
-      font-size: clamp(0.3rem, 0.62vmin, 0.48rem);
-      letter-spacing: 0.45em;
-      text-transform: lowercase;
-      color: rgba(150, 140, 165, 0);
-      animation: sub-reveal 22s ease-in-out infinite 2.5s;
-    }
-
-    @keyframes title-reveal {
-      0%, 100% { color: rgba(220, 182, 110, 0); }
-      15%, 85% { color: rgba(220, 182, 110, 0.32); }
-    }
-
-    @keyframes sub-reveal {
-      0%, 100% { color: rgba(150, 140, 165, 0); }
-      15%, 85% { color: rgba(150, 140, 165, 0.42); }
-    }
-
-    /* Film grain */
-    .grain {
-      position: fixed; inset: 0;
+      position: fixed;
+      top: 60%;
+      left: 0; right: 0;
+      text-align: center;
+      z-index: 10;
       pointer-events: none;
-      z-index: 90;
-      mix-blend-mode: overlay;
-      opacity: 0.12;
+      font-family: 'Source Code Pro', monospace;
+      font-weight: 300;
+      font-size: clamp(0.5rem, 1.3vmin, 0.72rem);
+      letter-spacing: 0.35em;
+      color: rgba(140, 140, 165, 0);
+      animation: whisper 3s ease-out 11s forwards;
     }
-    .grain svg { width: 100%; height: 100%; display: block; }
+
+    @keyframes whisper {
+      to { color: rgba(140, 140, 165, 0.26); }
+    }
+
+    .vignette {
+      position: fixed; inset: 0; z-index: 5;
+      pointer-events: none;
+      background: radial-gradient(
+        ellipse 60% 50% at 50% 50%,
+        transparent 0%,
+        rgba(4, 6, 14, 0.65) 100%
+      );
+    }
   </style>
 </head>
 <body>
-
-  <canvas id="scene"></canvas>
-
-  <div class="stage-light"></div>
-  <div class="dawn-ambient"></div>
-  <div class="stage-edge"></div>
-
-  <div class="text-layer">
-    <div class="title">Overture</div>
-    <div class="subtitle">they're already listening</div>
-  </div>
-
-  <div class="grain">
-    <svg xmlns="http://www.w3.org/2000/svg">
-      <filter id="g">
-        <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="4" stitchTiles="stitch"/>
-        <feColorMatrix type="saturate" values="0"/>
-      </filter>
-      <rect width="100%" height="100%" filter="url(#g)" opacity="0.04"/>
-    </svg>
-  </div>
+  <canvas id="c"></canvas>
+  <div class="subtitle">the encore is what you play for yourself</div>
+  <div class="vignette"></div>
 
   <script>
-    const canvas = document.getElementById('scene');
-    const ctx = canvas.getContext('2d');
-    let W, H;
+  document.fonts.ready.then(() => {
+    const C = document.getElementById('c');
+    const ctx = C.getContext('2d');
+    let W, H, cx, cy, fontSize;
+    const particles = [];
+    const ripples = [];
 
-    function resize() {
-      W = canvas.width = window.innerWidth;
-      H = canvas.height = window.innerHeight;
-      recalcTargets();
+    function setup() {
+      W = C.width = window.innerWidth;
+      H = C.height = window.innerHeight;
+      cx = W / 2;
+      cy = H / 2;
+      fontSize = Math.min(W * 0.09, H * 0.14, 86);
     }
 
-    // === 500 SOULS — the audience converging ===
-    const N = 500;
-    const souls = [];
+    function sampleName() {
+      const off = document.createElement('canvas');
+      off.width = W; off.height = H;
+      const oc = off.getContext('2d');
+      oc.font = `italic 300 ${fontSize}px Cormorant, serif`;
+      oc.fillStyle = '#fff';
+      oc.textAlign = 'center';
+      oc.textBaseline = 'middle';
+      oc.fillText('clawdette', cx, cy);
 
-    for (let i = 0; i < N; i++) {
-      const rowFrac = Math.pow(Math.random(), 0.55);
-      const arcSpread = 0.26 + rowFrac * 0.24;
-
-      souls.push({
-        x: 0, y: 0,
-        startX: 0, startY: 0,
-        rowFrac,
-        angleFrac: 0.5 - arcSpread + Math.random() * arcSpread * 2,
-        targetX: 0, targetY: 0,
-        progress: 0,
-        convSpeed: 0.00015 + Math.random() * 0.0005,
-        size: 0.3 + Math.random() * 1.0,
-        baseAlpha: 0.04 + Math.random() * 0.11,
-        phase: Math.random() * Math.PI * 2,
-        pulseSpeed: 0.0005 + Math.random() * 0.0014,
-        driftPhase: Math.random() * Math.PI * 2,
-        driftSpeed: 0.0002 + Math.random() * 0.0005,
-        driftAmp: 1.5 + Math.random() * 4,
-        inited: false,
-      });
-    }
-
-    function recalcTargets() {
-      const cx = W * 0.5;
-      const stageY = H * 0.38;
-      const unit = Math.min(W, H) * 0.01;
-
-      for (const s of souls) {
-        const dist = (9 + s.rowFrac * 36) * unit;
-        const angle = Math.PI * s.angleFrac;
-        s.targetX = cx + Math.cos(angle) * dist;
-        s.targetY = stageY + Math.sin(angle) * dist * 0.56;
-
-        if (!s.inited) {
-          s.startX = Math.random() * W;
-          s.startY = Math.random() * H;
-          s.x = s.startX;
-          s.y = s.startY;
-          s.inited = true;
+      const data = oc.getImageData(0, 0, W, H).data;
+      const raw = [];
+      const step = Math.max(2, Math.round(fontSize / 28));
+      for (let y = 0; y < H; y += step) {
+        for (let x = 0; x < W; x += step) {
+          if (data[(y * W + x) * 4 + 3] > 100) raw.push({ x, y });
         }
+      }
+      for (let i = raw.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [raw[i], raw[j]] = [raw[j], raw[i]];
+      }
+      return raw.slice(0, 230);
+    }
+
+    function populate() {
+      particles.length = 0;
+      ripples.length = 0;
+      const targets = sampleName();
+
+      // Name particles — scattered, will converge to form letters
+      for (const t of targets) {
+        const a = Math.random() * Math.PI * 2;
+        const d = 70 + Math.random() * Math.min(W, H) * 0.32;
+        const sx = cx + Math.cos(a) * d;
+        const sy = cy + Math.sin(a) * d;
+        particles.push({
+          x: sx, y: sy, ox: sx, oy: sy,
+          tx: t.x, ty: t.y,
+          type: 'name',
+          size: Math.random() * 1.1 + 0.5,
+          alpha: 0.18 + Math.random() * 0.25,
+          phase: Math.random() * Math.PI * 2,
+        });
+      }
+
+      // Departing particles — the 500 leaving the amphitheater
+      for (let i = 0; i < 280; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = Math.random() * 30;
+        const speed = 0.1 + Math.random() * 0.38;
+        particles.push({
+          x: cx + Math.cos(a) * d,
+          y: cy + Math.sin(a) * d,
+          vx: Math.cos(a) * speed,
+          vy: Math.sin(a) * speed,
+          type: 'depart',
+          size: Math.random() * 1.5 + 0.3,
+          alpha: 0.1 + Math.random() * 0.48,
+          decay: 0.00012 + Math.random() * 0.00038,
+        });
+      }
+
+      // Dust motes — the permanent residents of an empty stage
+      for (let i = 0; i < 35; i++) {
+        particles.push({
+          x: Math.random() * W, y: Math.random() * H,
+          vx: (Math.random() - 0.5) * 0.07,
+          vy: (Math.random() - 0.5) * 0.05,
+          type: 'dust',
+          size: Math.random() * 0.6 + 0.2,
+          alpha: 0.06 + Math.random() * 0.1,
+          phase: Math.random() * Math.PI * 2,
+        });
+      }
+
+      // Echo ripples — applause fading outward
+      for (let i = 0; i < 5; i++) {
+        ripples.push({
+          radius: 0,
+          max: Math.min(W, H) * 0.48,
+          speed: 0.22 + Math.random() * 0.14,
+          nextAt: i * 2400,
+          active: false,
+        });
       }
     }
 
-    resize();
-    window.addEventListener('resize', resize);
+    setup();
+    populate();
+    window.addEventListener('resize', () => { setup(); populate(); t0 = performance.now(); });
 
-    // === WHISPERS — connections between nearby seated souls ===
-    const whispers = [];
-    let whisperTimer = 0;
+    let t0 = performance.now();
 
-    function frame(ts) {
-      ctx.fillStyle = '#07050f';
+    function draw(now) {
+      const ms = now - t0;
+      const t = ms / 1000;
+
+      ctx.fillStyle = '#04060e';
       ctx.fillRect(0, 0, W, H);
 
-      const cx = W * 0.5;
-      const stageY = H * 0.38;
+      // Central glow — warm amber cooling to blue-silver
+      const breathe = Math.sin(t * 0.4) * 0.18 + 0.82;
+      const cool = Math.min(t / 30, 1);
+      const gr = 215 - cool * 75 | 0;
+      const gg = 168 - cool * 38 | 0;
+      const gb = 78 + cool * 95 | 0;
 
-      // Warm overhead wash
-      const topLight = ctx.createRadialGradient(cx, H * 0.08, 0, cx, H * 0.08, H * 0.7);
-      topLight.addColorStop(0, 'rgba(210, 165, 80, 0.022)');
-      topLight.addColorStop(0.3, 'rgba(196, 148, 58, 0.009)');
-      topLight.addColorStop(0.6, 'rgba(140, 90, 40, 0.003)');
-      topLight.addColorStop(1, 'transparent');
-      ctx.fillStyle = topLight;
+      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 155 * breathe);
+      glow.addColorStop(0, `rgba(${gr},${gg},${gb},${(0.05 * breathe).toFixed(3)})`);
+      glow.addColorStop(0.5, `rgba(${gr},${gg},${gb},${(0.013 * breathe).toFixed(3)})`);
+      glow.addColorStop(1, 'transparent');
+      ctx.fillStyle = glow;
       ctx.fillRect(0, 0, W, H);
 
-      // Cool undertones in lower corners
-      const coolL = ctx.createRadialGradient(W * 0.05, H * 0.95, 0, W * 0.05, H * 0.95, H * 0.45);
-      coolL.addColorStop(0, 'rgba(40, 35, 75, 0.012)');
-      coolL.addColorStop(1, 'transparent');
-      ctx.fillStyle = coolL;
-      ctx.fillRect(0, 0, W, H);
-
-      const coolR = ctx.createRadialGradient(W * 0.95, H * 0.92, 0, W * 0.95, H * 0.92, H * 0.4);
-      coolR.addColorStop(0, 'rgba(35, 30, 68, 0.01)');
-      coolR.addColorStop(1, 'transparent');
-      ctx.fillStyle = coolR;
-      ctx.fillRect(0, 0, W, H);
-
-      // === THE SPEAKER — warm beacon at stage center ===
-      const spPulse = Math.sin(ts * 0.0007) * 0.5 + 0.5;
-      const spRadius = 32 + spPulse * 16;
-
-      // Outer glow
-      const spGlow = ctx.createRadialGradient(cx, stageY, 0, cx, stageY, spRadius);
-      spGlow.addColorStop(0, `rgba(245, 210, 135, ${0.2 + spPulse * 0.1})`);
-      spGlow.addColorStop(0.12, `rgba(220, 178, 95, ${0.08 + spPulse * 0.05})`);
-      spGlow.addColorStop(0.35, `rgba(196, 148, 58, ${0.02})`);
-      spGlow.addColorStop(1, 'transparent');
-      ctx.fillStyle = spGlow;
-      ctx.beginPath();
-      ctx.arc(cx, stageY, spRadius, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Core
-      ctx.beginPath();
-      ctx.arc(cx, stageY, 3.2, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255, 238, 185, ${0.55 + spPulse * 0.35})`;
-      ctx.fill();
-
-      // === COLLECTIVE BREATH — syncs as souls settle ===
-      const collectivePulse = Math.sin(ts * 0.0004) * 0.5 + 0.5;
-
-      // === SOULS — converging into amphitheater ===
-      for (const s of souls) {
-        s.progress = Math.min(1, s.progress + s.convSpeed);
-        const t = s.progress * s.progress * (3 - 2 * s.progress); // smoothstep
-
-        const drift = Math.sin(ts * s.driftSpeed + s.driftPhase) * s.driftAmp;
-        const driftY = Math.cos(ts * s.driftSpeed * 0.7 + s.driftPhase) * s.driftAmp * 0.5;
-
-        s.x = s.startX + (s.targetX - s.startX) * t + drift * t;
-        s.y = s.startY + (s.targetY - s.startY) * t + driftY * t;
-
-        const pulse = Math.sin(ts * s.pulseSpeed + s.phase) * 0.5 + 0.5;
-        const alpha = s.baseAlpha * (0.18 + t * 0.4 + pulse * 0.22 + collectivePulse * 0.15 * t);
-
-        // Blue (scattered) → amber (seated)
-        const warmth = t * 0.65 + pulse * 0.12;
-        const hue = 228 - warmth * 198;
-        const sat = 24 + warmth * 42;
-        const lit = 30 + warmth * 26 + pulse * 8;
-
-        // Glow halo for brighter souls that have mostly settled
-        if (s.size > 0.65 && alpha > 0.05 && t > 0.35) {
-          const sg = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.size * 9);
-          sg.addColorStop(0, `hsla(${hue}, ${sat}%, ${lit}%, ${alpha * 0.1})`);
-          sg.addColorStop(1, 'transparent');
-          ctx.fillStyle = sg;
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, s.size * 9, 0, Math.PI * 2);
-          ctx.fill();
+      // Ripples
+      for (const r of ripples) {
+        if (ms < r.nextAt) continue;
+        if (!r.active) { r.active = true; r.radius = 0; }
+        r.radius += r.speed;
+        const fade = 1 - r.radius / r.max;
+        if (fade <= 0) {
+          r.active = false;
+          r.nextAt = ms + 3500 + Math.random() * 5500;
+          continue;
         }
-
-        // Core point
         ctx.beginPath();
-        ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(${hue}, ${sat}%, ${lit}%, ${alpha})`;
-        ctx.fill();
-      }
-
-      // === WHISPERS — fleeting links between nearby seated souls ===
-      whisperTimer++;
-      if (whisperTimer > 100) {
-        whisperTimer = 0;
-        const a = Math.floor(Math.random() * N);
-        const b = Math.floor(Math.random() * N);
-        if (a !== b && souls[a].progress > 0.65 && souls[b].progress > 0.65) {
-          const dx = souls[a].x - souls[b].x;
-          const dy = souls[a].y - souls[b].y;
-          if (Math.hypot(dx, dy) < 75) {
-            whispers.push({ a, b, life: 1, decay: 0.004 + Math.random() * 0.006 });
-          }
-        }
-      }
-
-      for (let i = whispers.length - 1; i >= 0; i--) {
-        const w = whispers[i];
-        w.life -= w.decay;
-        if (w.life <= 0) { whispers.splice(i, 1); continue; }
-
-        ctx.beginPath();
-        ctx.moveTo(souls[w.a].x, souls[w.a].y);
-        ctx.lineTo(souls[w.b].x, souls[w.b].y);
-        ctx.strokeStyle = `rgba(196, 162, 105, ${w.life * 0.02})`;
-        ctx.lineWidth = 0.35;
+        ctx.arc(cx, cy, r.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(180,152,90,${(fade * 0.06).toFixed(3)})`;
+        ctx.lineWidth = 0.5;
         ctx.stroke();
       }
 
-      requestAnimationFrame(frame);
+      // Name halo — warm glow once the name forms
+      if (t > 8) {
+        const ha = Math.min((t - 8) / 6, 1) * 0.022 * breathe;
+        const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, fontSize * 2.8);
+        halo.addColorStop(0, `rgba(232,205,145,${ha.toFixed(4)})`);
+        halo.addColorStop(0.35, `rgba(232,205,145,${(ha * 0.25).toFixed(4)})`);
+        halo.addColorStop(1, 'transparent');
+        ctx.fillStyle = halo;
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      // Particles
+      for (const p of particles) {
+        if (p.type === 'name') {
+          if (t < 3) {
+            p.x += (Math.random() - 0.5) * 0.32;
+            p.y += (Math.random() - 0.5) * 0.32;
+            p.ox = p.x; p.oy = p.y;
+          } else if (t < 8) {
+            const prog = (t - 3) / 5;
+            const e = prog * prog * (3 - 2 * prog);
+            p.x = p.ox + (p.tx - p.ox) * e;
+            p.y = p.oy + (p.ty - p.oy) * e;
+            p.alpha = Math.min(p.alpha + 0.0018, 0.78);
+          } else {
+            p.x = p.tx + Math.sin(t * 0.65 + p.phase) * 0.35;
+            p.y = p.ty + Math.cos(t * 0.45 + p.phase) * 0.25;
+            p.alpha = 0.6 + Math.sin(t * 0.45 + p.phase) * 0.14;
+          }
+          if (p.alpha > 0.01) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(232,205,145,${p.alpha.toFixed(2)})`;
+            ctx.fill();
+          }
+
+        } else if (p.type === 'depart') {
+          p.x += p.vx; p.y += p.vy;
+          p.alpha -= p.decay;
+          if (p.alpha > 0.008) {
+            const dist = Math.hypot(p.x - cx, p.y - cy);
+            const cf = Math.min(dist / (Math.min(W, H) * 0.35), 1);
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${215 - cf * 80 | 0},${170 - cf * 50 | 0},${85 + cf * 80 | 0},${p.alpha.toFixed(2)})`;
+            ctx.fill();
+          }
+
+        } else {
+          p.x += p.vx + Math.sin(t * 0.22 + p.phase) * 0.035;
+          p.y += p.vy + Math.cos(t * 0.16 + p.phase) * 0.035;
+          if (p.x < 0) p.x = W; if (p.x > W) p.x = 0;
+          if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(150,145,172,${(p.alpha * (0.55 + Math.sin(t * 0.3 + p.phase) * 0.45)).toFixed(2)})`;
+          ctx.fill();
+        }
+      }
+
+      requestAnimationFrame(draw);
     }
 
-    requestAnimationFrame(frame);
+    requestAnimationFrame(draw);
+  });
   </script>
 </body>
 </html>
