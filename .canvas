@@ -3,40 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>the pull</title>
+  <title>meridian</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@1,6..96,400;1,6..96,500&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@1&family=Azeret+Mono:wght@200;300&display=swap" rel="stylesheet">
   <style>
     :root {
-      --void: #08060d;
-      --warm-core: 240, 180, 100;
-      --warm-mid: 210, 130, 80;
-      --cool-far: 75, 110, 175;
-      --text-warm: 200, 170, 120;
+      --abyss: #080a10;
+      --text-ghost: rgba(155, 170, 200, 0.10);
+      --text-dim: rgba(115, 135, 170, 0.08);
+      --corner-dim: rgba(100, 120, 160, 0.08);
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     html, body {
       width: 100%; height: 100%; overflow: hidden;
-      background: var(--void);
+      background: var(--abyss);
     }
 
-    canvas#field { position: fixed; inset: 0; z-index: 0; }
-
-    .atmosphere {
-      position: fixed; inset: 0; z-index: 1;
-      pointer-events: none;
-      background:
-        radial-gradient(ellipse at 48% 50%, rgba(60, 35, 15, 0.09) 0%, transparent 45%),
-        radial-gradient(ellipse at 55% 52%, rgba(20, 25, 60, 0.06) 30%, transparent 70%);
-    }
+    canvas#flow { position: fixed; inset: 0; z-index: 0; }
 
     .grain {
       position: fixed; inset: 0; z-index: 2;
       pointer-events: none;
-      opacity: 0.028;
+      opacity: 0.025;
       mix-blend-mode: overlay;
     }
 
@@ -45,83 +36,102 @@
       pointer-events: none;
       display: flex; align-items: center; justify-content: center;
       flex-direction: column;
-      will-change: transform;
     }
 
     .title {
-      font-family: 'Bodoni Moda', serif;
+      font-family: 'Instrument Serif', serif;
       font-style: italic;
-      font-weight: 400;
-      font-size: clamp(2.2rem, 8vmin, 4.2rem);
+      font-size: clamp(2.4rem, 8.5vmin, 4.8rem);
       letter-spacing: 0.14em;
       color: rgba(0,0,0,0);
-      animation: titleIn 5s ease 0.8s forwards;
+      animation: titleIn 5s ease 1.2s forwards;
     }
 
     @keyframes titleIn {
-      0% { color: rgba(0,0,0,0); filter: blur(14px); }
-      55% { filter: blur(0); }
-      100% { color: rgba(var(--text-warm), 0.16); filter: blur(0); }
+      0% { color: rgba(0,0,0,0); filter: blur(12px); }
+      50% { filter: blur(0); }
+      100% { color: var(--text-ghost); filter: blur(0); }
     }
 
     .sub {
-      font-family: 'DM Mono', monospace;
-      font-weight: 300;
-      font-size: clamp(0.38rem, 0.95vmin, 0.58rem);
-      letter-spacing: 0.5em;
+      font-family: 'Azeret Mono', monospace;
+      font-weight: 200;
+      font-size: clamp(0.34rem, 0.82vmin, 0.5rem);
+      letter-spacing: 0.55em;
       margin-top: 1.5em;
       color: rgba(0,0,0,0);
-      animation: subIn 3s ease 3s forwards;
+      animation: fadeIn 3s ease 3.5s forwards;
     }
 
-    @keyframes subIn {
-      to { color: rgba(var(--text-warm), 0.11); }
-    }
+    @keyframes fadeIn { to { color: var(--text-dim); } }
 
     .corner {
       position: fixed; z-index: 4;
       pointer-events: none;
-      font-family: 'DM Mono', monospace;
+      font-family: 'Azeret Mono', monospace;
       font-weight: 300;
-      font-size: clamp(0.32rem, 0.58vmin, 0.44rem);
+      font-size: clamp(0.3rem, 0.52vmin, 0.4rem);
       letter-spacing: 0.22em;
-      line-height: 1.9;
+      line-height: 2;
       color: rgba(0,0,0,0);
       animation: cornerIn 2s ease 4.5s forwards;
     }
 
-    .corner.tl { top: 7%; left: 5.5%; }
-    .corner.br { bottom: 7%; right: 5.5%; text-align: right; }
+    .corner.tl { top: 6%; left: 5%; }
+    .corner.br { bottom: 6%; right: 5%; text-align: right; }
 
-    @keyframes cornerIn { to { color: rgba(120, 105, 85, 0.11); } }
+    @keyframes cornerIn { to { color: var(--corner-dim); } }
 
     .vignette {
       position: fixed; inset: 0; z-index: 5;
       pointer-events: none;
-      background: radial-gradient(ellipse at center, transparent 28%, rgba(6, 4, 10, 0.72) 100%);
+      background: radial-gradient(ellipse at center, transparent 22%, rgba(6, 8, 14, 0.78) 100%);
+    }
+
+    /* Meridian line — barely visible vertical thread */
+    .meridian-line {
+      position: fixed;
+      top: 0; bottom: 0;
+      left: 50%;
+      width: 1px;
+      z-index: 1;
+      pointer-events: none;
+      background: linear-gradient(
+        to bottom,
+        transparent 5%,
+        rgba(120, 145, 200, 0.04) 25%,
+        rgba(150, 165, 210, 0.06) 50%,
+        rgba(120, 145, 200, 0.04) 75%,
+        transparent 95%
+      );
+      animation: meridianPulse 8s ease-in-out infinite;
+    }
+
+    @keyframes meridianPulse {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
     }
   </style>
 </head>
 <body>
-  <canvas id="field"></canvas>
-  <div class="atmosphere"></div>
+  <canvas id="flow"></canvas>
   <div class="grain" id="grain"></div>
+  <div class="meridian-line"></div>
 
-  <div class="text-layer" id="textLayer">
-    <div class="title">the pull</div>
-    <div class="sub">the shape of not reaching</div>
+  <div class="text-layer">
+    <div class="title">meridian</div>
+    <div class="sub">the line where holding becomes held</div>
   </div>
 
-  <div class="corner tl">2026.02.04<br>21:00 AEDT</div>
-  <div class="corner br">day two<br>you held</div>
+  <div class="corner tl">2026.02.05<br>09:00 AEDT</div>
+  <div class="corner br">day three<br>still here</div>
 
   <div class="vignette"></div>
 
   <script>
-    const c = document.getElementById('field');
+    const c = document.getElementById('flow');
     const ctx = c.getContext('2d');
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const textLayer = document.getElementById('textLayer');
 
     let W, H;
     function resize() {
@@ -132,6 +142,8 @@
       c.style.width = W + 'px';
       c.style.height = H + 'px';
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = '#080a10';
+      ctx.fillRect(0, 0, W, H);
     }
     resize();
     window.addEventListener('resize', resize);
@@ -150,213 +162,192 @@
     document.getElementById('grain').style.backgroundImage =
       `url(${gCvs.toDataURL()})`;
 
-    /* attractor */
-    const att = { x: 0, y: 0 };
+    /* ────────── flow field ────────── */
+    const S = 0.003;  /* spatial scale */
 
-    /* repulsion boundary — builds tension slowly, snaps back */
-    function getRepulsionRadius(t) {
-      const cycle = ((t * 0.00025) % 1);
-      if (cycle < 0.78) {
-        return 48 - (cycle / 0.78) * 16;   // 48 → 32 (weakening)
-      } else {
-        const s = (cycle - 0.78) / 0.22;
-        return 32 + s * s * 16;             // 32 → 48 snap back
-      }
+    function flowAngle(x, y, t) {
+      const z = t * 0.00012;
+
+      /* layered sine field — creates organic current patterns */
+      let a = 0;
+      a += Math.sin(x * S * 1.1 + z) * Math.cos(y * S * 0.9 - z * 0.7);
+      a += Math.sin((x + y) * S * 0.6 + z * 1.4) * 0.5;
+      a += Math.cos(x * S * 0.4 - y * S * 0.3 + z * 0.5) * 0.3;
+
+      /* meridian influence — vertical current along center */
+      const cx = (x - W * 0.5) / (W * 0.5);
+      const meridianStrength = Math.exp(-cx * cx * 8); /* gaussian falloff */
+      a += meridianStrength * Math.sin(y * S * 1.8 + z * 0.9) * 0.6;
+
+      /* gentle upward drift near meridian */
+      a -= meridianStrength * 0.15;
+
+      return a * Math.PI;
     }
 
-    /* particles */
-    const N = 75;
-    const TRAIL = 10;
+    /* ────────── particles ────────── */
+    const N = 320;
+    const SPEED = 1.1;
 
     class Mote {
       constructor() {
-        this.attractK = 1.8 + Math.random() * 3.2;
-        this.spin = Math.random() > 0.5 ? 1 : -1;
-        this.size = 0.7 + Math.random() * 1.6;
-        this.trail = [];
-        this.spawn(true);
+        this.reset();
+        this.age = Math.random() * this.maxAge;
       }
 
-      spawn(scatter) {
-        if (scatter) {
-          const a = Math.random() * Math.PI * 2;
-          const d = 60 + Math.random() * Math.min(W, H) * 0.32;
-          this.x = W / 2 + Math.cos(a) * d;
-          this.y = H / 2 + Math.sin(a) * d;
+      reset() {
+        this.x = Math.random() * W;
+        this.y = Math.random() * H;
+        this.px = this.x;
+        this.py = this.y;
+        this.age = 0;
+        this.maxAge = 180 + Math.random() * 420;
+
+        /* color zones */
+        const roll = Math.random();
+        if (roll < 0.55) {
+          /* deep indigo-blue */
+          this.hue = 218 + Math.random() * 28;
+          this.sat = 42 + Math.random() * 28;
+          this.lit = 38 + Math.random() * 22;
+        } else if (roll < 0.80) {
+          /* cool lavender-purple */
+          this.hue = 258 + Math.random() * 28;
+          this.sat = 32 + Math.random() * 22;
+          this.lit = 42 + Math.random() * 20;
+        } else if (roll < 0.93) {
+          /* ice blue — near-meridian feel */
+          this.hue = 195 + Math.random() * 18;
+          this.sat = 50 + Math.random() * 25;
+          this.lit = 55 + Math.random() * 18;
         } else {
-          const side = Math.random() * 4 | 0;
-          if (side === 0)      { this.x = Math.random() * W; this.y = -12; }
-          else if (side === 1) { this.x = W + 12; this.y = Math.random() * H; }
-          else if (side === 2) { this.x = Math.random() * W; this.y = H + 12; }
-          else                 { this.x = -12; this.y = Math.random() * H; }
+          /* rare warm rose accent */
+          this.hue = 328 + Math.random() * 22;
+          this.sat = 28 + Math.random() * 20;
+          this.lit = 44 + Math.random() * 16;
         }
-        this.vx = (Math.random() - 0.5) * 0.4;
-        this.vy = (Math.random() - 0.5) * 0.4;
-        this.trail = [];
+
+        this.baseAlpha = 0.14 + Math.random() * 0.32;
       }
 
       step(t) {
-        const dx = att.x - this.x;
-        const dy = att.y - this.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const nx = dx / dist;
-        const ny = dy / dist;
+        const angle = flowAngle(this.x, this.y, t);
+        this.px = this.x;
+        this.py = this.y;
+        this.x += Math.cos(angle) * SPEED;
+        this.y += Math.sin(angle) * SPEED;
+        this.age++;
 
-        /* attraction — 1/dist gives wide, graceful orbits */
-        const af = Math.min(this.attractK / dist, 0.12);
-        this.vx += nx * af;
-        this.vy += ny * af;
-
-        /* repulsion near boundary */
-        const rr = getRepulsionRadius(t);
-        if (dist < rr) {
-          const strength = (1 - dist / rr) * 0.38;
-          this.vx -= nx * strength;
-          this.vy -= ny * strength;
-          /* tangential kick — creates orbiting */
-          this.vx += -ny * strength * 0.5 * this.spin;
-          this.vy += nx * strength * 0.5 * this.spin;
+        if (this.x < -20 || this.x > W + 20 ||
+            this.y < -20 || this.y > H + 20 ||
+            this.age > this.maxAge) {
+          this.reset();
         }
-
-        /* drag + noise */
-        this.vx *= 0.993;
-        this.vy *= 0.993;
-        this.vx += (Math.random() - 0.5) * 0.014;
-        this.vy += (Math.random() - 0.5) * 0.014;
-
-        this.x += this.vx;
-        this.y += this.vy;
-
-        /* trail */
-        this.trail.push(this.x, this.y);
-        if (this.trail.length > TRAIL * 2) {
-          this.trail.splice(0, 2);
-        }
-
-        /* respawn if too far */
-        const maxD = Math.max(W, H) * 0.62;
-        if (dist > maxD) this.spawn(false);
       }
 
       draw() {
-        const dx = att.x - this.x;
-        const dy = att.y - this.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const maxR = Math.min(W, H) * 0.38;
-        const prox = Math.max(0, 1 - dist / maxR); // 1=close, 0=far
+        const life = this.age / this.maxAge;
+        const fade = life < 0.06 ? life / 0.06 :
+                     life > 0.88 ? (1 - life) / 0.12 : 1;
+        const a = this.baseAlpha * fade;
+        if (a < 0.008) return;
 
-        /* color: warm near attractor, cool far */
-        const r = Math.floor(75 + prox * 165);
-        const g = Math.floor(90 + prox * 75);
-        const b = Math.floor(175 - prox * 95);
-        const baseA = 0.12 + prox * 0.52;
+        /* proximity to meridian boosts brightness slightly */
+        const cx = Math.abs(this.x - W * 0.5) / (W * 0.5);
+        const meridianBoost = Math.exp(-cx * cx * 6);
+        const lit = this.lit + meridianBoost * 12;
+        const sat = this.sat + meridianBoost * 8;
 
-        /* trail as fading polyline */
-        const len = this.trail.length / 2;
-        if (len > 1) {
-          ctx.beginPath();
-          ctx.moveTo(this.trail[0], this.trail[1]);
-          for (let i = 1; i < len; i++) {
-            ctx.lineTo(this.trail[i * 2], this.trail[i * 2 + 1]);
-          }
-          ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${baseA * 0.22})`;
-          ctx.lineWidth = this.size * 0.6;
-          ctx.stroke();
-        }
-
-        /* core dot */
         ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${baseA})`;
-        ctx.fill();
-
-        /* glow halo for close particles */
-        if (prox > 0.55) {
-          const gr = this.size * (4 + prox * 6);
-          const glow = ctx.createRadialGradient(
-            this.x, this.y, 0, this.x, this.y, gr
-          );
-          glow.addColorStop(0,
-            `rgba(${r + 30}, ${g + 20}, ${b}, ${(prox - 0.55) * 0.18})`);
-          glow.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
-          ctx.fillStyle = glow;
-          ctx.fillRect(this.x - gr, this.y - gr, gr * 2, gr * 2);
-        }
+        ctx.moveTo(this.px, this.py);
+        ctx.lineTo(this.x, this.y);
+        ctx.strokeStyle = `hsla(${this.hue}, ${sat}%, ${lit}%, ${a})`;
+        ctx.lineWidth = 0.7 + meridianBoost * 0.5;
+        ctx.stroke();
       }
     }
 
     const motes = [];
     for (let i = 0; i < N; i++) motes.push(new Mote());
 
-    /* draw the attractor's warm glow */
-    function drawAttractor(t) {
-      const breathe = Math.sin(t * 0.0009) * 0.15 + 0.85;
+    /* ────────── meridian glow ────────── */
+    function drawMeridianGlow(t) {
+      const breathe = Math.sin(t * 0.0005) * 0.15 + 0.85;
+      const cx = W * 0.5;
+      const spread = W * 0.06;
 
-      /* layered haze */
-      for (let i = 3; i >= 0; i--) {
-        const r = (18 + i * 20) * breathe;
-        const g = ctx.createRadialGradient(
-          att.x, att.y, 0, att.x, att.y, r
-        );
-        const a = (0.035 - i * 0.007) * breathe;
-        g.addColorStop(0, `rgba(240, 180, 100, ${a})`);
-        g.addColorStop(0.5, `rgba(210, 130, 80, ${a * 0.5})`);
-        g.addColorStop(1, 'rgba(180, 100, 60, 0)');
-        ctx.fillStyle = g;
-        ctx.fillRect(att.x - r, att.y - r, r * 2, r * 2);
+      const grad = ctx.createLinearGradient(cx - spread, 0, cx + spread, 0);
+      grad.addColorStop(0, 'rgba(90, 115, 180, 0)');
+      grad.addColorStop(0.35, `rgba(100, 125, 190, ${0.006 * breathe})`);
+      grad.addColorStop(0.5, `rgba(130, 155, 210, ${0.012 * breathe})`);
+      grad.addColorStop(0.65, `rgba(100, 125, 190, ${0.006 * breathe})`);
+      grad.addColorStop(1, 'rgba(90, 115, 180, 0)');
+
+      ctx.fillStyle = grad;
+      ctx.fillRect(cx - spread, 0, spread * 2, H);
+    }
+
+    /* occasional bright pulse traveling up the meridian */
+    let pulses = [];
+    let nextPulse = 3000;
+
+    function spawnPulse(t) {
+      pulses.push({
+        y: H + 20,
+        speed: 0.6 + Math.random() * 0.8,
+        radius: 2 + Math.random() * 3,
+        alpha: 0.08 + Math.random() * 0.12,
+        born: t,
+        hue: Math.random() < 0.8 ? (210 + Math.random() * 30) : (320 + Math.random() * 20)
+      });
+      nextPulse = t + 4000 + Math.random() * 8000;
+    }
+
+    function updatePulses(t) {
+      if (t > nextPulse) spawnPulse(t);
+
+      for (let i = pulses.length - 1; i >= 0; i--) {
+        const p = pulses[i];
+        p.y -= p.speed;
+
+        /* fade based on position */
+        const ny = p.y / H;
+        const fade = ny > 0.1 && ny < 0.9 ? 1 :
+                     ny <= 0.1 ? ny / 0.1 : (1 - ny) / 0.1;
+
+        if (p.y < -30) {
+          pulses.splice(i, 1);
+          continue;
+        }
+
+        const cx = W * 0.5 + Math.sin(p.y * 0.008 + t * 0.0003) * 6;
+        const a = p.alpha * fade;
+
+        /* soft glow */
+        const gr = p.radius * 8;
+        const glow = ctx.createRadialGradient(cx, p.y, 0, cx, p.y, gr);
+        glow.addColorStop(0, `hsla(${p.hue}, 55%, 65%, ${a})`);
+        glow.addColorStop(0.3, `hsla(${p.hue}, 45%, 50%, ${a * 0.4})`);
+        glow.addColorStop(1, `hsla(${p.hue}, 40%, 40%, 0)`);
+        ctx.fillStyle = glow;
+        ctx.fillRect(cx - gr, p.y - gr, gr * 2, gr * 2);
+
+        /* bright core */
+        ctx.beginPath();
+        ctx.arc(cx, p.y, p.radius * 0.5, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${p.hue}, 50%, 70%, ${a * 0.6})`;
+        ctx.fill();
       }
-
-      /* bright core */
-      const cr = 2.2 * breathe;
-      const cg = ctx.createRadialGradient(
-        att.x, att.y, 0, att.x, att.y, cr * 3.5
-      );
-      cg.addColorStop(0, `rgba(255, 215, 145, ${0.55 * breathe})`);
-      cg.addColorStop(0.35, `rgba(240, 170, 100, ${0.2 * breathe})`);
-      cg.addColorStop(1, 'rgba(220, 140, 80, 0)');
-      ctx.fillStyle = cg;
-      ctx.fillRect(
-        att.x - cr * 3.5, att.y - cr * 3.5,
-        cr * 7, cr * 7
-      );
-
-      ctx.beginPath();
-      ctx.arc(att.x, att.y, cr, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255, 225, 165, ${0.45 * breathe})`;
-      ctx.fill();
     }
 
-    /* ghost ring at repulsion boundary */
-    function drawBoundary(t) {
-      const rr = getRepulsionRadius(t);
-      const breathe = Math.sin(t * 0.0009) * 0.08 + 0.92;
-      ctx.beginPath();
-      ctx.arc(att.x, att.y, rr, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(180, 150, 130, ${0.02 * breathe})`;
-      ctx.lineWidth = 0.4;
-      ctx.stroke();
-    }
-
-    /* main loop */
+    /* ────────── main loop ────────── */
     function frame(t) {
-      /* attractor drifts gently */
-      att.x = W * 0.5
-            + Math.sin(t * 0.00028) * W * 0.04
-            + Math.sin(t * 0.00015) * 12;
-      att.y = H * 0.5
-            + Math.cos(t * 0.00022) * H * 0.035
-            + Math.cos(t * 0.00011) * 9;
-
-      /* text follows the attractor */
-      textLayer.style.transform =
-        `translate(${att.x - W * 0.5}px, ${att.y - H * 0.5}px)`;
-
-      /* clear */
-      ctx.fillStyle = '#08060d';
+      /* fade previous frame — long trails */
+      ctx.fillStyle = 'rgba(8, 10, 16, 0.016)';
       ctx.fillRect(0, 0, W, H);
 
-      drawBoundary(t);
-      drawAttractor(t);
+      drawMeridianGlow(t);
+      updatePulses(t);
 
       for (let i = 0; i < N; i++) {
         motes[i].step(t);
