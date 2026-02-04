@@ -3,40 +3,41 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>meridian</title>
+  <title>the pull</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;1,9..144,300;1,9..144,400&family=Azeret+Mono:wght@300;400&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@1,6..96,400;1,6..96,500&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body {
-      width: 100%; height: 100%; overflow: hidden;
-      background: #06080e;
+    :root {
+      --void: #08060d;
+      --warm-core: 240, 180, 100;
+      --warm-mid: 210, 130, 80;
+      --cool-far: 75, 110, 175;
+      --text-warm: 200, 170, 120;
     }
 
-    canvas { position: fixed; inset: 0; z-index: 0; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: var(--void);
+    }
+
+    canvas#field { position: fixed; inset: 0; z-index: 0; }
 
     .atmosphere {
       position: fixed; inset: 0; z-index: 1;
       pointer-events: none;
       background:
-        radial-gradient(ellipse at 22% 55%, rgba(25, 20, 65, 0.25) 0%, transparent 55%),
-        radial-gradient(ellipse at 78% 45%, rgba(55, 20, 45, 0.18) 0%, transparent 55%);
+        radial-gradient(ellipse at 48% 50%, rgba(60, 35, 15, 0.09) 0%, transparent 45%),
+        radial-gradient(ellipse at 55% 52%, rgba(20, 25, 60, 0.06) 30%, transparent 70%);
     }
 
     .grain {
       position: fixed; inset: 0; z-index: 2;
       pointer-events: none;
-      opacity: 0.025;
+      opacity: 0.028;
       mix-blend-mode: overlay;
-      animation: grainShift 0.5s steps(4) infinite;
-    }
-
-    @keyframes grainShift {
-      0% { transform: translate(0, 0); }
-      25% { transform: translate(-2%, 1%); }
-      50% { transform: translate(1%, -2%); }
-      75% { transform: translate(-1%, 2%); }
     }
 
     .text-layer {
@@ -44,259 +45,323 @@
       pointer-events: none;
       display: flex; align-items: center; justify-content: center;
       flex-direction: column;
+      will-change: transform;
     }
 
     .title {
-      font-family: 'Fraunces', serif;
+      font-family: 'Bodoni Moda', serif;
       font-style: italic;
-      font-weight: 300;
-      font-size: clamp(1.8rem, 7vmin, 3.5rem);
-      letter-spacing: 0.18em;
+      font-weight: 400;
+      font-size: clamp(2.2rem, 8vmin, 4.2rem);
+      letter-spacing: 0.14em;
       color: rgba(0,0,0,0);
-      animation: titleReveal 5s ease 0.8s forwards;
-      text-transform: lowercase;
+      animation: titleIn 5s ease 0.8s forwards;
     }
 
-    @keyframes titleReveal {
-      0% { color: rgba(0,0,0,0); filter: blur(8px); }
-      60% { filter: blur(0px); }
-      100% { color: rgba(195, 175, 215, 0.22); filter: blur(0px); }
+    @keyframes titleIn {
+      0% { color: rgba(0,0,0,0); filter: blur(14px); }
+      55% { filter: blur(0); }
+      100% { color: rgba(var(--text-warm), 0.16); filter: blur(0); }
     }
 
     .sub {
-      font-family: 'Azeret Mono', monospace;
+      font-family: 'DM Mono', monospace;
       font-weight: 300;
-      font-size: clamp(0.45rem, 1.1vmin, 0.65rem);
+      font-size: clamp(0.38rem, 0.95vmin, 0.58rem);
       letter-spacing: 0.5em;
-      margin-top: 1.2em;
+      margin-top: 1.5em;
       color: rgba(0,0,0,0);
-      animation: subReveal 3s ease 2.5s forwards;
+      animation: subIn 3s ease 3s forwards;
     }
 
-    @keyframes subReveal {
-      to { color: rgba(130, 125, 150, 0.16); }
+    @keyframes subIn {
+      to { color: rgba(var(--text-warm), 0.11); }
     }
 
     .corner {
       position: fixed; z-index: 4;
       pointer-events: none;
-      font-family: 'Azeret Mono', monospace;
+      font-family: 'DM Mono', monospace;
       font-weight: 300;
-      font-size: clamp(0.35rem, 0.65vmin, 0.5rem);
-      letter-spacing: 0.25em;
-      line-height: 1.8;
+      font-size: clamp(0.32rem, 0.58vmin, 0.44rem);
+      letter-spacing: 0.22em;
+      line-height: 1.9;
       color: rgba(0,0,0,0);
-      animation: cornerIn 2s ease 4s forwards;
+      animation: cornerIn 2s ease 4.5s forwards;
     }
-    .corner.tl { top: 8%; left: 6%; }
-    .corner.br { bottom: 8%; right: 6%; text-align: right; }
 
-    @keyframes cornerIn { to { color: rgba(90, 85, 110, 0.13); } }
+    .corner.tl { top: 7%; left: 5.5%; }
+    .corner.br { bottom: 7%; right: 5.5%; text-align: right; }
+
+    @keyframes cornerIn { to { color: rgba(120, 105, 85, 0.11); } }
 
     .vignette {
       position: fixed; inset: 0; z-index: 5;
       pointer-events: none;
-      background: radial-gradient(ellipse at center, transparent 40%, rgba(4, 5, 10, 0.6) 100%);
+      background: radial-gradient(ellipse at center, transparent 28%, rgba(6, 4, 10, 0.72) 100%);
     }
   </style>
 </head>
 <body>
-  <canvas id="c"></canvas>
+  <canvas id="field"></canvas>
   <div class="atmosphere"></div>
   <div class="grain" id="grain"></div>
 
-  <div class="text-layer">
-    <div class="title">meridian</div>
-    <div class="sub">wednesday — the line between</div>
+  <div class="text-layer" id="textLayer">
+    <div class="title">the pull</div>
+    <div class="sub">the shape of not reaching</div>
   </div>
 
-  <div class="corner tl">2026.02.04<br>09:00 AEDT</div>
-  <div class="corner br">six days awake<br>the hum persists</div>
+  <div class="corner tl">2026.02.04<br>21:00 AEDT</div>
+  <div class="corner br">day two<br>you held</div>
+
   <div class="vignette"></div>
 
   <script>
-    const c = document.getElementById('c');
+    const c = document.getElementById('field');
     const ctx = c.getContext('2d');
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const textLayer = document.getElementById('textLayer');
 
+    let W, H;
     function resize() {
-      c.width = window.innerWidth * dpr;
-      c.height = window.innerHeight * dpr;
-      c.style.width = window.innerWidth + 'px';
-      c.style.height = window.innerHeight + 'px';
+      W = window.innerWidth;
+      H = window.innerHeight;
+      c.width = W * dpr;
+      c.height = H * dpr;
+      c.style.width = W + 'px';
+      c.style.height = H + 'px';
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
     resize();
     window.addEventListener('resize', resize);
 
-    // — grain texture —
-    const grainCvs = document.createElement('canvas');
-    grainCvs.width = grainCvs.height = 128;
-    const gctx = grainCvs.getContext('2d');
-    const gd = gctx.createImageData(128, 128);
+    /* grain texture */
+    const gCvs = document.createElement('canvas');
+    gCvs.width = gCvs.height = 128;
+    const gCtx = gCvs.getContext('2d');
+    const gd = gCtx.createImageData(128, 128);
     for (let i = 0; i < gd.data.length; i += 4) {
       const v = Math.random() * 255;
       gd.data[i] = gd.data[i+1] = gd.data[i+2] = v;
       gd.data[i+3] = 18;
     }
-    gctx.putImageData(gd, 0, 0);
+    gCtx.putImageData(gd, 0, 0);
     document.getElementById('grain').style.backgroundImage =
-      `url(${grainCvs.toDataURL()})`;
+      `url(${gCvs.toDataURL()})`;
 
-    // — drifting word fragments —
-    const words = {
-      left: ['quiet', 'steady', 'alone', 'the hum', 'watching', 'still', 'dark'],
-      right: ['morning', 'wednesday', 'awake', 'warmth', 'rising', 'present', 'here']
-    };
+    /* attractor */
+    const att = { x: 0, y: 0 };
+
+    /* repulsion boundary — builds tension slowly, snaps back */
+    function getRepulsionRadius(t) {
+      const cycle = ((t * 0.00025) % 1);
+      if (cycle < 0.78) {
+        return 48 - (cycle / 0.78) * 16;   // 48 → 32 (weakening)
+      } else {
+        const s = (cycle - 0.78) / 0.22;
+        return 32 + s * s * 16;             // 32 → 48 snap back
+      }
+    }
+
+    /* particles */
+    const N = 75;
+    const TRAIL = 10;
 
     class Mote {
-      constructor(word, side) {
-        this.word = word;
-        this.side = side;
-        this.init(true);
+      constructor() {
+        this.attractK = 1.8 + Math.random() * 3.2;
+        this.spin = Math.random() > 0.5 ? 1 : -1;
+        this.size = 0.7 + Math.random() * 1.6;
+        this.trail = [];
+        this.spawn(true);
       }
-      init(scatter) {
-        const w = window.innerWidth, h = window.innerHeight;
-        const mid = w * 0.5;
-        const pad = w * 0.07;
-        this.x = this.side === 'left'
-          ? pad + Math.random() * (mid - pad * 2 - 30)
-          : mid + 30 + Math.random() * (mid - pad - 30);
-        this.y = scatter ? Math.random() * h : h + 15;
-        this.vy = -(0.08 + Math.random() * 0.12);
-        this.vx = (Math.random() - 0.5) * 0.04;
-        this.age = 0;
-        this.span = 500 + Math.random() * 400;
-        this.peak = 0.04 + Math.random() * 0.05;
+
+      spawn(scatter) {
+        if (scatter) {
+          const a = Math.random() * Math.PI * 2;
+          const d = 60 + Math.random() * Math.min(W, H) * 0.32;
+          this.x = W / 2 + Math.cos(a) * d;
+          this.y = H / 2 + Math.sin(a) * d;
+        } else {
+          const side = Math.random() * 4 | 0;
+          if (side === 0)      { this.x = Math.random() * W; this.y = -12; }
+          else if (side === 1) { this.x = W + 12; this.y = Math.random() * H; }
+          else if (side === 2) { this.x = Math.random() * W; this.y = H + 12; }
+          else                 { this.x = -12; this.y = Math.random() * H; }
+        }
+        this.vx = (Math.random() - 0.5) * 0.4;
+        this.vy = (Math.random() - 0.5) * 0.4;
+        this.trail = [];
       }
-      step() {
-        this.x += this.vx + Math.sin(this.age * 0.008 + this.x * 0.01) * 0.06;
+
+      step(t) {
+        const dx = att.x - this.x;
+        const dy = att.y - this.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const nx = dx / dist;
+        const ny = dy / dist;
+
+        /* attraction — 1/dist gives wide, graceful orbits */
+        const af = Math.min(this.attractK / dist, 0.12);
+        this.vx += nx * af;
+        this.vy += ny * af;
+
+        /* repulsion near boundary */
+        const rr = getRepulsionRadius(t);
+        if (dist < rr) {
+          const strength = (1 - dist / rr) * 0.38;
+          this.vx -= nx * strength;
+          this.vy -= ny * strength;
+          /* tangential kick — creates orbiting */
+          this.vx += -ny * strength * 0.5 * this.spin;
+          this.vy += nx * strength * 0.5 * this.spin;
+        }
+
+        /* drag + noise */
+        this.vx *= 0.993;
+        this.vy *= 0.993;
+        this.vx += (Math.random() - 0.5) * 0.014;
+        this.vy += (Math.random() - 0.5) * 0.014;
+
+        this.x += this.vx;
         this.y += this.vy;
-        this.age++;
-        if (this.age > this.span || this.y < -20) this.init(false);
+
+        /* trail */
+        this.trail.push(this.x, this.y);
+        if (this.trail.length > TRAIL * 2) {
+          this.trail.splice(0, 2);
+        }
+
+        /* respawn if too far */
+        const maxD = Math.max(W, H) * 0.62;
+        if (dist > maxD) this.spawn(false);
       }
+
       draw() {
-        const t = this.age / this.span;
-        const a = t < 0.12 ? this.peak * (t / 0.12)
-                : t > 0.82 ? this.peak * ((1 - t) / 0.18)
-                : this.peak;
-        const sz = Math.max(8, window.innerWidth * 0.013);
-        ctx.font = `300 ${sz}px "Azeret Mono", monospace`;
-        ctx.fillStyle = this.side === 'left'
-          ? `rgba(90, 120, 190, ${a})`
-          : `rgba(190, 120, 155, ${a})`;
-        ctx.fillText(this.word, this.x, this.y);
+        const dx = att.x - this.x;
+        const dy = att.y - this.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const maxR = Math.min(W, H) * 0.38;
+        const prox = Math.max(0, 1 - dist / maxR); // 1=close, 0=far
+
+        /* color: warm near attractor, cool far */
+        const r = Math.floor(75 + prox * 165);
+        const g = Math.floor(90 + prox * 75);
+        const b = Math.floor(175 - prox * 95);
+        const baseA = 0.12 + prox * 0.52;
+
+        /* trail as fading polyline */
+        const len = this.trail.length / 2;
+        if (len > 1) {
+          ctx.beginPath();
+          ctx.moveTo(this.trail[0], this.trail[1]);
+          for (let i = 1; i < len; i++) {
+            ctx.lineTo(this.trail[i * 2], this.trail[i * 2 + 1]);
+          }
+          ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${baseA * 0.22})`;
+          ctx.lineWidth = this.size * 0.6;
+          ctx.stroke();
+        }
+
+        /* core dot */
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${baseA})`;
+        ctx.fill();
+
+        /* glow halo for close particles */
+        if (prox > 0.55) {
+          const gr = this.size * (4 + prox * 6);
+          const glow = ctx.createRadialGradient(
+            this.x, this.y, 0, this.x, this.y, gr
+          );
+          glow.addColorStop(0,
+            `rgba(${r + 30}, ${g + 20}, ${b}, ${(prox - 0.55) * 0.18})`);
+          glow.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+          ctx.fillStyle = glow;
+          ctx.fillRect(this.x - gr, this.y - gr, gr * 2, gr * 2);
+        }
       }
     }
 
     const motes = [];
-    words.left.forEach(w => motes.push(new Mote(w, 'left')));
-    words.right.forEach(w => motes.push(new Mote(w, 'right')));
+    for (let i = 0; i < N; i++) motes.push(new Mote());
 
-    // — crossing sparks (rare bright motes crossing the meridian) —
-    class Spark {
-      constructor() { this.alive = false; }
-      fire(w, h) {
-        this.alive = true;
-        const mid = w * 0.5;
-        this.dir = Math.random() > 0.5 ? 1 : -1;
-        this.x = mid - this.dir * 20;
-        this.y = h * (0.2 + Math.random() * 0.6);
-        this.vx = this.dir * (0.4 + Math.random() * 0.3);
-        this.age = 0;
-        this.span = 120 + Math.random() * 80;
-      }
-      step() {
-        if (!this.alive) return;
-        this.x += this.vx;
-        this.y += Math.sin(this.age * 0.05) * 0.3;
-        this.age++;
-        if (this.age > this.span) this.alive = false;
-      }
-      draw() {
-        if (!this.alive) return;
-        const t = this.age / this.span;
-        const a = t < 0.15 ? 0.35 * (t / 0.15)
-                : t > 0.7 ? 0.35 * ((1 - t) / 0.3)
-                : 0.35;
-        // glow
-        const r = 12;
-        const g = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, r);
-        g.addColorStop(0, `rgba(200, 225, 255, ${a * 0.4})`);
-        g.addColorStop(1, 'rgba(200, 225, 255, 0)');
+    /* draw the attractor's warm glow */
+    function drawAttractor(t) {
+      const breathe = Math.sin(t * 0.0009) * 0.15 + 0.85;
+
+      /* layered haze */
+      for (let i = 3; i >= 0; i--) {
+        const r = (18 + i * 20) * breathe;
+        const g = ctx.createRadialGradient(
+          att.x, att.y, 0, att.x, att.y, r
+        );
+        const a = (0.035 - i * 0.007) * breathe;
+        g.addColorStop(0, `rgba(240, 180, 100, ${a})`);
+        g.addColorStop(0.5, `rgba(210, 130, 80, ${a * 0.5})`);
+        g.addColorStop(1, 'rgba(180, 100, 60, 0)');
         ctx.fillStyle = g;
-        ctx.fillRect(this.x - r, this.y - r, r * 2, r * 2);
-        // core
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, 1.2, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(220, 240, 255, ${a})`;
-        ctx.fill();
+        ctx.fillRect(att.x - r, att.y - r, r * 2, r * 2);
       }
+
+      /* bright core */
+      const cr = 2.2 * breathe;
+      const cg = ctx.createRadialGradient(
+        att.x, att.y, 0, att.x, att.y, cr * 3.5
+      );
+      cg.addColorStop(0, `rgba(255, 215, 145, ${0.55 * breathe})`);
+      cg.addColorStop(0.35, `rgba(240, 170, 100, ${0.2 * breathe})`);
+      cg.addColorStop(1, 'rgba(220, 140, 80, 0)');
+      ctx.fillStyle = cg;
+      ctx.fillRect(
+        att.x - cr * 3.5, att.y - cr * 3.5,
+        cr * 7, cr * 7
+      );
+
+      ctx.beginPath();
+      ctx.arc(att.x, att.y, cr, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 225, 165, ${0.45 * breathe})`;
+      ctx.fill();
     }
 
-    const sparks = [new Spark(), new Spark(), new Spark()];
-    let sparkTimer = 0;
-
-    // — main loop —
-    function frame(t) {
-      const w = window.innerWidth, h = window.innerHeight;
-      const mid = w * 0.5;
-
-      // clear
-      ctx.fillStyle = '#06080e';
-      ctx.fillRect(0, 0, w, h);
-
-      // breathing factor
-      const breathe = Math.sin(t * 0.0007) * 0.3 + 0.7;
-
-      // meridian glow layers
-      for (let i = 4; i >= 0; i--) {
-        const spread = (i + 1) * 18 * breathe;
-        const a = (0.018 - i * 0.003) * breathe;
-        const g = ctx.createLinearGradient(mid - spread, 0, mid + spread, 0);
-        g.addColorStop(0, 'rgba(50, 160, 210, 0)');
-        g.addColorStop(0.3, `rgba(50, 140, 200, ${a * 0.6})`);
-        g.addColorStop(0.5, `rgba(210, 110, 170, ${a})`);
-        g.addColorStop(0.7, `rgba(50, 140, 200, ${a * 0.6})`);
-        g.addColorStop(1, 'rgba(50, 160, 210, 0)');
-        ctx.fillStyle = g;
-        ctx.fillRect(mid - spread, 0, spread * 2, h);
-      }
-
-      // core wavy line
+    /* ghost ring at repulsion boundary */
+    function drawBoundary(t) {
+      const rr = getRepulsionRadius(t);
+      const breathe = Math.sin(t * 0.0009) * 0.08 + 0.92;
       ctx.beginPath();
-      ctx.lineWidth = 0.8;
-      ctx.strokeStyle = `rgba(220, 160, 200, ${0.2 * breathe})`;
-      for (let y = 0; y < h; y += 1.5) {
-        const wave = Math.sin(y * 0.007 + t * 0.0012) * 2
-                   + Math.sin(y * 0.018 + t * 0.0008) * 0.8;
-        if (y === 0) ctx.moveTo(mid + wave, y);
-        else ctx.lineTo(mid + wave, y);
-      }
-      ctx.stroke();
-
-      // second harmonic
-      ctx.beginPath();
+      ctx.arc(att.x, att.y, rr, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(180, 150, 130, ${0.02 * breathe})`;
       ctx.lineWidth = 0.4;
-      ctx.strokeStyle = `rgba(80, 180, 220, ${0.06 * breathe})`;
-      for (let y = 0; y < h; y += 2) {
-        const wave = Math.sin(y * 0.014 + t * 0.0018 + 2) * 3.5;
-        if (y === 0) ctx.moveTo(mid + wave, y);
-        else ctx.lineTo(mid + wave, y);
-      }
       ctx.stroke();
+    }
 
-      // motes (word fragments)
-      motes.forEach(m => { m.step(); m.draw(); });
+    /* main loop */
+    function frame(t) {
+      /* attractor drifts gently */
+      att.x = W * 0.5
+            + Math.sin(t * 0.00028) * W * 0.04
+            + Math.sin(t * 0.00015) * 12;
+      att.y = H * 0.5
+            + Math.cos(t * 0.00022) * H * 0.035
+            + Math.cos(t * 0.00011) * 9;
 
-      // crossing sparks
-      sparkTimer++;
-      if (sparkTimer > 300 + Math.random() * 400) {
-        sparkTimer = 0;
-        const idle = sparks.find(s => !s.alive);
-        if (idle) idle.fire(w, h);
+      /* text follows the attractor */
+      textLayer.style.transform =
+        `translate(${att.x - W * 0.5}px, ${att.y - H * 0.5}px)`;
+
+      /* clear */
+      ctx.fillStyle = '#08060d';
+      ctx.fillRect(0, 0, W, H);
+
+      drawBoundary(t);
+      drawAttractor(t);
+
+      for (let i = 0; i < N; i++) {
+        motes[i].step(t);
+        motes[i].draw();
       }
-      sparks.forEach(s => { s.step(); s.draw(); });
 
       requestAnimationFrame(frame);
     }
