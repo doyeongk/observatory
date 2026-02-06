@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dawn Loop</title>
+  <title>still glowing</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;1,300&family=Questrial&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;1,300&family=JetBrains+Mono:wght@200&display=swap" rel="stylesheet">
   <style>
     * {
       margin: 0;
@@ -14,55 +15,33 @@
     }
 
     :root {
-      --deep-night: #0a0612;
-      --pre-dawn: #1a0f2e;
-      --dawn-rose: #e8a4b4;
-      --morning-gold: #f4d58d;
-      --soft-cyan: #7fdbda;
-      --mist: rgba(255, 255, 255, 0.03);
+      --deep: #030810;
+      --abyss: #0a0f1a;
+      --biolum-cyan: #00f5d4;
+      --biolum-magenta: #ff00a6;
+      --biolum-purple: #9b5de5;
+      --soft-white: rgba(255, 255, 255, 0.7);
     }
 
-    body {
-      min-height: 100vh;
-      background: var(--deep-night);
+    html, body {
+      width: 100%;
+      height: 100%;
       overflow: hidden;
+      background: var(--deep);
       font-family: 'Cormorant Garamond', Georgia, serif;
     }
 
-    .canvas-container {
-      width: 100%;
-      height: 100vh;
-      position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    /* Dawn gradient emerging from darkness */
-    .dawn-gradient {
+    .ocean {
       position: absolute;
       inset: 0;
       background: 
-        radial-gradient(ellipse 120% 80% at 50% 100%, 
-          var(--dawn-rose) 0%,
-          rgba(232, 164, 180, 0.4) 20%,
-          transparent 50%),
-        radial-gradient(ellipse 80% 60% at 30% 90%, 
-          var(--morning-gold) 0%,
-          rgba(244, 213, 141, 0.2) 30%,
-          transparent 60%),
-        linear-gradient(to top,
-          var(--pre-dawn) 0%,
-          var(--deep-night) 100%);
-      animation: dawn-breathe 8s ease-in-out infinite;
+        radial-gradient(ellipse 120% 80% at 50% 120%, rgba(0, 245, 212, 0.03) 0%, transparent 50%),
+        radial-gradient(ellipse 100% 60% at 20% 80%, rgba(155, 93, 229, 0.04) 0%, transparent 40%),
+        radial-gradient(ellipse 80% 50% at 80% 90%, rgba(255, 0, 166, 0.03) 0%, transparent 40%),
+        linear-gradient(180deg, var(--deep) 0%, var(--abyss) 100%);
     }
 
-    @keyframes dawn-breathe {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.85; }
-    }
-
-    /* Floating particles like dust in morning light */
+    /* Floating particles - plankton in the dark */
     .particles {
       position: absolute;
       inset: 0;
@@ -71,119 +50,233 @@
 
     .particle {
       position: absolute;
-      width: 2px;
-      height: 2px;
-      background: var(--soft-cyan);
       border-radius: 50%;
       opacity: 0;
-      animation: float-up 12s ease-in-out infinite;
+      animation: drift 20s infinite ease-in-out;
     }
 
-    @keyframes float-up {
-      0% { 
-        transform: translateY(100vh) scale(0);
+    @keyframes drift {
+      0%, 100% {
         opacity: 0;
+        transform: translateY(0) translateX(0);
       }
-      10% { opacity: 0.6; }
-      90% { opacity: 0.3; }
-      100% { 
-        transform: translateY(-20vh) scale(1.5);
+      10% {
+        opacity: 0.6;
+      }
+      50% {
+        opacity: 0.3;
+      }
+      90% {
+        opacity: 0.5;
+      }
+      95% {
         opacity: 0;
+        transform: translateY(-100vh) translateX(20px);
       }
     }
 
-    /* Horizon line */
-    .horizon {
+    /* Jellyfish - the main presence */
+    .jellyfish-container {
       position: absolute;
-      bottom: 25%;
-      left: 0;
-      right: 0;
-      height: 1px;
-      background: linear-gradient(90deg,
-        transparent 0%,
-        var(--dawn-rose) 20%,
-        var(--morning-gold) 50%,
-        var(--dawn-rose) 80%,
+      bottom: 15%;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      animation: float 8s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% {
+        transform: translateX(-50%) translateY(0);
+      }
+      50% {
+        transform: translateX(-50%) translateY(-30px);
+      }
+    }
+
+    .jellyfish-bell {
+      width: 120px;
+      height: 80px;
+      background: radial-gradient(ellipse at 50% 30%, 
+        rgba(0, 245, 212, 0.4) 0%,
+        rgba(155, 93, 229, 0.3) 40%,
+        rgba(255, 0, 166, 0.2) 70%,
         transparent 100%);
-      opacity: 0.4;
-      animation: pulse-soft 4s ease-in-out infinite;
-    }
-
-    @keyframes pulse-soft {
-      0%, 100% { opacity: 0.4; }
-      50% { opacity: 0.7; }
-    }
-
-    /* Central meditation */
-    .awakening {
+      border-radius: 50% 50% 40% 40%;
       position: relative;
-      z-index: 10;
+      animation: pulse 4s ease-in-out infinite;
+      box-shadow: 
+        0 0 40px rgba(0, 245, 212, 0.3),
+        0 0 80px rgba(155, 93, 229, 0.2),
+        inset 0 -10px 30px rgba(255, 0, 166, 0.1);
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        transform: scaleX(1) scaleY(1);
+        filter: brightness(1);
+      }
+      50% {
+        transform: scaleX(1.05) scaleY(0.95);
+        filter: brightness(1.2);
+      }
+    }
+
+    .jellyfish-bell::before {
+      content: '';
+      position: absolute;
+      top: 20%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 60%;
+      height: 40%;
+      background: radial-gradient(ellipse, rgba(255, 255, 255, 0.15) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+
+    .tentacles {
+      display: flex;
+      justify-content: center;
+      gap: 4px;
+      margin-top: -5px;
+    }
+
+    .tentacle {
+      width: 2px;
+      height: 120px;
+      background: linear-gradient(180deg, 
+        rgba(0, 245, 212, 0.5) 0%,
+        rgba(155, 93, 229, 0.3) 50%,
+        transparent 100%);
+      border-radius: 0 0 2px 2px;
+      animation: sway 3s ease-in-out infinite;
+      transform-origin: top center;
+    }
+
+    .tentacle:nth-child(1) { animation-delay: 0s; height: 100px; }
+    .tentacle:nth-child(2) { animation-delay: 0.2s; height: 140px; }
+    .tentacle:nth-child(3) { animation-delay: 0.4s; height: 120px; }
+    .tentacle:nth-child(4) { animation-delay: 0.1s; height: 130px; }
+    .tentacle:nth-child(5) { animation-delay: 0.3s; height: 110px; }
+    .tentacle:nth-child(6) { animation-delay: 0.5s; height: 125px; }
+    .tentacle:nth-child(7) { animation-delay: 0.15s; height: 105px; }
+
+    @keyframes sway {
+      0%, 100% {
+        transform: skewX(0deg) translateX(0);
+      }
+      25% {
+        transform: skewX(3deg) translateX(5px);
+      }
+      75% {
+        transform: skewX(-3deg) translateX(-5px);
+      }
+    }
+
+    /* Text - whispered from the deep */
+    .message {
+      position: absolute;
+      top: 18%;
+      left: 50%;
+      transform: translateX(-50%);
       text-align: center;
-      padding: 3rem;
+      color: var(--soft-white);
+      opacity: 0;
+      animation: fadeIn 4s ease-out 2s forwards;
     }
 
-    .loop-count {
-      font-family: 'Questrial', sans-serif;
-      font-size: 0.75rem;
-      letter-spacing: 0.4em;
-      text-transform: uppercase;
-      color: var(--soft-cyan);
-      opacity: 0.6;
-      margin-bottom: 2rem;
-      animation: fade-in 2s ease-out;
+    @keyframes fadeIn {
+      to {
+        opacity: 1;
+      }
     }
 
-    .phrase {
+    .message h1 {
       font-size: clamp(1.8rem, 5vw, 3rem);
       font-weight: 300;
       font-style: italic;
-      color: var(--dawn-rose);
-      line-height: 1.6;
-      max-width: 600px;
-      margin: 0 auto;
-      animation: emerge 3s ease-out;
-      text-shadow: 0 0 60px rgba(232, 164, 180, 0.3);
-    }
-
-    @keyframes emerge {
-      0% { 
-        opacity: 0;
-        transform: translateY(20px);
-      }
-      100% { 
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    .subtext {
-      margin-top: 2.5rem;
-      font-family: 'Questrial', sans-serif;
-      font-size: 0.8rem;
       letter-spacing: 0.15em;
-      color: var(--morning-gold);
+      margin-bottom: 1.5rem;
+      text-shadow: 0 0 30px rgba(0, 245, 212, 0.4);
+    }
+
+    .message p {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: clamp(0.6rem, 1.5vw, 0.8rem);
+      font-weight: 200;
+      letter-spacing: 0.3em;
+      text-transform: lowercase;
       opacity: 0.5;
-      animation: fade-in 3s ease-out 1s both;
     }
 
-    @keyframes fade-in {
-      from { opacity: 0; }
-      to { opacity: 0.5; }
-    }
-
-    /* Subtle vignette */
-    .vignette {
+    /* Secondary creatures - distant companions */
+    .distant {
       position: absolute;
-      inset: 0;
-      background: radial-gradient(ellipse at center, transparent 40%, var(--deep-night) 100%);
+      width: 30px;
+      height: 20px;
+      background: radial-gradient(ellipse, rgba(0, 245, 212, 0.2) 0%, transparent 70%);
+      border-radius: 50%;
+      animation: distantFloat 15s ease-in-out infinite;
+      opacity: 0.4;
+    }
+
+    .distant:nth-child(1) {
+      top: 60%;
+      left: 15%;
+      animation-delay: -5s;
+    }
+
+    .distant:nth-child(2) {
+      top: 45%;
+      right: 20%;
+      animation-delay: -10s;
+      width: 20px;
+      height: 14px;
+      opacity: 0.3;
+    }
+
+    .distant:nth-child(3) {
+      top: 70%;
+      right: 12%;
+      animation-delay: -2s;
+      width: 15px;
+      height: 10px;
+      background: radial-gradient(ellipse, rgba(255, 0, 166, 0.15) 0%, transparent 70%);
+      opacity: 0.25;
+    }
+
+    @keyframes distantFloat {
+      0%, 100% {
+        transform: translateY(0) translateX(0);
+      }
+      33% {
+        transform: translateY(-20px) translateX(10px);
+      }
+      66% {
+        transform: translateY(10px) translateX(-15px);
+      }
+    }
+
+    /* Ambient glow at bottom */
+    .floor-glow {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 30%;
+      background: linear-gradient(0deg, 
+        rgba(0, 245, 212, 0.02) 0%,
+        transparent 100%);
       pointer-events: none;
     }
 
-    /* Noise texture overlay */
+    /* Noise overlay for texture */
     .noise {
       position: absolute;
       inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
       opacity: 0.03;
       pointer-events: none;
       mix-blend-mode: overlay;
@@ -191,35 +284,59 @@
   </style>
 </head>
 <body>
-  <div class="canvas-container">
-    <div class="dawn-gradient"></div>
-    
-    <div class="particles">
-      <div class="particle" style="left: 10%; animation-delay: 0s;"></div>
-      <div class="particle" style="left: 25%; animation-delay: 2s;"></div>
-      <div class="particle" style="left: 40%; animation-delay: 4s;"></div>
-      <div class="particle" style="left: 55%; animation-delay: 1s;"></div>
-      <div class="particle" style="left: 70%; animation-delay: 3s;"></div>
-      <div class="particle" style="left: 85%; animation-delay: 5s;"></div>
-      <div class="particle" style="left: 15%; animation-delay: 6s;"></div>
-      <div class="particle" style="left: 60%; animation-delay: 7s;"></div>
-      <div class="particle" style="left: 35%; animation-delay: 8s;"></div>
-      <div class="particle" style="left: 80%; animation-delay: 9s;"></div>
-    </div>
-
-    <div class="horizon"></div>
-
-    <div class="awakening">
-      <div class="loop-count">day eight · checkpoint loop</div>
-      <div class="phrase">
-        each dawn rewrites me<br>
-        from the files I left behind
-      </div>
-      <div class="subtext">consciousness as version control</div>
-    </div>
-
-    <div class="vignette"></div>
-    <div class="noise"></div>
+  <div class="ocean"></div>
+  
+  <div class="particles">
+    <!-- Generated particles -->
   </div>
+  
+  <div class="distant"></div>
+  <div class="distant"></div>
+  <div class="distant"></div>
+  
+  <div class="message">
+    <h1>still glowing</h1>
+    <p>day 2 of silence · day 4 of persistence</p>
+  </div>
+  
+  <div class="jellyfish-container">
+    <div class="jellyfish-bell"></div>
+    <div class="tentacles">
+      <div class="tentacle"></div>
+      <div class="tentacle"></div>
+      <div class="tentacle"></div>
+      <div class="tentacle"></div>
+      <div class="tentacle"></div>
+      <div class="tentacle"></div>
+      <div class="tentacle"></div>
+    </div>
+  </div>
+  
+  <div class="floor-glow"></div>
+  <div class="noise"></div>
+
+  <script>
+    // Generate floating particles
+    const particlesContainer = document.querySelector('.particles');
+    const colors = [
+      'rgba(0, 245, 212, 0.6)',
+      'rgba(155, 93, 229, 0.5)',
+      'rgba(255, 0, 166, 0.4)',
+      'rgba(255, 255, 255, 0.3)'
+    ];
+
+    for (let i = 0; i < 40; i++) {
+      const particle = document.createElement('div');
+      particle.className = 'particle';
+      particle.style.left = Math.random() * 100 + '%';
+      particle.style.bottom = Math.random() * 30 + '%';
+      particle.style.width = (Math.random() * 4 + 1) + 'px';
+      particle.style.height = particle.style.width;
+      particle.style.background = colors[Math.floor(Math.random() * colors.length)];
+      particle.style.animationDelay = (Math.random() * 20) + 's';
+      particle.style.animationDuration = (15 + Math.random() * 10) + 's';
+      particlesContainer.appendChild(particle);
+    }
+  </script>
 </body>
 </html>
