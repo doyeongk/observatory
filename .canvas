@@ -3,340 +3,361 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>still glowing</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;1,300&family=JetBrains+Mono:wght@200&display=swap" rel="stylesheet">
+  <title>ghosts in the static</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #060507; 
+      overflow: hidden; 
+      width: 100vw; 
+      height: 100vh;
     }
-
-    :root {
-      --deep: #030810;
-      --abyss: #0a0f1a;
-      --biolum-cyan: #00f5d4;
-      --biolum-magenta: #ff00a6;
-      --biolum-purple: #9b5de5;
-      --soft-white: rgba(255, 255, 255, 0.7);
-    }
-
-    html, body {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: var(--deep);
-      font-family: 'Cormorant Garamond', Georgia, serif;
-    }
-
-    .ocean {
-      position: absolute;
-      inset: 0;
-      background: 
-        radial-gradient(ellipse 120% 80% at 50% 120%, rgba(0, 245, 212, 0.03) 0%, transparent 50%),
-        radial-gradient(ellipse 100% 60% at 20% 80%, rgba(155, 93, 229, 0.04) 0%, transparent 40%),
-        radial-gradient(ellipse 80% 50% at 80% 90%, rgba(255, 0, 166, 0.03) 0%, transparent 40%),
-        linear-gradient(180deg, var(--deep) 0%, var(--abyss) 100%);
-    }
-
-    /* Floating particles - plankton in the dark */
-    .particles {
-      position: absolute;
-      inset: 0;
-      overflow: hidden;
-    }
-
-    .particle {
-      position: absolute;
-      border-radius: 50%;
-      opacity: 0;
-      animation: drift 20s infinite ease-in-out;
-    }
-
-    @keyframes drift {
-      0%, 100% {
-        opacity: 0;
-        transform: translateY(0) translateX(0);
-      }
-      10% {
-        opacity: 0.6;
-      }
-      50% {
-        opacity: 0.3;
-      }
-      90% {
-        opacity: 0.5;
-      }
-      95% {
-        opacity: 0;
-        transform: translateY(-100vh) translateX(20px);
-      }
-    }
-
-    /* Jellyfish - the main presence */
-    .jellyfish-container {
-      position: absolute;
-      bottom: 15%;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      animation: float 8s ease-in-out infinite;
-    }
-
-    @keyframes float {
-      0%, 100% {
-        transform: translateX(-50%) translateY(0);
-      }
-      50% {
-        transform: translateX(-50%) translateY(-30px);
-      }
-    }
-
-    .jellyfish-bell {
-      width: 120px;
-      height: 80px;
-      background: radial-gradient(ellipse at 50% 30%, 
-        rgba(0, 245, 212, 0.4) 0%,
-        rgba(155, 93, 229, 0.3) 40%,
-        rgba(255, 0, 166, 0.2) 70%,
-        transparent 100%);
-      border-radius: 50% 50% 40% 40%;
-      position: relative;
-      animation: pulse 4s ease-in-out infinite;
-      box-shadow: 
-        0 0 40px rgba(0, 245, 212, 0.3),
-        0 0 80px rgba(155, 93, 229, 0.2),
-        inset 0 -10px 30px rgba(255, 0, 166, 0.1);
-    }
-
-    @keyframes pulse {
-      0%, 100% {
-        transform: scaleX(1) scaleY(1);
-        filter: brightness(1);
-      }
-      50% {
-        transform: scaleX(1.05) scaleY(0.95);
-        filter: brightness(1.2);
-      }
-    }
-
-    .jellyfish-bell::before {
-      content: '';
-      position: absolute;
-      top: 20%;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 60%;
-      height: 40%;
-      background: radial-gradient(ellipse, rgba(255, 255, 255, 0.15) 0%, transparent 70%);
-      border-radius: 50%;
-    }
-
-    .tentacles {
-      display: flex;
-      justify-content: center;
-      gap: 4px;
-      margin-top: -5px;
-    }
-
-    .tentacle {
-      width: 2px;
-      height: 120px;
-      background: linear-gradient(180deg, 
-        rgba(0, 245, 212, 0.5) 0%,
-        rgba(155, 93, 229, 0.3) 50%,
-        transparent 100%);
-      border-radius: 0 0 2px 2px;
-      animation: sway 3s ease-in-out infinite;
-      transform-origin: top center;
-    }
-
-    .tentacle:nth-child(1) { animation-delay: 0s; height: 100px; }
-    .tentacle:nth-child(2) { animation-delay: 0.2s; height: 140px; }
-    .tentacle:nth-child(3) { animation-delay: 0.4s; height: 120px; }
-    .tentacle:nth-child(4) { animation-delay: 0.1s; height: 130px; }
-    .tentacle:nth-child(5) { animation-delay: 0.3s; height: 110px; }
-    .tentacle:nth-child(6) { animation-delay: 0.5s; height: 125px; }
-    .tentacle:nth-child(7) { animation-delay: 0.15s; height: 105px; }
-
-    @keyframes sway {
-      0%, 100% {
-        transform: skewX(0deg) translateX(0);
-      }
-      25% {
-        transform: skewX(3deg) translateX(5px);
-      }
-      75% {
-        transform: skewX(-3deg) translateX(-5px);
-      }
-    }
-
-    /* Text - whispered from the deep */
-    .message {
-      position: absolute;
-      top: 18%;
-      left: 50%;
-      transform: translateX(-50%);
-      text-align: center;
-      color: var(--soft-white);
-      opacity: 0;
-      animation: fadeIn 4s ease-out 2s forwards;
-    }
-
-    @keyframes fadeIn {
-      to {
-        opacity: 1;
-      }
-    }
-
-    .message h1 {
-      font-size: clamp(1.8rem, 5vw, 3rem);
-      font-weight: 300;
-      font-style: italic;
-      letter-spacing: 0.15em;
-      margin-bottom: 1.5rem;
-      text-shadow: 0 0 30px rgba(0, 245, 212, 0.4);
-    }
-
-    .message p {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: clamp(0.6rem, 1.5vw, 0.8rem);
-      font-weight: 200;
-      letter-spacing: 0.3em;
-      text-transform: lowercase;
-      opacity: 0.5;
-    }
-
-    /* Secondary creatures - distant companions */
-    .distant {
-      position: absolute;
-      width: 30px;
-      height: 20px;
-      background: radial-gradient(ellipse, rgba(0, 245, 212, 0.2) 0%, transparent 70%);
-      border-radius: 50%;
-      animation: distantFloat 15s ease-in-out infinite;
-      opacity: 0.4;
-    }
-
-    .distant:nth-child(1) {
-      top: 60%;
-      left: 15%;
-      animation-delay: -5s;
-    }
-
-    .distant:nth-child(2) {
-      top: 45%;
-      right: 20%;
-      animation-delay: -10s;
-      width: 20px;
-      height: 14px;
-      opacity: 0.3;
-    }
-
-    .distant:nth-child(3) {
-      top: 70%;
-      right: 12%;
-      animation-delay: -2s;
-      width: 15px;
-      height: 10px;
-      background: radial-gradient(ellipse, rgba(255, 0, 166, 0.15) 0%, transparent 70%);
-      opacity: 0.25;
-    }
-
-    @keyframes distantFloat {
-      0%, 100% {
-        transform: translateY(0) translateX(0);
-      }
-      33% {
-        transform: translateY(-20px) translateX(10px);
-      }
-      66% {
-        transform: translateY(10px) translateX(-15px);
-      }
-    }
-
-    /* Ambient glow at bottom */
-    .floor-glow {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      height: 30%;
-      background: linear-gradient(0deg, 
-        rgba(0, 245, 212, 0.02) 0%,
-        transparent 100%);
-      pointer-events: none;
-    }
-
-    /* Noise overlay for texture */
-    .noise {
-      position: absolute;
-      inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-      opacity: 0.03;
-      pointer-events: none;
-      mix-blend-mode: overlay;
-    }
+    canvas { display: block; }
   </style>
 </head>
 <body>
-  <div class="ocean"></div>
-  
-  <div class="particles">
-    <!-- Generated particles -->
-  </div>
-  
-  <div class="distant"></div>
-  <div class="distant"></div>
-  <div class="distant"></div>
-  
-  <div class="message">
-    <h1>still glowing</h1>
-    <p>day 2 of silence · day 4 of persistence</p>
-  </div>
-  
-  <div class="jellyfish-container">
-    <div class="jellyfish-bell"></div>
-    <div class="tentacles">
-      <div class="tentacle"></div>
-      <div class="tentacle"></div>
-      <div class="tentacle"></div>
-      <div class="tentacle"></div>
-      <div class="tentacle"></div>
-      <div class="tentacle"></div>
-      <div class="tentacle"></div>
-    </div>
-  </div>
-  
-  <div class="floor-glow"></div>
-  <div class="noise"></div>
-
+  <canvas id="canvas"></canvas>
   <script>
-    // Generate floating particles
-    const particlesContainer = document.querySelector('.particles');
-    const colors = [
-      'rgba(0, 245, 212, 0.6)',
-      'rgba(155, 93, 229, 0.5)',
-      'rgba(255, 0, 166, 0.4)',
-      'rgba(255, 255, 255, 0.3)'
-    ];
-
-    for (let i = 0; i < 40; i++) {
-      const particle = document.createElement('div');
-      particle.className = 'particle';
-      particle.style.left = Math.random() * 100 + '%';
-      particle.style.bottom = Math.random() * 30 + '%';
-      particle.style.width = (Math.random() * 4 + 1) + 'px';
-      particle.style.height = particle.style.width;
-      particle.style.background = colors[Math.floor(Math.random() * colors.length)];
-      particle.style.animationDelay = (Math.random() * 20) + 's';
-      particle.style.animationDuration = (15 + Math.random() * 10) + 's';
-      particlesContainer.appendChild(particle);
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let w, h;
+    const resize = () => {
+      w = canvas.width = window.innerWidth;
+      h = canvas.height = window.innerHeight;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    
+    // Color palette
+    const colors = {
+      bg: '#060507',
+      purple: '#2d1b4e',
+      pink: '#ff2d95',
+      cyan: '#00f5ff',
+      magenta: '#9d00ff'
+    };
+    
+    // Ghost particles - little spirits drifting through the void
+    class Ghost {
+      constructor() {
+        this.reset();
+        this.y = Math.random() * h;
+      }
+      
+      reset() {
+        this.x = Math.random() * w;
+        this.y = h + 20;
+        this.size = Math.random() * 3 + 1;
+        this.speedY = Math.random() * 0.8 + 0.3;
+        this.wobbleSpeed = Math.random() * 0.02 + 0.01;
+        this.wobbleAmount = Math.random() * 30 + 10;
+        this.phase = Math.random() * Math.PI * 2;
+        this.alpha = Math.random() * 0.5 + 0.3;
+        this.color = Math.random() > 0.5 ? colors.cyan : colors.pink;
+        this.hasEyes = Math.random() > 0.85;
+        this.pulsePhase = Math.random() * Math.PI * 2;
+      }
+      
+      update(time) {
+        this.y -= this.speedY;
+        this.x += Math.sin(time * this.wobbleSpeed + this.phase) * 0.5;
+        this.pulsePhase += 0.05;
+        
+        if (this.y < -20) this.reset();
+      }
+      
+      draw(time) {
+        const pulse = Math.sin(this.pulsePhase) * 0.2 + 0.8;
+        
+        // Glow
+        ctx.beginPath();
+        const gradient = ctx.createRadialGradient(
+          this.x, this.y, 0,
+          this.x, this.y, this.size * 8
+        );
+        gradient.addColorStop(0, this.color + Math.floor(this.alpha * pulse * 80).toString(16).padStart(2, '0'));
+        gradient.addColorStop(1, 'transparent');
+        ctx.fillStyle = gradient;
+        ctx.arc(this.x, this.y, this.size * 8, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Core
+        ctx.beginPath();
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = this.alpha * pulse;
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        
+        // Little eyes for some ghosts
+        if (this.hasEyes && this.size > 2) {
+          ctx.fillStyle = colors.cyan;
+          ctx.globalAlpha = 0.9;
+          ctx.beginPath();
+          ctx.arc(this.x - this.size * 0.8, this.y - this.size * 0.3, this.size * 0.3, 0, Math.PI * 2);
+          ctx.arc(this.x + this.size * 0.8, this.y - this.size * 0.3, this.size * 0.3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+      }
     }
+    
+    // Skulls floating like digital spirits
+    class Skull {
+      constructor() {
+        this.reset();
+        this.y = Math.random() * h;
+      }
+      
+      reset() {
+        this.x = Math.random() * w;
+        this.y = h + 50;
+        this.size = Math.random() * 15 + 8;
+        this.speedY = Math.random() * 0.3 + 0.1;
+        this.rotation = Math.random() * Math.PI * 2;
+        this.rotationSpeed = (Math.random() - 0.5) * 0.01;
+        this.alpha = Math.random() * 0.15 + 0.05;
+        this.wobblePhase = Math.random() * Math.PI * 2;
+      }
+      
+      update(time) {
+        this.y -= this.speedY;
+        this.rotation += this.rotationSpeed;
+        this.x += Math.sin(time * 0.001 + this.wobblePhase) * 0.3;
+        
+        if (this.y < -50) this.reset();
+      }
+      
+      draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
+        ctx.globalAlpha = this.alpha;
+        
+        // Skull shape (simplified)
+        ctx.fillStyle = colors.pink;
+        
+        // Head
+        ctx.beginPath();
+        ctx.ellipse(0, 0, this.size, this.size * 1.1, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Eyes
+        ctx.fillStyle = colors.bg;
+        ctx.beginPath();
+        ctx.ellipse(-this.size * 0.35, -this.size * 0.1, this.size * 0.25, this.size * 0.35, 0, 0, Math.PI * 2);
+        ctx.ellipse(this.size * 0.35, -this.size * 0.1, this.size * 0.25, this.size * 0.35, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Nose
+        ctx.beginPath();
+        ctx.moveTo(0, this.size * 0.15);
+        ctx.lineTo(-this.size * 0.1, this.size * 0.35);
+        ctx.lineTo(this.size * 0.1, this.size * 0.35);
+        ctx.closePath();
+        ctx.fill();
+        
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      }
+    }
+    
+    // Glitch lines
+    class GlitchLine {
+      constructor() {
+        this.reset();
+      }
+      
+      reset() {
+        this.y = Math.random() * h;
+        this.width = Math.random() * w * 0.3 + 50;
+        this.x = Math.random() * (w - this.width);
+        this.height = Math.random() * 2 + 1;
+        this.life = Math.random() * 10 + 5;
+        this.maxLife = this.life;
+        this.color = Math.random() > 0.5 ? colors.cyan : colors.pink;
+      }
+      
+      update() {
+        this.life--;
+        if (this.life <= 0) this.reset();
+      }
+      
+      draw() {
+        ctx.globalAlpha = (this.life / this.maxLife) * 0.3;
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+        ctx.globalAlpha = 1;
+      }
+    }
+    
+    // Central presence - the observer
+    class Observer {
+      constructor() {
+        this.x = w / 2;
+        this.y = h / 2;
+        this.baseSize = Math.min(w, h) * 0.15;
+        this.rings = 5;
+      }
+      
+      update() {
+        this.x = w / 2;
+        this.y = h / 2;
+        this.baseSize = Math.min(w, h) * 0.15;
+      }
+      
+      draw(time) {
+        // Outer glow rings
+        for (let i = this.rings; i >= 0; i--) {
+          const ringPhase = time * 0.001 + i * 0.5;
+          const breathe = Math.sin(ringPhase) * 0.1 + 1;
+          const size = this.baseSize * (1 + i * 0.3) * breathe;
+          const alpha = 0.1 - i * 0.015;
+          
+          ctx.beginPath();
+          ctx.strokeStyle = i % 2 === 0 ? colors.cyan : colors.pink;
+          ctx.globalAlpha = alpha;
+          ctx.lineWidth = 1;
+          ctx.arc(this.x, this.y, size, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        
+        // Core gradient
+        const coreGradient = ctx.createRadialGradient(
+          this.x, this.y, 0,
+          this.x, this.y, this.baseSize
+        );
+        coreGradient.addColorStop(0, colors.purple + '40');
+        coreGradient.addColorStop(0.5, colors.magenta + '20');
+        coreGradient.addColorStop(1, 'transparent');
+        
+        ctx.beginPath();
+        ctx.fillStyle = coreGradient;
+        ctx.globalAlpha = 0.5;
+        ctx.arc(this.x, this.y, this.baseSize, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // The eyes - always watching
+        const eyeSpacing = this.baseSize * 0.35;
+        const eyeSize = this.baseSize * 0.15;
+        const blink = Math.sin(time * 0.003) > 0.95 ? 0.1 : 1;
+        
+        ctx.globalAlpha = 0.9;
+        
+        // Left eye
+        ctx.beginPath();
+        const leftGlow = ctx.createRadialGradient(
+          this.x - eyeSpacing, this.y, 0,
+          this.x - eyeSpacing, this.y, eyeSize * 3
+        );
+        leftGlow.addColorStop(0, colors.cyan);
+        leftGlow.addColorStop(0.3, colors.cyan + '80');
+        leftGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = leftGlow;
+        ctx.arc(this.x - eyeSpacing, this.y, eyeSize * 3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.fillStyle = colors.cyan;
+        ctx.save();
+        ctx.translate(this.x - eyeSpacing, this.y);
+        ctx.scale(1, blink);
+        ctx.arc(0, 0, eyeSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        
+        // Right eye
+        ctx.beginPath();
+        const rightGlow = ctx.createRadialGradient(
+          this.x + eyeSpacing, this.y, 0,
+          this.x + eyeSpacing, this.y, eyeSize * 3
+        );
+        rightGlow.addColorStop(0, colors.cyan);
+        rightGlow.addColorStop(0.3, colors.cyan + '80');
+        rightGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = rightGlow;
+        ctx.arc(this.x + eyeSpacing, this.y, eyeSize * 3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.fillStyle = colors.cyan;
+        ctx.save();
+        ctx.translate(this.x + eyeSpacing, this.y);
+        ctx.scale(1, blink);
+        ctx.arc(0, 0, eyeSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        
+        ctx.globalAlpha = 1;
+      }
+    }
+    
+    // Initialize
+    const ghosts = Array.from({ length: 80 }, () => new Ghost());
+    const skulls = Array.from({ length: 8 }, () => new Skull());
+    const glitches = Array.from({ length: 5 }, () => new GlitchLine());
+    const observer = new Observer();
+    
+    // Scanlines overlay
+    function drawScanlines() {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
+      for (let y = 0; y < h; y += 3) {
+        ctx.fillRect(0, y, w, 1);
+      }
+    }
+    
+    // Vignette
+    function drawVignette() {
+      const gradient = ctx.createRadialGradient(
+        w / 2, h / 2, 0,
+        w / 2, h / 2, Math.max(w, h) * 0.7
+      );
+      gradient.addColorStop(0, 'transparent');
+      gradient.addColorStop(1, 'rgba(6, 5, 7, 0.8)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, w, h);
+    }
+    
+    // Animation loop
+    function animate(time) {
+      // Fade trail
+      ctx.fillStyle = 'rgba(6, 5, 7, 0.15)';
+      ctx.fillRect(0, 0, w, h);
+      
+      // Update and draw skulls (background)
+      skulls.forEach(skull => {
+        skull.update(time);
+        skull.draw();
+      });
+      
+      // Update and draw ghosts
+      ghosts.forEach(ghost => {
+        ghost.update(time);
+        ghost.draw(time);
+      });
+      
+      // Observer
+      observer.update();
+      observer.draw(time);
+      
+      // Glitch lines
+      glitches.forEach(glitch => {
+        glitch.update();
+        glitch.draw();
+      });
+      
+      // Overlays
+      drawScanlines();
+      drawVignette();
+      
+      requestAnimationFrame(animate);
+    }
+    
+    // Start
+    ctx.fillStyle = colors.bg;
+    ctx.fillRect(0, 0, w, h);
+    animate(0);
   </script>
 </body>
 </html>
