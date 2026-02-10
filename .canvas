@@ -2,278 +2,220 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ghost protocol</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-      background: #060507; 
-      overflow: hidden;
-      font-family: monospace;
-    }
-    canvas { 
-      display: block; 
-      position: fixed;
-      top: 0;
-      left: 0;
-    }
+    body { background: #060507; overflow: hidden; }
+    canvas { display: block; }
   </style>
 </head>
 <body>
-  <canvas id="canvas"></canvas>
-  <script>
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let w, h;
+const resize = () => {
+  w = canvas.width = window.innerWidth;
+  h = canvas.height = window.innerHeight;
+};
+resize();
+window.addEventListener('resize', resize);
+
+// palette: deep purple, hot pink, electric cyan
+const colors = [
+  { r: 138, g: 43, b: 226 },   // purple
+  { r: 255, g: 20, b: 147 },   // hot pink
+  { r: 0, g: 255, b: 255 },    // cyan
+  { r: 180, g: 0, b: 180 },    // magenta
+];
+
+class Ghost {
+  constructor() {
+    this.reset();
+  }
+  
+  reset() {
+    this.x = Math.random() * w;
+    this.y = Math.random() * h;
+    this.size = Math.random() * 3 + 1;
+    this.color = colors[Math.floor(Math.random() * colors.length)];
+    this.alpha = Math.random() * 0.5 + 0.3;
+    this.vx = (Math.random() - 0.5) * 0.5;
+    this.vy = (Math.random() - 0.5) * 0.5 - 0.3;
+    this.life = 1;
+    this.decay = Math.random() * 0.002 + 0.001;
+    this.pulse = Math.random() * Math.PI * 2;
+    this.pulseSpeed = Math.random() * 0.05 + 0.02;
+    this.trail = [];
+  }
+  
+  update(time) {
+    // flow field influence
+    const angle = Math.sin(this.x * 0.005 + time * 0.0003) * 
+                  Math.cos(this.y * 0.005 + time * 0.0002) * Math.PI;
+    this.vx += Math.cos(angle) * 0.01;
+    this.vy += Math.sin(angle) * 0.01;
     
-    let w, h;
-    const resize = () => {
-      w = canvas.width = window.innerWidth;
-      h = canvas.height = window.innerHeight;
-    };
-    window.addEventListener('resize', resize);
-    resize();
-
-    // palette: deep purple, hot pink, electric cyan
-    const colors = [
-      { r: 138, g: 43, b: 226 },   // purple
-      { r: 255, g: 20, b: 147 },   // hot pink
-      { r: 0, g: 255, b: 255 },    // cyan
-      { r: 180, g: 0, b: 180 },    // magenta
-    ];
-
-    // ghost particles
-    class Ghost {
-      constructor() {
-        this.reset();
-        this.y = Math.random() * h;
-        this.age = Math.random() * this.maxAge;
-      }
-      
-      reset() {
-        this.x = Math.random() * w;
-        this.y = -20;
-        this.size = Math.random() * 3 + 1;
-        this.speedY = Math.random() * 0.5 + 0.2;
-        this.speedX = 0;
-        this.color = colors[Math.floor(Math.random() * colors.length)];
-        this.age = 0;
-        this.maxAge = Math.random() * 400 + 200;
-        this.wobbleOffset = Math.random() * Math.PI * 2;
-        this.wobbleSpeed = Math.random() * 0.02 + 0.01;
-        this.trail = [];
-        this.maxTrail = Math.floor(Math.random() * 20 + 10);
-      }
-      
-      update(time) {
-        // gentle wobble
-        this.speedX = Math.sin(time * this.wobbleSpeed + this.wobbleOffset) * 0.5;
-        
-        // drift toward attractors
-        for (const a of attractors) {
-          const dx = a.x - this.x;
-          const dy = a.y - this.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < a.radius && dist > 0) {
-            const force = (1 - dist / a.radius) * a.strength;
-            this.speedX += (dx / dist) * force;
-            this.speedY += (dy / dist) * force * 0.3;
-          }
-        }
-        
-        this.x += this.speedX;
-        this.y += this.speedY;
-        this.age++;
-        
-        // store trail
-        this.trail.push({ x: this.x, y: this.y });
-        if (this.trail.length > this.maxTrail) {
-          this.trail.shift();
-        }
-        
-        if (this.y > h + 20 || this.age > this.maxAge || this.x < -50 || this.x > w + 50) {
-          this.reset();
-        }
-      }
-      
-      draw() {
-        const alpha = Math.min(1, (1 - this.age / this.maxAge) * 0.8);
-        
-        // draw trail
-        for (let i = 0; i < this.trail.length - 1; i++) {
-          const t = i / this.trail.length;
-          const a = t * alpha * 0.3;
-          ctx.beginPath();
-          ctx.strokeStyle = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${a})`;
-          ctx.lineWidth = this.size * t;
-          ctx.moveTo(this.trail[i].x, this.trail[i].y);
-          ctx.lineTo(this.trail[i + 1].x, this.trail[i + 1].y);
-          ctx.stroke();
-        }
-        
-        // draw ghost body
-        ctx.beginPath();
-        ctx.fillStyle = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${alpha})`;
-        ctx.shadowColor = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${alpha})`;
-        ctx.shadowBlur = this.size * 4;
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      }
-    }
-
-    // attractors that pull ghosts
-    class Attractor {
-      constructor() {
-        this.reset();
-      }
-      
-      reset() {
-        this.x = Math.random() * w;
-        this.y = Math.random() * h;
-        this.radius = Math.random() * 150 + 100;
-        this.strength = Math.random() * 0.3 + 0.1;
-        this.life = Math.random() * 500 + 300;
-        this.age = 0;
-        this.driftX = (Math.random() - 0.5) * 0.3;
-        this.driftY = (Math.random() - 0.5) * 0.2;
-      }
-      
-      update() {
-        this.x += this.driftX;
-        this.y += this.driftY;
-        this.age++;
-        if (this.age > this.life) this.reset();
-      }
-      
-      draw() {
-        const alpha = Math.sin((this.age / this.life) * Math.PI) * 0.05;
-        const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius);
-        gradient.addColorStop(0, `rgba(255, 20, 147, ${alpha})`);
-        gradient.addColorStop(0.5, `rgba(138, 43, 226, ${alpha * 0.5})`);
-        gradient.addColorStop(1, 'transparent');
-        ctx.fillStyle = gradient;
-        ctx.fillRect(this.x - this.radius, this.y - this.radius, this.radius * 2, this.radius * 2);
-      }
-    }
-
-    // floating skull sigils
-    class Sigil {
-      constructor() {
-        this.reset();
-        this.y = Math.random() * h;
-      }
-      
-      reset() {
-        this.x = Math.random() * w;
-        this.y = -30;
-        this.size = Math.random() * 15 + 8;
-        this.speed = Math.random() * 0.3 + 0.1;
-        this.rotation = Math.random() * Math.PI * 2;
-        this.rotSpeed = (Math.random() - 0.5) * 0.01;
-        this.alpha = Math.random() * 0.15 + 0.05;
-        this.color = Math.random() > 0.5 ? colors[1] : colors[2]; // pink or cyan
-      }
-      
-      update() {
-        this.y += this.speed;
-        this.rotation += this.rotSpeed;
-        if (this.y > h + 50) this.reset();
-      }
-      
-      draw() {
-        ctx.save();
-        ctx.translate(this.x, this.y);
-        ctx.rotate(this.rotation);
-        ctx.font = `${this.size}px serif`;
-        ctx.fillStyle = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${this.alpha})`;
-        ctx.shadowColor = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${this.alpha})`;
-        ctx.shadowBlur = 10;
-        ctx.textAlign = 'center';
-        ctx.fillText('💀', 0, 0);
-        ctx.restore();
-      }
-    }
-
-    // noise field for subtle background texture
-    let noiseZ = 0;
-    function drawNoiseField() {
-      const imageData = ctx.getImageData(0, 0, w, h);
-      const data = imageData.data;
-      
-      for (let i = 0; i < data.length; i += 4) {
-        if (Math.random() > 0.997) {
-          const brightness = Math.random() * 30;
-          data[i] += brightness;     // r
-          data[i + 1] += brightness * 0.5; // g
-          data[i + 2] += brightness; // b
-        }
-      }
-      ctx.putImageData(imageData, 0, 0);
-    }
-
-    // scan lines
-    function drawScanlines() {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
-      for (let y = 0; y < h; y += 3) {
-        ctx.fillRect(0, y, w, 1);
-      }
-    }
-
-    // initialize
-    const ghosts = [];
-    const attractors = [];
-    const sigils = [];
+    // drift
+    this.vx *= 0.99;
+    this.vy *= 0.99;
     
-    for (let i = 0; i < 150; i++) ghosts.push(new Ghost());
-    for (let i = 0; i < 4; i++) attractors.push(new Attractor());
-    for (let i = 0; i < 8; i++) sigils.push(new Sigil());
-
-    let time = 0;
+    this.trail.push({ x: this.x, y: this.y, alpha: this.alpha * this.life });
+    if (this.trail.length > 20) this.trail.shift();
     
-    function animate() {
-      // fade effect
-      ctx.fillStyle = 'rgba(6, 5, 7, 0.08)';
-      ctx.fillRect(0, 0, w, h);
-      
-      time += 0.016;
-      
-      // update and draw attractors (subtle glow)
-      for (const a of attractors) {
-        a.update();
-        a.draw();
-      }
-      
-      // update and draw ghosts
-      for (const g of ghosts) {
-        g.update(time);
-        g.draw();
-      }
-      
-      // update and draw sigils
-      for (const s of sigils) {
-        s.update();
-        s.draw();
-      }
-      
-      // occasional glitch
-      if (Math.random() > 0.995) {
-        const glitchY = Math.random() * h;
-        const glitchH = Math.random() * 20 + 5;
-        const shift = (Math.random() - 0.5) * 20;
-        const slice = ctx.getImageData(0, glitchY, w, glitchH);
-        ctx.putImageData(slice, shift, glitchY);
-      }
-      
-      // subtle noise
-      if (Math.random() > 0.7) drawNoiseField();
-      
-      // scanlines
-      drawScanlines();
-      
-      requestAnimationFrame(animate);
+    this.x += this.vx;
+    this.y += this.vy;
+    
+    this.pulse += this.pulseSpeed;
+    this.life -= this.decay;
+    
+    if (this.life <= 0 || this.x < -50 || this.x > w + 50 || this.y < -50 || this.y > h + 50) {
+      this.reset();
+    }
+  }
+  
+  draw() {
+    const pulseAlpha = (Math.sin(this.pulse) * 0.3 + 0.7) * this.life;
+    const { r, g, b } = this.color;
+    
+    // trail
+    for (let i = 0; i < this.trail.length; i++) {
+      const t = this.trail[i];
+      const trailAlpha = (i / this.trail.length) * t.alpha * 0.3;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, this.size * 0.5, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${trailAlpha})`;
+      ctx.fill();
     }
     
-    animate();
-  </script>
+    // glow
+    const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size * 8);
+    gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${pulseAlpha * this.alpha * 0.5})`);
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size * 8, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    
+    // core
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${pulseAlpha * this.alpha})`;
+    ctx.fill();
+    
+    // bright center
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size * 0.4, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255, 255, 255, ${pulseAlpha * this.alpha * 0.7})`;
+    ctx.fill();
+  }
+}
+
+// skulls that form from particles
+class Skull {
+  constructor() {
+    this.reset();
+  }
+  
+  reset() {
+    this.x = Math.random() * w;
+    this.y = Math.random() * h;
+    this.size = Math.random() * 15 + 10;
+    this.color = colors[Math.floor(Math.random() * colors.length)];
+    this.alpha = 0;
+    this.maxAlpha = Math.random() * 0.15 + 0.05;
+    this.phase = 'in';
+    this.speed = Math.random() * 0.005 + 0.002;
+    this.rotation = Math.random() * Math.PI * 2;
+    this.rotSpeed = (Math.random() - 0.5) * 0.01;
+  }
+  
+  update() {
+    if (this.phase === 'in') {
+      this.alpha += this.speed;
+      if (this.alpha >= this.maxAlpha) this.phase = 'hold';
+    } else if (this.phase === 'hold') {
+      if (Math.random() < 0.005) this.phase = 'out';
+    } else {
+      this.alpha -= this.speed;
+      if (this.alpha <= 0) this.reset();
+    }
+    this.rotation += this.rotSpeed;
+    this.y -= 0.2;
+    if (this.y < -this.size * 2) this.reset();
+  }
+  
+  draw() {
+    const { r, g, b } = this.color;
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.rotation);
+    ctx.globalAlpha = this.alpha;
+    
+    // skull shape - simplified cute skull
+    ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+    
+    // head
+    ctx.beginPath();
+    ctx.ellipse(0, 0, this.size, this.size * 0.9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // eyes
+    ctx.fillStyle = '#060507';
+    ctx.beginPath();
+    ctx.ellipse(-this.size * 0.35, -this.size * 0.1, this.size * 0.2, this.size * 0.25, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(this.size * 0.35, -this.size * 0.1, this.size * 0.2, this.size * 0.25, 0, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // nose
+    ctx.beginPath();
+    ctx.moveTo(0, this.size * 0.15);
+    ctx.lineTo(-this.size * 0.1, this.size * 0.35);
+    ctx.lineTo(this.size * 0.1, this.size * 0.35);
+    ctx.closePath();
+    ctx.fill();
+    
+    ctx.restore();
+  }
+}
+
+const ghosts = Array.from({ length: 150 }, () => new Ghost());
+const skulls = Array.from({ length: 8 }, () => new Skull());
+
+let time = 0;
+
+function animate() {
+  time++;
+  
+  // fade effect
+  ctx.fillStyle = 'rgba(6, 5, 7, 0.08)';
+  ctx.fillRect(0, 0, w, h);
+  
+  // update and draw
+  for (const skull of skulls) {
+    skull.update();
+    skull.draw();
+  }
+  
+  for (const ghost of ghosts) {
+    ghost.update(time);
+    ghost.draw();
+  }
+  
+  // occasional bright flicker
+  if (Math.random() < 0.003) {
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.02)`;
+    ctx.fillRect(0, 0, w, h);
+  }
+  
+  requestAnimationFrame(animate);
+}
+
+animate();
+</script>
 </body>
 </html>
