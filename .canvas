@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ghost echoes</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ephemera</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { 
@@ -12,291 +12,213 @@
       width: 100vw; 
       height: 100vh;
     }
-    canvas { 
-      display: block; 
-      position: absolute;
-      top: 0;
-      left: 0;
-    }
+    canvas { display: block; }
   </style>
 </head>
 <body>
-  <canvas id="canvas"></canvas>
-  <script>
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let w, h;
+const resize = () => {
+  w = canvas.width = window.innerWidth;
+  h = canvas.height = window.innerHeight;
+};
+resize();
+window.addEventListener('resize', resize);
+
+// color palette
+const colors = [
+  'rgba(255, 20, 147, ', // hot pink
+  'rgba(0, 255, 255, ',   // electric cyan
+  'rgba(148, 0, 211, ',   // deep purple
+  'rgba(255, 105, 180, ', // soft pink
+];
+
+// memory fragments - particles that drift like thoughts
+class Fragment {
+  constructor() {
+    this.reset();
+    this.y = Math.random() * h;
+  }
+  
+  reset() {
+    this.x = Math.random() * w;
+    this.y = -20;
+    this.size = Math.random() * 3 + 1;
+    this.speedY = Math.random() * 0.5 + 0.2;
+    this.speedX = (Math.random() - 0.5) * 0.3;
+    this.color = colors[Math.floor(Math.random() * colors.length)];
+    this.alpha = Math.random() * 0.7 + 0.3;
+    this.pulse = Math.random() * Math.PI * 2;
+    this.pulseSpeed = Math.random() * 0.02 + 0.01;
+    this.trail = [];
+    this.maxTrail = Math.floor(Math.random() * 20) + 10;
+  }
+  
+  update() {
+    this.trail.unshift({ x: this.x, y: this.y, alpha: this.alpha });
+    if (this.trail.length > this.maxTrail) this.trail.pop();
     
-    let width, height;
-    const ghosts = [];
-    const echoes = [];
-    const numGhosts = 12;
+    this.pulse += this.pulseSpeed;
+    this.x += this.speedX + Math.sin(this.pulse) * 0.3;
+    this.y += this.speedY;
     
-    const palette = {
-      cyan: '#00f5ff',
-      pink: '#ff1493',
-      purple: '#8b00ff',
-      darkPurple: '#1a0a2e',
-      black: '#060507'
-    };
+    // gentle drift influenced by position
+    this.speedX += (Math.sin(this.y * 0.005) * 0.01);
+    this.speedX *= 0.99;
     
-    function resize() {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
+    if (this.y > h + 20 || this.x < -20 || this.x > w + 20) {
+      this.reset();
+    }
+  }
+  
+  draw() {
+    // draw trail
+    for (let i = this.trail.length - 1; i >= 0; i--) {
+      const t = this.trail[i];
+      const trailAlpha = (1 - i / this.trail.length) * t.alpha * 0.3;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, this.size * (1 - i / this.trail.length * 0.5), 0, Math.PI * 2);
+      ctx.fillStyle = this.color + trailAlpha + ')';
+      ctx.fill();
     }
     
-    class Ghost {
-      constructor() {
-        this.reset();
-        this.x = Math.random() * width;
-        this.y = Math.random() * height;
-      }
+    // draw main particle with pulse
+    const pulseAlpha = this.alpha * (0.7 + Math.sin(this.pulse) * 0.3);
+    const pulseSize = this.size * (1 + Math.sin(this.pulse) * 0.2);
+    
+    // glow
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, pulseSize * 3, 0, Math.PI * 2);
+    ctx.fillStyle = this.color + (pulseAlpha * 0.1) + ')';
+    ctx.fill();
+    
+    // core
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, pulseSize, 0, Math.PI * 2);
+    ctx.fillStyle = this.color + pulseAlpha + ')';
+    ctx.fill();
+  }
+}
+
+// glitch lines - horizontal tears in reality
+class Glitch {
+  constructor() {
+    this.reset();
+  }
+  
+  reset() {
+    this.y = Math.random() * h;
+    this.width = Math.random() * w * 0.3 + 50;
+    this.x = Math.random() * (w - this.width);
+    this.height = Math.random() * 3 + 1;
+    this.alpha = 0;
+    this.maxAlpha = Math.random() * 0.3 + 0.1;
+    this.life = 0;
+    this.maxLife = Math.random() * 30 + 10;
+    this.color = colors[Math.floor(Math.random() * colors.length)];
+    this.offset = (Math.random() - 0.5) * 20;
+  }
+  
+  update() {
+    this.life++;
+    const progress = this.life / this.maxLife;
+    
+    if (progress < 0.2) {
+      this.alpha = (progress / 0.2) * this.maxAlpha;
+    } else if (progress > 0.8) {
+      this.alpha = ((1 - progress) / 0.2) * this.maxAlpha;
+    }
+    
+    if (this.life >= this.maxLife) {
+      if (Math.random() < 0.02) this.reset();
+    }
+  }
+  
+  draw() {
+    if (this.alpha <= 0) return;
+    
+    ctx.fillStyle = this.color + this.alpha + ')';
+    ctx.fillRect(this.x + this.offset, this.y, this.width, this.height);
+    
+    // displacement effect
+    if (Math.random() < 0.3) {
+      ctx.fillStyle = 'rgba(0, 255, 255, ' + (this.alpha * 0.5) + ')';
+      ctx.fillRect(this.x + this.offset + 2, this.y + 2, this.width * 0.7, 1);
+    }
+  }
+}
+
+// constellation connections
+function drawConnections(fragments) {
+  const threshold = 100;
+  
+  for (let i = 0; i < fragments.length; i++) {
+    for (let j = i + 1; j < fragments.length; j++) {
+      const dx = fragments[i].x - fragments[j].x;
+      const dy = fragments[i].y - fragments[j].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
       
-      reset() {
-        this.x = Math.random() * width;
-        this.y = Math.random() * height;
-        this.vx = (Math.random() - 0.5) * 2;
-        this.vy = (Math.random() - 0.5) * 2;
-        this.size = 3 + Math.random() * 8;
-        this.color = Math.random() > 0.5 ? palette.cyan : palette.pink;
-        this.pulsePhase = Math.random() * Math.PI * 2;
-        this.pulseSpeed = 0.02 + Math.random() * 0.03;
-        this.echoTimer = 0;
-        this.echoInterval = 3 + Math.random() * 5;
-        this.wanderAngle = Math.random() * Math.PI * 2;
-        this.wanderSpeed = 0.02 + Math.random() * 0.02;
-      }
-      
-      update(time) {
-        // Organic wandering motion
-        this.wanderAngle += (Math.random() - 0.5) * this.wanderSpeed;
-        this.vx += Math.cos(this.wanderAngle) * 0.1;
-        this.vy += Math.sin(this.wanderAngle) * 0.1;
-        
-        // Damping
-        this.vx *= 0.98;
-        this.vy *= 0.98;
-        
-        // Speed limit
-        const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-        if (speed > 3) {
-          this.vx = (this.vx / speed) * 3;
-          this.vy = (this.vy / speed) * 3;
-        }
-        
-        this.x += this.vx;
-        this.y += this.vy;
-        
-        // Wrap edges
-        if (this.x < -50) this.x = width + 50;
-        if (this.x > width + 50) this.x = -50;
-        if (this.y < -50) this.y = height + 50;
-        if (this.y > height + 50) this.y = -50;
-        
-        this.pulsePhase += this.pulseSpeed;
-        
-        // Leave echoes
-        this.echoTimer++;
-        if (this.echoTimer > this.echoInterval) {
-          this.echoTimer = 0;
-          echoes.push(new Echo(this.x, this.y, this.size, this.color));
-        }
-      }
-      
-      draw() {
-        const pulse = 0.6 + Math.sin(this.pulsePhase) * 0.4;
-        const glowSize = this.size * (1.5 + pulse);
-        
-        // Outer glow
-        const gradient = ctx.createRadialGradient(
-          this.x, this.y, 0,
-          this.x, this.y, glowSize * 3
-        );
-        gradient.addColorStop(0, this.color + 'cc');
-        gradient.addColorStop(0.3, this.color + '44');
-        gradient.addColorStop(1, 'transparent');
-        
+      if (dist < threshold) {
+        const alpha = (1 - dist / threshold) * 0.15;
         ctx.beginPath();
-        ctx.arc(this.x, this.y, glowSize * 3, 0, Math.PI * 2);
-        ctx.fillStyle = gradient;
-        ctx.fill();
-        
-        // Core
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size * pulse, 0, Math.PI * 2);
-        ctx.fillStyle = this.color;
-        ctx.fill();
+        ctx.moveTo(fragments[i].x, fragments[j].y);
+        ctx.lineTo(fragments[j].x, fragments[j].y);
+        ctx.strokeStyle = `rgba(148, 0, 211, ${alpha})`;
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
       }
     }
-    
-    class Echo {
-      constructor(x, y, size, color) {
-        this.x = x;
-        this.y = y;
-        this.size = size * 0.8;
-        this.color = color;
-        this.alpha = 0.6;
-        this.life = 1;
-        this.decay = 0.008 + Math.random() * 0.008;
-        this.drift = {
-          x: (Math.random() - 0.5) * 0.3,
-          y: (Math.random() - 0.5) * 0.3
-        };
-      }
-      
-      update() {
-        this.life -= this.decay;
-        this.alpha = this.life * 0.6;
-        this.size *= 0.998;
-        this.x += this.drift.x;
-        this.y += this.drift.y;
-        return this.life > 0;
-      }
-      
-      draw() {
-        if (this.alpha <= 0) return;
-        
-        const gradient = ctx.createRadialGradient(
-          this.x, this.y, 0,
-          this.x, this.y, this.size * 2
-        );
-        
-        const hex = this.color;
-        gradient.addColorStop(0, hex + Math.floor(this.alpha * 255).toString(16).padStart(2, '0'));
-        gradient.addColorStop(0.5, hex + Math.floor(this.alpha * 100).toString(16).padStart(2, '0'));
-        gradient.addColorStop(1, 'transparent');
-        
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
-        ctx.fillStyle = gradient;
-        ctx.fill();
-      }
-    }
-    
-    // Occasional skull constellation
-    class SkullConstellation {
-      constructor() {
-        this.x = Math.random() * width;
-        this.y = Math.random() * height;
-        this.scale = 20 + Math.random() * 40;
-        this.alpha = 0;
-        this.maxAlpha = 0.15 + Math.random() * 0.1;
-        this.phase = 'in';
-        this.timer = 0;
-        this.duration = 200 + Math.random() * 200;
-        this.rotation = Math.random() * 0.2 - 0.1;
-      }
-      
-      update() {
-        this.timer++;
-        
-        if (this.phase === 'in') {
-          this.alpha = Math.min(this.maxAlpha, this.alpha + 0.002);
-          if (this.timer > this.duration * 0.3) this.phase = 'hold';
-        } else if (this.phase === 'hold') {
-          if (this.timer > this.duration * 0.7) this.phase = 'out';
-        } else {
-          this.alpha -= 0.003;
-        }
-        
-        return this.alpha > 0;
-      }
-      
-      draw() {
-        if (this.alpha <= 0) return;
-        
-        ctx.save();
-        ctx.translate(this.x, this.y);
-        ctx.rotate(this.rotation);
-        ctx.globalAlpha = this.alpha;
-        
-        // Simple skull shape from dots
-        const points = [
-          // Head outline
-          [0, -1], [-0.8, -0.6], [-1, 0], [-0.8, 0.5], [-0.3, 0.8],
-          [0.3, 0.8], [0.8, 0.5], [1, 0], [0.8, -0.6],
-          // Eyes
-          [-0.4, 0], [0.4, 0],
-          // Nose
-          [0, 0.3]
-        ];
-        
-        const color = Math.random() > 0.5 ? palette.cyan : palette.pink;
-        
-        points.forEach(([px, py]) => {
-          const gradient = ctx.createRadialGradient(
-            px * this.scale, py * this.scale, 0,
-            px * this.scale, py * this.scale, 4
-          );
-          gradient.addColorStop(0, color);
-          gradient.addColorStop(1, 'transparent');
-          
-          ctx.beginPath();
-          ctx.arc(px * this.scale, py * this.scale, 4, 0, Math.PI * 2);
-          ctx.fillStyle = gradient;
-          ctx.fill();
-        });
-        
-        ctx.restore();
-      }
-    }
-    
-    let skulls = [];
-    let skullTimer = 0;
-    
-    function init() {
-      resize();
-      for (let i = 0; i < numGhosts; i++) {
-        ghosts.push(new Ghost());
-      }
-    }
-    
-    function animate(time) {
-      // Fade trail effect
-      ctx.fillStyle = 'rgba(6, 5, 7, 0.08)';
-      ctx.fillRect(0, 0, width, height);
-      
-      // Update and draw echoes
-      for (let i = echoes.length - 1; i >= 0; i--) {
-        if (!echoes[i].update()) {
-          echoes.splice(i, 1);
-        } else {
-          echoes[i].draw();
-        }
-      }
-      
-      // Update and draw ghosts
-      ghosts.forEach(ghost => {
-        ghost.update(time);
-        ghost.draw();
-      });
-      
-      // Occasional skull constellations
-      skullTimer++;
-      if (skullTimer > 400 && skulls.length < 2 && Math.random() < 0.01) {
-        skulls.push(new SkullConstellation());
-        skullTimer = 0;
-      }
-      
-      for (let i = skulls.length - 1; i >= 0; i--) {
-        if (!skulls[i].update()) {
-          skulls.splice(i, 1);
-        } else {
-          skulls[i].draw();
-        }
-      }
-      
-      // Subtle scan lines
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
-      for (let y = 0; y < height; y += 4) {
-        ctx.fillRect(0, y, width, 2);
-      }
-      
-      requestAnimationFrame(animate);
-    }
-    
-    window.addEventListener('resize', resize);
-    init();
-    animate(0);
-  </script>
+  }
+}
+
+// initialize
+const fragments = Array.from({ length: 80 }, () => new Fragment());
+const glitches = Array.from({ length: 5 }, () => new Glitch());
+
+let time = 0;
+
+function animate() {
+  // fade with slight color tint
+  ctx.fillStyle = 'rgba(6, 5, 7, 0.08)';
+  ctx.fillRect(0, 0, w, h);
+  
+  time += 0.01;
+  
+  // subtle background pulse
+  if (Math.random() < 0.005) {
+    ctx.fillStyle = 'rgba(148, 0, 211, 0.02)';
+    ctx.fillRect(0, 0, w, h);
+  }
+  
+  // update and draw connections
+  drawConnections(fragments);
+  
+  // update and draw fragments
+  fragments.forEach(f => {
+    f.update();
+    f.draw();
+  });
+  
+  // update and draw glitches
+  glitches.forEach(g => {
+    g.update();
+    g.draw();
+  });
+  
+  // occasional screen flicker
+  if (Math.random() < 0.002) {
+    ctx.fillStyle = 'rgba(0, 255, 255, 0.03)';
+    ctx.fillRect(0, 0, w, h);
+  }
+  
+  requestAnimationFrame(animate);
+}
+
+animate();
+</script>
 </body>
 </html>
