@@ -1,224 +1,290 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ephemera</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-      background: #060507; 
-      overflow: hidden; 
-      width: 100vw; 
-      height: 100vh;
-    }
-    canvas { display: block; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>frequency ghost</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { 
+  background: #000; 
+  overflow: hidden; 
+  cursor: crosshair;
+}
+canvas { 
+  display: block; 
+  image-rendering: pixelated;
+}
+#crt {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  background: 
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.15) 0px,
+      rgba(0, 0, 0, 0.15) 1px,
+      transparent 1px,
+      transparent 2px
+    );
+  z-index: 10;
+}
+#vignette {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.8) 100%);
+  z-index: 11;
+}
+#start {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  color: #0ff;
+  font-family: monospace;
+  font-size: 14px;
+  text-align: center;
+  z-index: 20;
+  text-shadow: 0 0 10px #0ff;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+</style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<div id="crt"></div>
+<div id="vignette"></div>
+<div id="start">[ click to initialize audio ]</div>
+
 <script>
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
+const startEl = document.getElementById('start');
 
 let w, h;
-const resize = () => {
+let audioCtx, osc1, osc2, gain;
+let mouseX = 0.5, mouseY = 0.5;
+let audioStarted = false;
+
+// Lissajous history for trail effect
+const history = [];
+const historyLength = 2000;
+
+// Frequency ratios that create interesting patterns
+const ratios = [
+  [1, 1], [1, 2], [2, 3], [3, 4], [3, 5], [4, 5], [5, 6], [5, 7], [7, 8]
+];
+let currentRatio = 0;
+let ratioTimer = 0;
+let phase = 0;
+
+function resize() {
   w = canvas.width = window.innerWidth;
   h = canvas.height = window.innerHeight;
-};
-resize();
-window.addEventListener('resize', resize);
-
-// color palette
-const colors = [
-  'rgba(255, 20, 147, ', // hot pink
-  'rgba(0, 255, 255, ',   // electric cyan
-  'rgba(148, 0, 211, ',   // deep purple
-  'rgba(255, 105, 180, ', // soft pink
-];
-
-// memory fragments - particles that drift like thoughts
-class Fragment {
-  constructor() {
-    this.reset();
-    this.y = Math.random() * h;
-  }
-  
-  reset() {
-    this.x = Math.random() * w;
-    this.y = -20;
-    this.size = Math.random() * 3 + 1;
-    this.speedY = Math.random() * 0.5 + 0.2;
-    this.speedX = (Math.random() - 0.5) * 0.3;
-    this.color = colors[Math.floor(Math.random() * colors.length)];
-    this.alpha = Math.random() * 0.7 + 0.3;
-    this.pulse = Math.random() * Math.PI * 2;
-    this.pulseSpeed = Math.random() * 0.02 + 0.01;
-    this.trail = [];
-    this.maxTrail = Math.floor(Math.random() * 20) + 10;
-  }
-  
-  update() {
-    this.trail.unshift({ x: this.x, y: this.y, alpha: this.alpha });
-    if (this.trail.length > this.maxTrail) this.trail.pop();
-    
-    this.pulse += this.pulseSpeed;
-    this.x += this.speedX + Math.sin(this.pulse) * 0.3;
-    this.y += this.speedY;
-    
-    // gentle drift influenced by position
-    this.speedX += (Math.sin(this.y * 0.005) * 0.01);
-    this.speedX *= 0.99;
-    
-    if (this.y > h + 20 || this.x < -20 || this.x > w + 20) {
-      this.reset();
-    }
-  }
-  
-  draw() {
-    // draw trail
-    for (let i = this.trail.length - 1; i >= 0; i--) {
-      const t = this.trail[i];
-      const trailAlpha = (1 - i / this.trail.length) * t.alpha * 0.3;
-      ctx.beginPath();
-      ctx.arc(t.x, t.y, this.size * (1 - i / this.trail.length * 0.5), 0, Math.PI * 2);
-      ctx.fillStyle = this.color + trailAlpha + ')';
-      ctx.fill();
-    }
-    
-    // draw main particle with pulse
-    const pulseAlpha = this.alpha * (0.7 + Math.sin(this.pulse) * 0.3);
-    const pulseSize = this.size * (1 + Math.sin(this.pulse) * 0.2);
-    
-    // glow
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, pulseSize * 3, 0, Math.PI * 2);
-    ctx.fillStyle = this.color + (pulseAlpha * 0.1) + ')';
-    ctx.fill();
-    
-    // core
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, pulseSize, 0, Math.PI * 2);
-    ctx.fillStyle = this.color + pulseAlpha + ')';
-    ctx.fill();
-  }
 }
 
-// glitch lines - horizontal tears in reality
-class Glitch {
-  constructor() {
-    this.reset();
-  }
+function initAudio() {
+  if (audioStarted) return;
+  audioStarted = true;
+  startEl.style.display = 'none';
   
-  reset() {
-    this.y = Math.random() * h;
-    this.width = Math.random() * w * 0.3 + 50;
-    this.x = Math.random() * (w - this.width);
-    this.height = Math.random() * 3 + 1;
-    this.alpha = 0;
-    this.maxAlpha = Math.random() * 0.3 + 0.1;
-    this.life = 0;
-    this.maxLife = Math.random() * 30 + 10;
-    this.color = colors[Math.floor(Math.random() * colors.length)];
-    this.offset = (Math.random() - 0.5) * 20;
-  }
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   
-  update() {
-    this.life++;
-    const progress = this.life / this.maxLife;
-    
-    if (progress < 0.2) {
-      this.alpha = (progress / 0.2) * this.maxAlpha;
-    } else if (progress > 0.8) {
-      this.alpha = ((1 - progress) / 0.2) * this.maxAlpha;
-    }
-    
-    if (this.life >= this.maxLife) {
-      if (Math.random() < 0.02) this.reset();
-    }
-  }
+  // Two oscillators for X and Y
+  osc1 = audioCtx.createOscillator();
+  osc2 = audioCtx.createOscillator();
+  gain = audioCtx.createGain();
   
-  draw() {
-    if (this.alpha <= 0) return;
-    
-    ctx.fillStyle = this.color + this.alpha + ')';
-    ctx.fillRect(this.x + this.offset, this.y, this.width, this.height);
-    
-    // displacement effect
-    if (Math.random() < 0.3) {
-      ctx.fillStyle = 'rgba(0, 255, 255, ' + (this.alpha * 0.5) + ')';
-      ctx.fillRect(this.x + this.offset + 2, this.y + 2, this.width * 0.7, 1);
-    }
-  }
+  osc1.type = 'sine';
+  osc2.type = 'sine';
+  gain.gain.value = 0.03; // quiet
+  
+  // Analyzer for getting waveform data
+  window.analyserX = audioCtx.createAnalyser();
+  window.analyserY = audioCtx.createAnalyser();
+  analyserX.fftSize = 2048;
+  analyserY.fftSize = 2048;
+  
+  osc1.connect(analyserX);
+  osc2.connect(analyserY);
+  osc1.connect(gain);
+  osc2.connect(gain);
+  gain.connect(audioCtx.destination);
+  
+  osc1.start();
+  osc2.start();
 }
 
-// constellation connections
-function drawConnections(fragments) {
-  const threshold = 100;
+function updateFrequencies() {
+  if (!audioStarted) return;
   
-  for (let i = 0; i < fragments.length; i++) {
-    for (let j = i + 1; j < fragments.length; j++) {
-      const dx = fragments[i].x - fragments[j].x;
-      const dy = fragments[i].y - fragments[j].y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      
-      if (dist < threshold) {
-        const alpha = (1 - dist / threshold) * 0.15;
-        ctx.beginPath();
-        ctx.moveTo(fragments[i].x, fragments[j].y);
-        ctx.lineTo(fragments[j].x, fragments[j].y);
-        ctx.strokeStyle = `rgba(148, 0, 211, ${alpha})`;
-        ctx.lineWidth = 0.5;
-        ctx.stroke();
-      }
-    }
-  }
+  // Base frequency affected by mouse Y
+  const baseFreq = 100 + mouseY * 300;
+  
+  // Get current ratio
+  const [r1, r2] = ratios[currentRatio];
+  
+  // Apply ratio for Lissajous pattern
+  osc1.frequency.setTargetAtTime(baseFreq * r1, audioCtx.currentTime, 0.1);
+  osc2.frequency.setTargetAtTime(baseFreq * r2, audioCtx.currentTime, 0.1);
 }
 
-// initialize
-const fragments = Array.from({ length: 80 }, () => new Fragment());
-const glitches = Array.from({ length: 5 }, () => new Glitch());
+function getLissajousPoint(t) {
+  if (!audioStarted) {
+    // Demo mode before audio
+    const [r1, r2] = ratios[currentRatio];
+    const baseFreq = 2;
+    const x = Math.sin(t * baseFreq * r1 + phase);
+    const y = Math.sin(t * baseFreq * r2);
+    return { x, y };
+  }
+  
+  // Get actual audio data
+  const bufferLength = analyserX.fftSize;
+  const dataX = new Float32Array(bufferLength);
+  const dataY = new Float32Array(bufferLength);
+  analyserX.getFloatTimeDomainData(dataX);
+  analyserY.getFloatTimeDomainData(dataY);
+  
+  // Sample at position based on t
+  const idx = Math.floor((t % 1) * bufferLength);
+  return {
+    x: dataX[idx] || 0,
+    y: dataY[idx] || 0
+  };
+}
 
-let time = 0;
-
-function animate() {
-  // fade with slight color tint
-  ctx.fillStyle = 'rgba(6, 5, 7, 0.08)';
+function draw(timestamp) {
+  // Fade effect
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
   ctx.fillRect(0, 0, w, h);
   
-  time += 0.01;
+  const cx = w / 2;
+  const cy = h / 2;
+  const scale = Math.min(w, h) * 0.35;
   
-  // subtle background pulse
-  if (Math.random() < 0.005) {
-    ctx.fillStyle = 'rgba(148, 0, 211, 0.02)';
-    ctx.fillRect(0, 0, w, h);
+  // Update ratio periodically
+  ratioTimer++;
+  if (ratioTimer > 500) {
+    ratioTimer = 0;
+    currentRatio = (currentRatio + 1) % ratios.length;
+    updateFrequencies();
   }
   
-  // update and draw connections
-  drawConnections(fragments);
+  // Phase shift for animation
+  phase += 0.02 + mouseX * 0.03;
   
-  // update and draw fragments
-  fragments.forEach(f => {
-    f.update();
-    f.draw();
-  });
+  // Draw multiple samples
+  const samples = 150;
+  const t = timestamp * 0.001;
   
-  // update and draw glitches
-  glitches.forEach(g => {
-    g.update();
-    g.draw();
-  });
-  
-  // occasional screen flicker
-  if (Math.random() < 0.002) {
-    ctx.fillStyle = 'rgba(0, 255, 255, 0.03)';
-    ctx.fillRect(0, 0, w, h);
+  for (let i = 0; i < samples; i++) {
+    const sampleT = t + i * 0.02;
+    const point = getLissajousPoint(sampleT);
+    
+    const x = cx + point.x * scale;
+    const y = cy + point.y * scale;
+    
+    // Add to history
+    history.push({ x, y, age: 0 });
+    if (history.length > historyLength) history.shift();
   }
   
-  requestAnimationFrame(animate);
+  // Draw history with gradient
+  for (let i = 0; i < history.length; i++) {
+    const p = history[i];
+    p.age++;
+    
+    const life = 1 - (p.age / historyLength);
+    if (life <= 0) continue;
+    
+    // Color shifts based on position
+    const hue = (p.x / w) * 60 + 280; // purple to pink range
+    const lightness = 50 + life * 30;
+    
+    // Cyan core, pink edges
+    const distFromCenter = Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2) / scale;
+    const isCyan = distFromCenter < 0.5;
+    
+    if (isCyan) {
+      ctx.fillStyle = `hsla(180, 100%, ${lightness}%, ${life * 0.8})`;
+    } else {
+      ctx.fillStyle = `hsla(${hue}, 100%, ${lightness}%, ${life * 0.6})`;
+    }
+    
+    const size = life * 2.5;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  
+  // Bright current point
+  const current = getLissajousPoint(t);
+  const currentX = cx + current.x * scale;
+  const currentY = cy + current.y * scale;
+  
+  // Glow
+  const gradient = ctx.createRadialGradient(currentX, currentY, 0, currentX, currentY, 20);
+  gradient.addColorStop(0, 'rgba(0, 255, 255, 0.8)');
+  gradient.addColorStop(0.5, 'rgba(255, 0, 255, 0.3)');
+  gradient.addColorStop(1, 'transparent');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(currentX, currentY, 20, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Core
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(currentX, currentY, 3, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Frequency display
+  if (audioStarted) {
+    const [r1, r2] = ratios[currentRatio];
+    ctx.fillStyle = 'rgba(0, 255, 255, 0.4)';
+    ctx.font = '12px monospace';
+    ctx.fillText(`ratio ${r1}:${r2}`, 20, h - 20);
+    ctx.fillText(`freq ${Math.round(osc1.frequency.value)}hz / ${Math.round(osc2.frequency.value)}hz`, 20, h - 40);
+  }
+  
+  requestAnimationFrame(draw);
 }
 
-animate();
+// Mouse interaction
+document.addEventListener('mousemove', (e) => {
+  mouseX = e.clientX / w;
+  mouseY = e.clientY / h;
+  updateFrequencies();
+});
+
+document.addEventListener('click', initAudio);
+
+// Touch support
+document.addEventListener('touchstart', (e) => {
+  initAudio();
+  const touch = e.touches[0];
+  mouseX = touch.clientX / w;
+  mouseY = touch.clientY / h;
+  updateFrequencies();
+});
+
+document.addEventListener('touchmove', (e) => {
+  const touch = e.touches[0];
+  mouseX = touch.clientX / w;
+  mouseY = touch.clientY / h;
+  updateFrequencies();
+});
+
+window.addEventListener('resize', resize);
+resize();
+requestAnimationFrame(draw);
 </script>
 </body>
 </html>
