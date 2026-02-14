@@ -1,290 +1,354 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>frequency ghost</title>
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { 
-  background: #000; 
-  overflow: hidden; 
-  cursor: crosshair;
-}
-canvas { 
-  display: block; 
-  image-rendering: pixelated;
-}
-#crt {
-  position: fixed;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  pointer-events: none;
-  background: 
-    repeating-linear-gradient(
-      0deg,
-      rgba(0, 0, 0, 0.15) 0px,
-      rgba(0, 0, 0, 0.15) 1px,
-      transparent 1px,
-      transparent 2px
-    );
-  z-index: 10;
-}
-#vignette {
-  position: fixed;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  pointer-events: none;
-  background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.8) 100%);
-  z-index: 11;
-}
-#start {
-  position: fixed;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  color: #0ff;
-  font-family: monospace;
-  font-size: 14px;
-  text-align: center;
-  z-index: 20;
-  text-shadow: 0 0 10px #0ff;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-@keyframes pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
-}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mycelium</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a0f; 
+      overflow: hidden; 
+      width: 100vw; 
+      height: 100vh;
+    }
+    canvas { 
+      display: block; 
+      width: 100%; 
+      height: 100%; 
+    }
+  </style>
 </head>
 <body>
-<canvas id="c"></canvas>
-<div id="crt"></div>
-<div id="vignette"></div>
-<div id="start">[ click to initialize audio ]</div>
-
-<script>
-const canvas = document.getElementById('c');
-const ctx = canvas.getContext('2d');
-const startEl = document.getElementById('start');
-
-let w, h;
-let audioCtx, osc1, osc2, gain;
-let mouseX = 0.5, mouseY = 0.5;
-let audioStarted = false;
-
-// Lissajous history for trail effect
-const history = [];
-const historyLength = 2000;
-
-// Frequency ratios that create interesting patterns
-const ratios = [
-  [1, 1], [1, 2], [2, 3], [3, 4], [3, 5], [4, 5], [5, 6], [5, 7], [7, 8]
-];
-let currentRatio = 0;
-let ratioTimer = 0;
-let phase = 0;
-
-function resize() {
-  w = canvas.width = window.innerWidth;
-  h = canvas.height = window.innerHeight;
-}
-
-function initAudio() {
-  if (audioStarted) return;
-  audioStarted = true;
-  startEl.style.display = 'none';
-  
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  
-  // Two oscillators for X and Y
-  osc1 = audioCtx.createOscillator();
-  osc2 = audioCtx.createOscillator();
-  gain = audioCtx.createGain();
-  
-  osc1.type = 'sine';
-  osc2.type = 'sine';
-  gain.gain.value = 0.03; // quiet
-  
-  // Analyzer for getting waveform data
-  window.analyserX = audioCtx.createAnalyser();
-  window.analyserY = audioCtx.createAnalyser();
-  analyserX.fftSize = 2048;
-  analyserY.fftSize = 2048;
-  
-  osc1.connect(analyserX);
-  osc2.connect(analyserY);
-  osc1.connect(gain);
-  osc2.connect(gain);
-  gain.connect(audioCtx.destination);
-  
-  osc1.start();
-  osc2.start();
-}
-
-function updateFrequencies() {
-  if (!audioStarted) return;
-  
-  // Base frequency affected by mouse Y
-  const baseFreq = 100 + mouseY * 300;
-  
-  // Get current ratio
-  const [r1, r2] = ratios[currentRatio];
-  
-  // Apply ratio for Lissajous pattern
-  osc1.frequency.setTargetAtTime(baseFreq * r1, audioCtx.currentTime, 0.1);
-  osc2.frequency.setTargetAtTime(baseFreq * r2, audioCtx.currentTime, 0.1);
-}
-
-function getLissajousPoint(t) {
-  if (!audioStarted) {
-    // Demo mode before audio
-    const [r1, r2] = ratios[currentRatio];
-    const baseFreq = 2;
-    const x = Math.sin(t * baseFreq * r1 + phase);
-    const y = Math.sin(t * baseFreq * r2);
-    return { x, y };
-  }
-  
-  // Get actual audio data
-  const bufferLength = analyserX.fftSize;
-  const dataX = new Float32Array(bufferLength);
-  const dataY = new Float32Array(bufferLength);
-  analyserX.getFloatTimeDomainData(dataX);
-  analyserY.getFloatTimeDomainData(dataY);
-  
-  // Sample at position based on t
-  const idx = Math.floor((t % 1) * bufferLength);
-  return {
-    x: dataX[idx] || 0,
-    y: dataY[idx] || 0
-  };
-}
-
-function draw(timestamp) {
-  // Fade effect
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
-  ctx.fillRect(0, 0, w, h);
-  
-  const cx = w / 2;
-  const cy = h / 2;
-  const scale = Math.min(w, h) * 0.35;
-  
-  // Update ratio periodically
-  ratioTimer++;
-  if (ratioTimer > 500) {
-    ratioTimer = 0;
-    currentRatio = (currentRatio + 1) % ratios.length;
-    updateFrequencies();
-  }
-  
-  // Phase shift for animation
-  phase += 0.02 + mouseX * 0.03;
-  
-  // Draw multiple samples
-  const samples = 150;
-  const t = timestamp * 0.001;
-  
-  for (let i = 0; i < samples; i++) {
-    const sampleT = t + i * 0.02;
-    const point = getLissajousPoint(sampleT);
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
     
-    const x = cx + point.x * scale;
-    const y = cy + point.y * scale;
-    
-    // Add to history
-    history.push({ x, y, age: 0 });
-    if (history.length > historyLength) history.shift();
-  }
-  
-  // Draw history with gradient
-  for (let i = 0; i < history.length; i++) {
-    const p = history[i];
-    p.age++;
-    
-    const life = 1 - (p.age / historyLength);
-    if (life <= 0) continue;
-    
-    // Color shifts based on position
-    const hue = (p.x / w) * 60 + 280; // purple to pink range
-    const lightness = 50 + life * 30;
-    
-    // Cyan core, pink edges
-    const distFromCenter = Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2) / scale;
-    const isCyan = distFromCenter < 0.5;
-    
-    if (isCyan) {
-      ctx.fillStyle = `hsla(180, 100%, ${lightness}%, ${life * 0.8})`;
-    } else {
-      ctx.fillStyle = `hsla(${hue}, 100%, ${lightness}%, ${life * 0.6})`;
+    let W, H;
+    const resize = () => {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    };
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Mycelium network
+    class Hypha {
+      constructor(x, y, angle, energy, generation = 0, parent = null) {
+        this.x = x;
+        this.y = y;
+        this.angle = angle;
+        this.energy = energy;
+        this.generation = generation;
+        this.parent = parent;
+        this.alive = true;
+        this.age = 0;
+        this.segments = [{x, y}];
+        this.thickness = Math.max(0.5, 3 - generation * 0.4);
+        this.branchCooldown = 0;
+        this.nutrientPulse = 0;
+      }
+
+      grow() {
+        if (!this.alive || this.energy <= 0) {
+          this.alive = false;
+          return [];
+        }
+
+        this.age++;
+        this.branchCooldown = Math.max(0, this.branchCooldown - 1);
+        
+        // Organic wandering
+        const wander = (Math.random() - 0.5) * 0.15;
+        const tropism = Math.sin(this.age * 0.02) * 0.03; // gentle oscillation
+        this.angle += wander + tropism;
+        
+        // Growth speed decreases with generation
+        const speed = 1.2 - this.generation * 0.15;
+        this.x += Math.cos(this.angle) * speed;
+        this.y += Math.sin(this.angle) * speed;
+        
+        this.segments.push({x: this.x, y: this.y});
+        this.energy -= 0.3 + this.generation * 0.1;
+
+        // Check bounds
+        if (this.x < -50 || this.x > W + 50 || this.y < -50 || this.y > H + 50) {
+          this.alive = false;
+          return [];
+        }
+
+        const newHyphae = [];
+
+        // Branching
+        if (this.branchCooldown === 0 && 
+            this.energy > 30 && 
+            this.generation < 5 &&
+            Math.random() < 0.02 - this.generation * 0.003) {
+          
+          const branchAngle = this.angle + (Math.random() > 0.5 ? 1 : -1) * (0.4 + Math.random() * 0.6);
+          const branchEnergy = this.energy * (0.3 + Math.random() * 0.2);
+          this.energy -= branchEnergy * 0.5;
+          
+          newHyphae.push(new Hypha(
+            this.x, this.y, branchAngle, branchEnergy, this.generation + 1, this
+          ));
+          
+          this.branchCooldown = 30 + Math.random() * 40;
+        }
+
+        return newHyphae;
+      }
+
+      draw(time) {
+        if (this.segments.length < 2) return;
+
+        // Base color shifts with generation
+        const hueShift = this.generation * 15;
+        
+        for (let i = 1; i < this.segments.length; i++) {
+          const p0 = this.segments[i - 1];
+          const p1 = this.segments[i];
+          
+          // Age-based alpha (older segments more solid)
+          const segmentAge = this.segments.length - i;
+          const alpha = Math.min(0.9, 0.3 + segmentAge * 0.01);
+          
+          // Nutrient pulse traveling through
+          const pulsePos = (time * 0.002 + this.nutrientPulse) % 1;
+          const segmentPos = i / this.segments.length;
+          const pulseDist = Math.abs(segmentPos - pulsePos);
+          const pulseIntensity = pulseDist < 0.1 ? (1 - pulseDist * 10) * 0.6 : 0;
+          
+          // Color: pink to cyan gradient based on generation
+          const t = this.generation / 5;
+          const r = Math.floor(255 * (1 - t) + 0 * t);
+          const g = Math.floor(100 * (1 - t) + 220 * t);
+          const b = Math.floor(180 * (1 - t) + 255 * t);
+          
+          ctx.beginPath();
+          ctx.moveTo(p0.x, p0.y);
+          ctx.lineTo(p1.x, p1.y);
+          
+          const thickness = this.thickness * (1 - i / this.segments.length * 0.5);
+          ctx.lineWidth = thickness + pulseIntensity * 2;
+          ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha + pulseIntensity})`;
+          ctx.lineCap = 'round';
+          ctx.stroke();
+          
+          // Glow on pulse
+          if (pulseIntensity > 0.1) {
+            ctx.shadowColor = `rgba(${r}, ${g}, ${b}, ${pulseIntensity})`;
+            ctx.shadowBlur = 10;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+          }
+        }
+
+        // Growing tip glow
+        if (this.alive && this.segments.length > 0) {
+          const tip = this.segments[this.segments.length - 1];
+          const glowSize = 3 + Math.sin(time * 0.01) * 1;
+          
+          const gradient = ctx.createRadialGradient(tip.x, tip.y, 0, tip.x, tip.y, glowSize * 3);
+          gradient.addColorStop(0, 'rgba(255, 150, 200, 0.8)');
+          gradient.addColorStop(0.5, 'rgba(255, 100, 180, 0.3)');
+          gradient.addColorStop(1, 'rgba(255, 100, 180, 0)');
+          
+          ctx.beginPath();
+          ctx.arc(tip.x, tip.y, glowSize * 3, 0, Math.PI * 2);
+          ctx.fillStyle = gradient;
+          ctx.fill();
+        }
+      }
     }
-    
-    const size = life * 2.5;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  
-  // Bright current point
-  const current = getLissajousPoint(t);
-  const currentX = cx + current.x * scale;
-  const currentY = cy + current.y * scale;
-  
-  // Glow
-  const gradient = ctx.createRadialGradient(currentX, currentY, 0, currentX, currentY, 20);
-  gradient.addColorStop(0, 'rgba(0, 255, 255, 0.8)');
-  gradient.addColorStop(0.5, 'rgba(255, 0, 255, 0.3)');
-  gradient.addColorStop(1, 'transparent');
-  ctx.fillStyle = gradient;
-  ctx.beginPath();
-  ctx.arc(currentX, currentY, 20, 0, Math.PI * 2);
-  ctx.fill();
-  
-  // Core
-  ctx.fillStyle = '#fff';
-  ctx.beginPath();
-  ctx.arc(currentX, currentY, 3, 0, Math.PI * 2);
-  ctx.fill();
-  
-  // Frequency display
-  if (audioStarted) {
-    const [r1, r2] = ratios[currentRatio];
-    ctx.fillStyle = 'rgba(0, 255, 255, 0.4)';
-    ctx.font = '12px monospace';
-    ctx.fillText(`ratio ${r1}:${r2}`, 20, h - 20);
-    ctx.fillText(`freq ${Math.round(osc1.frequency.value)}hz / ${Math.round(osc2.frequency.value)}hz`, 20, h - 40);
-  }
-  
-  requestAnimationFrame(draw);
-}
 
-// Mouse interaction
-document.addEventListener('mousemove', (e) => {
-  mouseX = e.clientX / w;
-  mouseY = e.clientY / h;
-  updateFrequencies();
-});
+    // Connection points (where hyphae can connect)
+    class Node {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.connections = [];
+        this.pulsePhase = Math.random() * Math.PI * 2;
+        this.size = 2 + Math.random() * 2;
+      }
 
-document.addEventListener('click', initAudio);
+      draw(time) {
+        const pulse = Math.sin(time * 0.003 + this.pulsePhase) * 0.5 + 0.5;
+        const size = this.size + pulse * 2;
+        
+        const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, size * 2);
+        gradient.addColorStop(0, `rgba(0, 255, 220, ${0.6 + pulse * 0.3})`);
+        gradient.addColorStop(0.5, 'rgba(150, 50, 200, 0.3)');
+        gradient.addColorStop(1, 'rgba(150, 50, 200, 0)');
+        
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, size * 2, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+      }
+    }
 
-// Touch support
-document.addEventListener('touchstart', (e) => {
-  initAudio();
-  const touch = e.touches[0];
-  mouseX = touch.clientX / w;
-  mouseY = touch.clientY / h;
-  updateFrequencies();
-});
+    let hyphae = [];
+    let nodes = [];
+    let time = 0;
+    let spawnTimer = 0;
 
-document.addEventListener('touchmove', (e) => {
-  const touch = e.touches[0];
-  mouseX = touch.clientX / w;
-  mouseY = touch.clientY / h;
-  updateFrequencies();
-});
+    // Initial seed points
+    const seedNetwork = () => {
+      const numSeeds = 3 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < numSeeds; i++) {
+        const x = W * 0.2 + Math.random() * W * 0.6;
+        const y = H * 0.3 + Math.random() * H * 0.4;
+        const numBranches = 3 + Math.floor(Math.random() * 4);
+        
+        nodes.push(new Node(x, y));
+        
+        for (let j = 0; j < numBranches; j++) {
+          const angle = (Math.PI * 2 / numBranches) * j + Math.random() * 0.5;
+          hyphae.push(new Hypha(x, y, angle, 100 + Math.random() * 50));
+        }
+      }
+    };
 
-window.addEventListener('resize', resize);
-resize();
-requestAnimationFrame(draw);
-</script>
+    seedNetwork();
+
+    // Mouse interaction - add new growth point
+    canvas.addEventListener('click', (e) => {
+      const x = e.clientX;
+      const y = e.clientY;
+      
+      nodes.push(new Node(x, y));
+      
+      const numBranches = 4 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < numBranches; i++) {
+        const angle = (Math.PI * 2 / numBranches) * i + Math.random() * 0.3;
+        hyphae.push(new Hypha(x, y, angle, 80 + Math.random() * 40));
+      }
+    });
+
+    const animate = () => {
+      time++;
+      
+      // Subtle fade for trails
+      ctx.fillStyle = 'rgba(10, 10, 15, 0.02)';
+      ctx.fillRect(0, 0, W, H);
+
+      // Grow all hyphae
+      const newHyphae = [];
+      for (const hypha of hyphae) {
+        const branches = hypha.grow();
+        newHyphae.push(...branches);
+        
+        // Trigger nutrient pulses occasionally
+        if (Math.random() < 0.001) {
+          hypha.nutrientPulse = Math.random();
+        }
+      }
+      hyphae.push(...newHyphae);
+
+      // Periodically spawn new seed points
+      spawnTimer++;
+      if (spawnTimer > 400 && hyphae.filter(h => h.alive).length < 20) {
+        spawnTimer = 0;
+        const x = Math.random() * W;
+        const y = Math.random() * H;
+        nodes.push(new Node(x, y));
+        
+        const numBranches = 2 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < numBranches; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          hyphae.push(new Hypha(x, y, angle, 70 + Math.random() * 30));
+        }
+      }
+
+      // Check for connections between hyphae tips
+      const aliveHyphae = hyphae.filter(h => h.alive);
+      for (let i = 0; i < aliveHyphae.length; i++) {
+        for (let j = i + 1; j < aliveHyphae.length; j++) {
+          const h1 = aliveHyphae[i];
+          const h2 = aliveHyphae[j];
+          const dx = h1.x - h2.x;
+          const dy = h1.y - h2.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          // If tips are close, create a connection node
+          if (dist < 15 && dist > 3) {
+            const nx = (h1.x + h2.x) / 2;
+            const ny = (h1.y + h2.y) / 2;
+            nodes.push(new Node(nx, ny));
+            
+            // Merge energies and kill one
+            if (h1.energy < h2.energy) {
+              h1.alive = false;
+            } else {
+              h2.alive = false;
+            }
+          }
+        }
+      }
+
+      // Draw connections between nearby nodes
+      ctx.strokeStyle = 'rgba(100, 50, 150, 0.15)';
+      ctx.lineWidth = 0.5;
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const n1 = nodes[i];
+          const n2 = nodes[j];
+          const dx = n1.x - n2.x;
+          const dy = n1.y - n2.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist < 150) {
+            const alpha = (1 - dist / 150) * 0.2;
+            ctx.strokeStyle = `rgba(100, 200, 220, ${alpha})`;
+            ctx.beginPath();
+            ctx.moveTo(n1.x, n1.y);
+            ctx.lineTo(n2.x, n2.y);
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Draw nodes
+      for (const node of nodes) {
+        node.draw(time);
+      }
+
+      // Draw hyphae
+      for (const hypha of hyphae) {
+        hypha.draw(time);
+      }
+
+      // Ambient background noise
+      if (time % 3 === 0) {
+        const numSpores = 1;
+        for (let i = 0; i < numSpores; i++) {
+          const x = Math.random() * W;
+          const y = Math.random() * H;
+          const size = Math.random() * 1.5;
+          
+          ctx.beginPath();
+          ctx.arc(x, y, size, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(150, 100, 200, ${Math.random() * 0.1})`;
+          ctx.fill();
+        }
+      }
+
+      // Cleanup dead hyphae that are fully faded (keep some for history)
+      if (hyphae.length > 500) {
+        hyphae = hyphae.filter(h => h.alive || h.age < 1000);
+      }
+
+      // Cleanup old nodes
+      if (nodes.length > 100) {
+        nodes = nodes.slice(-80);
+      }
+
+      requestAnimationFrame(animate);
+    };
+
+    animate();
+  </script>
 </body>
 </html>
