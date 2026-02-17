@@ -1,417 +1,284 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>rain on glass</title>
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { 
-  background: #0a0a0f; 
-  overflow: hidden; 
-  width: 100vw; 
-  height: 100vh;
-}
-canvas { 
-  display: block; 
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-#bg { z-index: 1; }
-#rain { z-index: 2; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>storm prayer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a0f; 
+      overflow: hidden; 
+      cursor: crosshair;
+    }
+    canvas { display: block; }
+  </style>
 </head>
 <body>
-<canvas id="bg"></canvas>
-<canvas id="rain"></canvas>
-<script>
-// Rain on Glass - water physics simulation with bokeh city lights
-const bgCanvas = document.getElementById('bg');
-const rainCanvas = document.getElementById('rain');
-const bgCtx = bgCanvas.getContext('2d');
-const ctx = rainCanvas.getContext('2d');
-
-let W, H;
-let mouseX = 0, mouseY = 0;
-let wind = 0;
-let targetWind = 0;
-
-// Bokeh lights (blurred city behind glass)
-const lights = [];
-const lightColors = [
-  'rgba(0, 255, 255, 0.6)',   // cyan
-  'rgba(255, 50, 150, 0.5)',  // pink
-  'rgba(180, 100, 255, 0.4)', // purple
-  'rgba(255, 255, 255, 0.3)', // white
-  'rgba(0, 200, 255, 0.5)',   // blue
-  'rgba(255, 80, 180, 0.4)',  // hot pink
-];
-
-// Water droplets
-const drops = [];
-const trails = [];
-const MAX_DROPS = 150;
-const MAX_TRAILS = 300;
-
-function resize() {
-  W = window.innerWidth;
-  H = window.innerHeight;
-  bgCanvas.width = rainCanvas.width = W;
-  bgCanvas.height = rainCanvas.height = H;
-  
-  // Regenerate bokeh lights
-  lights.length = 0;
-  const numLights = Math.floor((W * H) / 15000);
-  for (let i = 0; i < numLights; i++) {
-    lights.push({
-      x: Math.random() * W,
-      y: Math.random() * H,
-      r: 20 + Math.random() * 80,
-      color: lightColors[Math.floor(Math.random() * lightColors.length)],
-      pulse: Math.random() * Math.PI * 2,
-      pulseSpeed: 0.01 + Math.random() * 0.02
-    });
-  }
-}
-
-// Draw blurred bokeh background
-function drawBackground(t) {
-  bgCtx.fillStyle = '#0a0a12';
-  bgCtx.fillRect(0, 0, W, H);
-  
-  // Add subtle gradient
-  const grad = bgCtx.createRadialGradient(W/2, H/2, 0, W/2, H/2, W * 0.7);
-  grad.addColorStop(0, 'rgba(30, 10, 40, 0.5)');
-  grad.addColorStop(1, 'rgba(5, 5, 15, 0)');
-  bgCtx.fillStyle = grad;
-  bgCtx.fillRect(0, 0, W, H);
-  
-  // Draw bokeh lights
-  for (const light of lights) {
-    light.pulse += light.pulseSpeed;
-    const pulseFactor = 0.85 + 0.15 * Math.sin(light.pulse);
-    const r = light.r * pulseFactor;
+  <canvas id="storm"></canvas>
+  <script>
+    const canvas = document.getElementById('storm');
+    const ctx = canvas.getContext('2d');
     
-    const gradient = bgCtx.createRadialGradient(light.x, light.y, 0, light.x, light.y, r);
-    gradient.addColorStop(0, light.color);
-    gradient.addColorStop(0.4, light.color.replace(/[\d.]+\)$/, '0.2)'));
-    gradient.addColorStop(1, 'transparent');
+    let width, height;
+    let mouseX = 0, mouseY = 0;
+    let bolts = [];
+    let afterglows = [];
+    let lastStrike = 0;
+    let tension = 0;
+    let cloudLayers = [];
     
-    bgCtx.beginPath();
-    bgCtx.arc(light.x, light.y, r, 0, Math.PI * 2);
-    bgCtx.fillStyle = gradient;
-    bgCtx.fill();
-  }
-  
-  // Glass texture overlay
-  bgCtx.fillStyle = 'rgba(10, 10, 20, 0.3)';
-  bgCtx.fillRect(0, 0, W, H);
-}
-
-class Drop {
-  constructor(x, y, size) {
-    this.x = x || Math.random() * W;
-    this.y = y || -20;
-    this.size = size || 2 + Math.random() * 4;
-    this.vy = 0;
-    this.vx = 0;
-    this.gravity = 0.15 + this.size * 0.02;
-    this.friction = 0.98;
-    this.surfaceTension = 0.92;
-    this.dead = false;
-    this.stuckTime = 0;
-    this.trail = [];
-  }
-  
-  update() {
-    // Wind effect
-    this.vx += wind * 0.1;
-    this.vx *= this.friction;
-    
-    // Gravity with some randomness (surface imperfections)
-    this.vy += this.gravity;
-    this.vy *= this.surfaceTension;
-    
-    // Random horizontal drift (water finding paths)
-    if (Math.random() < 0.05) {
-      this.vx += (Math.random() - 0.5) * 0.5;
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      generateClouds();
     }
     
-    // Occasional stick (surface tension pause)
-    if (Math.random() < 0.02 && this.vy > 0.5) {
-      this.vy *= 0.3;
-      this.stuckTime = 10 + Math.random() * 30;
+    function generateClouds() {
+      cloudLayers = [];
+      for (let layer = 0; layer < 3; layer++) {
+        const clouds = [];
+        const count = 8 + layer * 4;
+        for (let i = 0; i < count; i++) {
+          clouds.push({
+            x: Math.random() * width,
+            y: Math.random() * height * 0.4,
+            radius: 80 + Math.random() * 120 - layer * 20,
+            speed: 0.1 + Math.random() * 0.2 + layer * 0.05,
+            opacity: 0.15 - layer * 0.03
+          });
+        }
+        cloudLayers.push(clouds);
+      }
     }
     
-    if (this.stuckTime > 0) {
-      this.stuckTime--;
-      this.vy *= 0.8;
+    class LightningBolt {
+      constructor(x1, y1, x2, y2, depth = 0, maxDepth = 5) {
+        this.segments = [];
+        this.branches = [];
+        this.life = 1;
+        this.decay = 0.015 + Math.random() * 0.01;
+        this.maxDepth = maxDepth;
+        this.generate(x1, y1, x2, y2, depth);
+      }
+      
+      generate(x1, y1, x2, y2, depth) {
+        if (depth > this.maxDepth) return;
+        
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < 10) {
+          this.segments.push({ x1, y1, x2, y2, width: Math.max(1, 4 - depth) });
+          return;
+        }
+        
+        const midX = (x1 + x2) / 2;
+        const midY = (y1 + y2) / 2;
+        
+        // perpendicular offset
+        const perpX = -dy / dist;
+        const perpY = dx / dist;
+        const offset = (Math.random() - 0.5) * dist * 0.4;
+        
+        const newMidX = midX + perpX * offset;
+        const newMidY = midY + perpY * offset;
+        
+        this.generate(x1, y1, newMidX, newMidY, depth + 1);
+        this.generate(newMidX, newMidY, x2, y2, depth + 1);
+        
+        // branching
+        if (depth < 3 && Math.random() < 0.35 - depth * 0.08) {
+          const branchAngle = (Math.random() - 0.5) * Math.PI * 0.6;
+          const branchLen = dist * (0.3 + Math.random() * 0.4);
+          const angle = Math.atan2(dy, dx) + branchAngle;
+          const branchEndX = newMidX + Math.cos(angle) * branchLen;
+          const branchEndY = newMidY + Math.sin(angle) * branchLen;
+          
+          this.branches.push(new LightningBolt(
+            newMidX, newMidY, 
+            branchEndX, branchEndY,
+            depth + 2, this.maxDepth
+          ));
+        }
+      }
+      
+      update() {
+        this.life -= this.decay;
+        this.branches.forEach(b => b.life = this.life);
+        return this.life > 0;
+      }
+      
+      draw(ctx) {
+        const alpha = this.life;
+        
+        // glow layer
+        ctx.shadowBlur = 30 * alpha;
+        ctx.shadowColor = `rgba(180, 100, 255, ${alpha})`;
+        
+        this.segments.forEach(seg => {
+          // core bolt - cyan/white
+          ctx.beginPath();
+          ctx.moveTo(seg.x1, seg.y1);
+          ctx.lineTo(seg.x2, seg.y2);
+          ctx.strokeStyle = `rgba(200, 255, 255, ${alpha})`;
+          ctx.lineWidth = seg.width * alpha;
+          ctx.stroke();
+          
+          // pink edge
+          ctx.strokeStyle = `rgba(255, 100, 180, ${alpha * 0.6})`;
+          ctx.lineWidth = seg.width * alpha * 2;
+          ctx.stroke();
+        });
+        
+        ctx.shadowBlur = 0;
+        
+        this.branches.forEach(b => b.draw(ctx));
+      }
     }
     
-    // Leave trail
-    if (this.vy > 1 && Math.random() < 0.3) {
-      trails.push({
-        x: this.x,
-        y: this.y,
-        size: this.size * 0.3,
-        alpha: 0.4,
-        age: 0
+    class Afterglow {
+      constructor(bolt) {
+        this.segments = bolt.segments.map(s => ({...s}));
+        this.branches = bolt.branches.map(b => new Afterglow(b));
+        this.life = 0.8;
+        this.decay = 0.008;
+      }
+      
+      update() {
+        this.life -= this.decay;
+        this.branches.forEach(b => b.life = this.life);
+        return this.life > 0;
+      }
+      
+      draw(ctx) {
+        const alpha = this.life * 0.3;
+        this.segments.forEach(seg => {
+          ctx.beginPath();
+          ctx.moveTo(seg.x1, seg.y1);
+          ctx.lineTo(seg.x2, seg.y2);
+          ctx.strokeStyle = `rgba(120, 50, 180, ${alpha})`;
+          ctx.lineWidth = seg.width * 3;
+          ctx.stroke();
+        });
+        this.branches.forEach(b => b.draw(ctx));
+      }
+    }
+    
+    function strike(x, y) {
+      const startX = x + (Math.random() - 0.5) * 200;
+      const startY = Math.random() * 50;
+      const bolt = new LightningBolt(startX, startY, x, y, 0, 6);
+      bolts.push(bolt);
+      afterglows.push(new Afterglow(bolt));
+      
+      // flash
+      tension = 1;
+    }
+    
+    function drawClouds() {
+      cloudLayers.forEach(clouds => {
+        clouds.forEach(cloud => {
+          cloud.x += cloud.speed;
+          if (cloud.x > width + cloud.radius) cloud.x = -cloud.radius;
+          
+          const flashBoost = tension * 0.3;
+          const gradient = ctx.createRadialGradient(
+            cloud.x, cloud.y, 0,
+            cloud.x, cloud.y, cloud.radius
+          );
+          gradient.addColorStop(0, `rgba(60, 30, 90, ${cloud.opacity + flashBoost})`);
+          gradient.addColorStop(0.5, `rgba(30, 15, 50, ${cloud.opacity * 0.5 + flashBoost * 0.5})`);
+          gradient.addColorStop(1, 'rgba(10, 10, 15, 0)');
+          
+          ctx.beginPath();
+          ctx.arc(cloud.x, cloud.y, cloud.radius, 0, Math.PI * 2);
+          ctx.fillStyle = gradient;
+          ctx.fill();
+        });
       });
     }
     
-    this.x += this.vx;
-    this.y += this.vy;
-    
-    // Boundary check
-    if (this.y > H + 20 || this.x < -20 || this.x > W + 20) {
-      this.dead = true;
-    }
-  }
-  
-  draw() {
-    // Main drop body - elongated when moving fast
-    const stretch = Math.min(this.vy * 0.5, this.size);
-    
-    ctx.save();
-    ctx.translate(this.x, this.y);
-    
-    // Drop shadow/refraction
-    ctx.beginPath();
-    ctx.ellipse(1, 1, this.size * 0.9, this.size * 0.9 + stretch * 0.5, 0, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-    ctx.fill();
-    
-    // Main drop
-    const gradient = ctx.createRadialGradient(
-      -this.size * 0.3, -this.size * 0.3, 0,
-      0, 0, this.size
-    );
-    gradient.addColorStop(0, 'rgba(200, 220, 255, 0.9)');
-    gradient.addColorStop(0.5, 'rgba(100, 150, 200, 0.6)');
-    gradient.addColorStop(1, 'rgba(50, 80, 120, 0.4)');
-    
-    ctx.beginPath();
-    ctx.ellipse(0, 0, this.size, this.size + stretch * 0.5, 0, 0, Math.PI * 2);
-    ctx.fillStyle = gradient;
-    ctx.fill();
-    
-    // Highlight
-    ctx.beginPath();
-    ctx.ellipse(-this.size * 0.3, -this.size * 0.3, this.size * 0.3, this.size * 0.25, -0.5, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.fill();
-    
-    ctx.restore();
-  }
-  
-  // Check collision with another drop
-  collidesWith(other) {
-    const dx = this.x - other.x;
-    const dy = this.y - other.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    return dist < this.size + other.size;
-  }
-  
-  // Merge with another drop
-  merge(other) {
-    // Combined area determines new size
-    const area = Math.PI * this.size * this.size + Math.PI * other.size * other.size;
-    const newSize = Math.sqrt(area / Math.PI);
-    
-    // Weighted position average
-    const totalMass = this.size + other.size;
-    this.x = (this.x * this.size + other.x * other.size) / totalMass;
-    this.y = (this.y * this.size + other.y * other.size) / totalMass;
-    
-    // Combined momentum
-    this.vx = (this.vx * this.size + other.vx * other.size) / totalMass;
-    this.vy = (this.vy * this.size + other.vy * other.size) / totalMass;
-    
-    this.size = Math.min(newSize, 15); // Cap size
-    other.dead = true;
-    
-    // Splash effect
-    if (newSize > 8) {
-      for (let i = 0; i < 3; i++) {
-        trails.push({
-          x: this.x + (Math.random() - 0.5) * this.size,
-          y: this.y + (Math.random() - 0.5) * this.size,
-          size: 1 + Math.random() * 2,
-          alpha: 0.5,
-          age: 0
-        });
+    function drawHorizon() {
+      const gradient = ctx.createLinearGradient(0, height * 0.7, 0, height);
+      gradient.addColorStop(0, 'rgba(10, 10, 15, 0)');
+      gradient.addColorStop(0.3, 'rgba(20, 10, 30, 0.5)');
+      gradient.addColorStop(1, 'rgba(30, 15, 40, 0.8)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, height * 0.7, width, height * 0.3);
+      
+      // distant city silhouette
+      ctx.fillStyle = `rgba(5, 5, 10, ${0.9 + tension * 0.1})`;
+      for (let x = 0; x < width; x += 30 + Math.random() * 40) {
+        const h = 20 + Math.random() * 60;
+        const w = 15 + Math.random() * 25;
+        ctx.fillRect(x, height - h, w, h);
+        
+        // occasional lit window
+        if (Math.random() < 0.3) {
+          ctx.fillStyle = `rgba(255, 200, 100, ${0.3 + tension * 0.5})`;
+          ctx.fillRect(x + w * 0.3, height - h + 10, 3, 4);
+          ctx.fillStyle = `rgba(5, 5, 10, ${0.9 + tension * 0.1})`;
+        }
       }
     }
-  }
-}
-
-function spawnDrop() {
-  if (drops.length < MAX_DROPS && Math.random() < 0.15) {
-    drops.push(new Drop());
-  }
-}
-
-function updateTrails() {
-  for (let i = trails.length - 1; i >= 0; i--) {
-    const t = trails[i];
-    t.age++;
-    t.alpha -= 0.005;
-    if (t.alpha <= 0) {
-      trails.splice(i, 1);
-    }
-  }
-  
-  // Limit trails
-  while (trails.length > MAX_TRAILS) {
-    trails.shift();
-  }
-}
-
-function drawTrails() {
-  for (const t of trails) {
-    ctx.beginPath();
-    ctx.arc(t.x, t.y, t.size, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(150, 180, 220, ${t.alpha * 0.5})`;
-    ctx.fill();
-  }
-}
-
-function handleCollisions() {
-  for (let i = 0; i < drops.length; i++) {
-    if (drops[i].dead) continue;
-    for (let j = i + 1; j < drops.length; j++) {
-      if (drops[j].dead) continue;
-      if (drops[i].collidesWith(drops[j])) {
-        drops[i].merge(drops[j]);
+    
+    function animate(time) {
+      // clear with slight fade for trails
+      ctx.fillStyle = 'rgba(10, 10, 15, 0.3)';
+      ctx.fillRect(0, 0, width, height);
+      
+      // flash effect
+      if (tension > 0) {
+        ctx.fillStyle = `rgba(100, 80, 150, ${tension * 0.15})`;
+        ctx.fillRect(0, 0, width, height);
+        tension *= 0.9;
       }
+      
+      drawClouds();
+      drawHorizon();
+      
+      // update and draw afterglows
+      afterglows = afterglows.filter(a => {
+        a.draw(ctx);
+        return a.update();
+      });
+      
+      // update and draw bolts
+      bolts = bolts.filter(b => {
+        b.draw(ctx);
+        return b.update();
+      });
+      
+      // auto-strike with some randomness, influenced by mouse position
+      const timeSinceStrike = time - lastStrike;
+      const strikeChance = timeSinceStrike > 800 ? 0.008 : 0.001;
+      
+      if (Math.random() < strikeChance) {
+        // bias toward mouse position
+        const targetX = mouseX * 0.6 + Math.random() * width * 0.4;
+        const targetY = height * 0.5 + Math.random() * height * 0.4;
+        strike(targetX, targetY);
+        lastStrike = time;
+      }
+      
+      requestAnimationFrame(animate);
     }
-  }
-}
-
-function update(t) {
-  // Smooth wind transition
-  wind += (targetWind - wind) * 0.05;
-  
-  // Spawn new drops
-  spawnDrop();
-  
-  // Update drops
-  for (const drop of drops) {
-    drop.update();
-  }
-  
-  // Handle collisions/merging
-  handleCollisions();
-  
-  // Remove dead drops
-  for (let i = drops.length - 1; i >= 0; i--) {
-    if (drops[i].dead) drops.splice(i, 1);
-  }
-  
-  // Update trails
-  updateTrails();
-}
-
-function draw(t) {
-  // Clear rain canvas
-  ctx.clearRect(0, 0, W, H);
-  
-  // Draw background bokeh
-  drawBackground(t);
-  
-  // Glass refraction distortion layer
-  ctx.fillStyle = 'rgba(20, 25, 35, 0.1)';
-  ctx.fillRect(0, 0, W, H);
-  
-  // Draw water trails
-  drawTrails();
-  
-  // Draw drops
-  for (const drop of drops) {
-    drop.draw();
-  }
-  
-  // Subtle vignette
-  const vignette = ctx.createRadialGradient(W/2, H/2, H * 0.3, W/2, H/2, H);
-  vignette.addColorStop(0, 'transparent');
-  vignette.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
-  ctx.fillStyle = vignette;
-  ctx.fillRect(0, 0, W, H);
-}
-
-function animate(t) {
-  update(t);
-  draw(t);
-  requestAnimationFrame(animate);
-}
-
-// Mouse interaction - creates wind based on horizontal movement
-let lastMouseX = 0;
-document.addEventListener('mousemove', (e) => {
-  mouseX = e.clientX;
-  mouseY = e.clientY;
-  
-  // Calculate wind from mouse movement
-  const dx = mouseX - lastMouseX;
-  targetWind = dx * 0.05;
-  targetWind = Math.max(-2, Math.min(2, targetWind));
-  
-  lastMouseX = mouseX;
-});
-
-// Click to add drops
-document.addEventListener('click', (e) => {
-  for (let i = 0; i < 5; i++) {
-    const d = new Drop(
-      e.clientX + (Math.random() - 0.5) * 50,
-      e.clientY + (Math.random() - 0.5) * 50,
-      3 + Math.random() * 5
-    );
-    d.vy = Math.random() * 2;
-    drops.push(d);
-  }
-});
-
-// Touch support
-document.addEventListener('touchmove', (e) => {
-  const touch = e.touches[0];
-  const dx = touch.clientX - lastMouseX;
-  targetWind = dx * 0.05;
-  targetWind = Math.max(-2, Math.min(2, targetWind));
-  lastMouseX = touch.clientX;
-});
-
-document.addEventListener('touchstart', (e) => {
-  const touch = e.touches[0];
-  for (let i = 0; i < 5; i++) {
-    const d = new Drop(
-      touch.clientX + (Math.random() - 0.5) * 50,
-      touch.clientY + (Math.random() - 0.5) * 50,
-      3 + Math.random() * 5
-    );
-    d.vy = Math.random() * 2;
-    drops.push(d);
-  }
-});
-
-// Reset wind when mouse leaves
-document.addEventListener('mouseleave', () => {
-  targetWind = 0;
-});
-
-// Init
-resize();
-window.addEventListener('resize', resize);
-
-// Start with some drops already on screen
-for (let i = 0; i < 30; i++) {
-  const d = new Drop(Math.random() * W, Math.random() * H * 0.8, 2 + Math.random() * 4);
-  d.vy = Math.random();
-  drops.push(d);
-}
-
-animate(0);
-</script>
+    
+    canvas.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    });
+    
+    canvas.addEventListener('click', (e) => {
+      strike(e.clientX, e.clientY);
+      lastStrike = performance.now();
+    });
+    
+    window.addEventListener('resize', resize);
+    resize();
+    requestAnimationFrame(animate);
+  </script>
 </body>
 </html>
