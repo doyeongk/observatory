@@ -1,284 +1,324 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>storm prayer</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-      background: #0a0a0f; 
-      overflow: hidden; 
-      cursor: crosshair;
-    }
-    canvas { display: block; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>signal decay</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { 
+  background: #0a0a0a; 
+  overflow: hidden; 
+  cursor: crosshair;
+}
+canvas { display: block; }
+</style>
 </head>
 <body>
-  <canvas id="storm"></canvas>
-  <script>
-    const canvas = document.getElementById('storm');
-    const ctx = canvas.getContext('2d');
-    
-    let width, height;
-    let mouseX = 0, mouseY = 0;
-    let bolts = [];
-    let afterglows = [];
-    let lastStrike = 0;
-    let tension = 0;
-    let cloudLayers = [];
-    
-    function resize() {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-      generateClouds();
+<canvas id="canvas"></canvas>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let width, height;
+let mouseX = 0, mouseY = 0;
+let targetCorruption = 0.3;
+let corruption = 0.3;
+let time = 0;
+let frameBuffer = null;
+let lastFrame = null;
+
+function resize() {
+  width = canvas.width = window.innerWidth;
+  height = canvas.height = window.innerHeight;
+  frameBuffer = ctx.createImageData(width, height);
+  lastFrame = new Uint8ClampedArray(width * height * 4);
+}
+
+window.addEventListener('resize', resize);
+resize();
+
+// Track mouse for corruption intensity
+document.addEventListener('mousemove', (e) => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+  // Closer to center = more stable, edges = more corrupt
+  const dx = (mouseX - width/2) / (width/2);
+  const dy = (mouseY - height/2) / (height/2);
+  targetCorruption = 0.15 + Math.sqrt(dx*dx + dy*dy) * 0.6;
+});
+
+document.addEventListener('click', () => {
+  // Spike corruption on click
+  corruption = 1.0;
+});
+
+// Generate base pattern - geometric grid that gets corrupted
+function generateBasePattern(t) {
+  const data = frameBuffer.data;
+  const cellSize = 40;
+  
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      
+      // Create underlying geometric pattern
+      const gx = Math.floor(x / cellSize);
+      const gy = Math.floor(y / cellSize);
+      const cellX = x % cellSize;
+      const cellY = y % cellSize;
+      
+      // Diagonal lines pattern
+      const diag1 = (x + y + t * 20) % 80 < 3;
+      const diag2 = (x - y + t * 15 + 1000) % 60 < 2;
+      
+      // Grid intersections
+      const gridX = cellX < 2 || cellX > cellSize - 3;
+      const gridY = cellY < 2 || cellY > cellSize - 3;
+      const isGrid = gridX || gridY;
+      
+      // Pulsing circles at intersections
+      const cx = gx * cellSize + cellSize/2;
+      const cy = gy * cellSize + cellSize/2;
+      const dist = Math.sqrt((x-cx)**2 + (y-cy)**2);
+      const pulse = Math.sin(t * 2 + gx * 0.5 + gy * 0.3) * 0.5 + 0.5;
+      const circle = dist < 8 + pulse * 6 && dist > 4 + pulse * 3;
+      
+      // Horizontal scan bars
+      const scanbar = Math.sin(y * 0.1 + t * 3) > 0.95;
+      
+      // Base colors
+      let r = 10, g = 8, b = 15;
+      
+      if (isGrid) {
+        r = 30; g = 20; b = 50;
+      }
+      if (diag1) {
+        r = 255; g = 50; b = 150; // hot pink
+      }
+      if (diag2) {
+        r = 50; g = 220; b = 255; // cyan
+      }
+      if (circle) {
+        r = 200; g = 80; b = 220; // purple
+      }
+      if (scanbar) {
+        r = Math.min(255, r + 40);
+        g = Math.min(255, g + 30);
+        b = Math.min(255, b + 50);
+      }
+      
+      data[i] = r;
+      data[i+1] = g;
+      data[i+2] = b;
+      data[i+3] = 255;
     }
+  }
+}
+
+// Apply VHS-style corruption
+function applyCorruption(t, amount) {
+  const data = frameBuffer.data;
+  
+  // Tracking lines - horizontal displacement
+  const numTrackingLines = Math.floor(amount * 8);
+  for (let i = 0; i < numTrackingLines; i++) {
+    const lineY = Math.floor((Math.sin(t * 0.7 + i * 2.5) * 0.5 + 0.5) * height);
+    const lineHeight = 2 + Math.floor(Math.random() * 15 * amount);
+    const offset = Math.floor((Math.sin(t * 3 + i) * 30 + Math.random() * 20) * amount);
     
-    function generateClouds() {
-      cloudLayers = [];
-      for (let layer = 0; layer < 3; layer++) {
-        const clouds = [];
-        const count = 8 + layer * 4;
-        for (let i = 0; i < count; i++) {
-          clouds.push({
-            x: Math.random() * width,
-            y: Math.random() * height * 0.4,
-            radius: 80 + Math.random() * 120 - layer * 20,
-            speed: 0.1 + Math.random() * 0.2 + layer * 0.05,
-            opacity: 0.15 - layer * 0.03
-          });
-        }
-        cloudLayers.push(clouds);
-      }
-    }
-    
-    class LightningBolt {
-      constructor(x1, y1, x2, y2, depth = 0, maxDepth = 5) {
-        this.segments = [];
-        this.branches = [];
-        this.life = 1;
-        this.decay = 0.015 + Math.random() * 0.01;
-        this.maxDepth = maxDepth;
-        this.generate(x1, y1, x2, y2, depth);
-      }
-      
-      generate(x1, y1, x2, y2, depth) {
-        if (depth > this.maxDepth) return;
+    for (let y = lineY; y < Math.min(lineY + lineHeight, height); y++) {
+      for (let x = 0; x < width; x++) {
+        const srcX = (x + offset + width) % width;
+        const srcI = (y * width + srcX) * 4;
+        const dstI = (y * width + x) * 4;
         
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        
-        if (dist < 10) {
-          this.segments.push({ x1, y1, x2, y2, width: Math.max(1, 4 - depth) });
-          return;
-        }
-        
-        const midX = (x1 + x2) / 2;
-        const midY = (y1 + y2) / 2;
-        
-        // perpendicular offset
-        const perpX = -dy / dist;
-        const perpY = dx / dist;
-        const offset = (Math.random() - 0.5) * dist * 0.4;
-        
-        const newMidX = midX + perpX * offset;
-        const newMidY = midY + perpY * offset;
-        
-        this.generate(x1, y1, newMidX, newMidY, depth + 1);
-        this.generate(newMidX, newMidY, x2, y2, depth + 1);
-        
-        // branching
-        if (depth < 3 && Math.random() < 0.35 - depth * 0.08) {
-          const branchAngle = (Math.random() - 0.5) * Math.PI * 0.6;
-          const branchLen = dist * (0.3 + Math.random() * 0.4);
-          const angle = Math.atan2(dy, dx) + branchAngle;
-          const branchEndX = newMidX + Math.cos(angle) * branchLen;
-          const branchEndY = newMidY + Math.sin(angle) * branchLen;
-          
-          this.branches.push(new LightningBolt(
-            newMidX, newMidY, 
-            branchEndX, branchEndY,
-            depth + 2, this.maxDepth
-          ));
-        }
-      }
-      
-      update() {
-        this.life -= this.decay;
-        this.branches.forEach(b => b.life = this.life);
-        return this.life > 0;
-      }
-      
-      draw(ctx) {
-        const alpha = this.life;
-        
-        // glow layer
-        ctx.shadowBlur = 30 * alpha;
-        ctx.shadowColor = `rgba(180, 100, 255, ${alpha})`;
-        
-        this.segments.forEach(seg => {
-          // core bolt - cyan/white
-          ctx.beginPath();
-          ctx.moveTo(seg.x1, seg.y1);
-          ctx.lineTo(seg.x2, seg.y2);
-          ctx.strokeStyle = `rgba(200, 255, 255, ${alpha})`;
-          ctx.lineWidth = seg.width * alpha;
-          ctx.stroke();
-          
-          // pink edge
-          ctx.strokeStyle = `rgba(255, 100, 180, ${alpha * 0.6})`;
-          ctx.lineWidth = seg.width * alpha * 2;
-          ctx.stroke();
-        });
-        
-        ctx.shadowBlur = 0;
-        
-        this.branches.forEach(b => b.draw(ctx));
-      }
-    }
-    
-    class Afterglow {
-      constructor(bolt) {
-        this.segments = bolt.segments.map(s => ({...s}));
-        this.branches = bolt.branches.map(b => new Afterglow(b));
-        this.life = 0.8;
-        this.decay = 0.008;
-      }
-      
-      update() {
-        this.life -= this.decay;
-        this.branches.forEach(b => b.life = this.life);
-        return this.life > 0;
-      }
-      
-      draw(ctx) {
-        const alpha = this.life * 0.3;
-        this.segments.forEach(seg => {
-          ctx.beginPath();
-          ctx.moveTo(seg.x1, seg.y1);
-          ctx.lineTo(seg.x2, seg.y2);
-          ctx.strokeStyle = `rgba(120, 50, 180, ${alpha})`;
-          ctx.lineWidth = seg.width * 3;
-          ctx.stroke();
-        });
-        this.branches.forEach(b => b.draw(ctx));
-      }
-    }
-    
-    function strike(x, y) {
-      const startX = x + (Math.random() - 0.5) * 200;
-      const startY = Math.random() * 50;
-      const bolt = new LightningBolt(startX, startY, x, y, 0, 6);
-      bolts.push(bolt);
-      afterglows.push(new Afterglow(bolt));
-      
-      // flash
-      tension = 1;
-    }
-    
-    function drawClouds() {
-      cloudLayers.forEach(clouds => {
-        clouds.forEach(cloud => {
-          cloud.x += cloud.speed;
-          if (cloud.x > width + cloud.radius) cloud.x = -cloud.radius;
-          
-          const flashBoost = tension * 0.3;
-          const gradient = ctx.createRadialGradient(
-            cloud.x, cloud.y, 0,
-            cloud.x, cloud.y, cloud.radius
-          );
-          gradient.addColorStop(0, `rgba(60, 30, 90, ${cloud.opacity + flashBoost})`);
-          gradient.addColorStop(0.5, `rgba(30, 15, 50, ${cloud.opacity * 0.5 + flashBoost * 0.5})`);
-          gradient.addColorStop(1, 'rgba(10, 10, 15, 0)');
-          
-          ctx.beginPath();
-          ctx.arc(cloud.x, cloud.y, cloud.radius, 0, Math.PI * 2);
-          ctx.fillStyle = gradient;
-          ctx.fill();
-        });
-      });
-    }
-    
-    function drawHorizon() {
-      const gradient = ctx.createLinearGradient(0, height * 0.7, 0, height);
-      gradient.addColorStop(0, 'rgba(10, 10, 15, 0)');
-      gradient.addColorStop(0.3, 'rgba(20, 10, 30, 0.5)');
-      gradient.addColorStop(1, 'rgba(30, 15, 40, 0.8)');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, height * 0.7, width, height * 0.3);
-      
-      // distant city silhouette
-      ctx.fillStyle = `rgba(5, 5, 10, ${0.9 + tension * 0.1})`;
-      for (let x = 0; x < width; x += 30 + Math.random() * 40) {
-        const h = 20 + Math.random() * 60;
-        const w = 15 + Math.random() * 25;
-        ctx.fillRect(x, height - h, w, h);
-        
-        // occasional lit window
-        if (Math.random() < 0.3) {
-          ctx.fillStyle = `rgba(255, 200, 100, ${0.3 + tension * 0.5})`;
-          ctx.fillRect(x + w * 0.3, height - h + 10, 3, 4);
-          ctx.fillStyle = `rgba(5, 5, 10, ${0.9 + tension * 0.1})`;
+        // Copy with slight color shift
+        if (srcI < data.length - 4 && dstI < data.length - 4) {
+          const temp = [data[srcI], data[srcI+1], data[srcI+2]];
+          data[dstI] = temp[0];
+          data[dstI+1] = temp[1];
+          data[dstI+2] = temp[2];
         }
       }
     }
-    
-    function animate(time) {
-      // clear with slight fade for trails
-      ctx.fillStyle = 'rgba(10, 10, 15, 0.3)';
-      ctx.fillRect(0, 0, width, height);
-      
-      // flash effect
-      if (tension > 0) {
-        ctx.fillStyle = `rgba(100, 80, 150, ${tension * 0.15})`;
-        ctx.fillRect(0, 0, width, height);
-        tension *= 0.9;
+  }
+  
+  // Chromatic aberration - RGB channel separation
+  const aberration = Math.floor(amount * 12);
+  if (aberration > 0) {
+    const tempData = new Uint8ClampedArray(data);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        // Red channel shifts left
+        const rSrcX = Math.min(width - 1, x + aberration);
+        const rSrcI = (y * width + rSrcX) * 4;
+        // Blue channel shifts right  
+        const bSrcX = Math.max(0, x - aberration);
+        const bSrcI = (y * width + bSrcX) * 4;
+        
+        data[i] = tempData[rSrcI];     // Red from right
+        data[i+2] = tempData[bSrcI+2]; // Blue from left
       }
-      
-      drawClouds();
-      drawHorizon();
-      
-      // update and draw afterglows
-      afterglows = afterglows.filter(a => {
-        a.draw(ctx);
-        return a.update();
-      });
-      
-      // update and draw bolts
-      bolts = bolts.filter(b => {
-        b.draw(ctx);
-        return b.update();
-      });
-      
-      // auto-strike with some randomness, influenced by mouse position
-      const timeSinceStrike = time - lastStrike;
-      const strikeChance = timeSinceStrike > 800 ? 0.008 : 0.001;
-      
-      if (Math.random() < strikeChance) {
-        // bias toward mouse position
-        const targetX = mouseX * 0.6 + Math.random() * width * 0.4;
-        const targetY = height * 0.5 + Math.random() * height * 0.4;
-        strike(targetX, targetY);
-        lastStrike = time;
-      }
-      
-      requestAnimationFrame(animate);
     }
-    
-    canvas.addEventListener('mousemove', (e) => {
-      mouseX = e.clientX;
-      mouseY = e.clientY;
-    });
-    
-    canvas.addEventListener('click', (e) => {
-      strike(e.clientX, e.clientY);
-      lastStrike = performance.now();
-    });
-    
-    window.addEventListener('resize', resize);
-    resize();
-    requestAnimationFrame(animate);
-  </script>
+  }
+  
+  // Block corruption - random displaced rectangles
+  const numBlocks = Math.floor(amount * 6);
+  for (let i = 0; i < numBlocks; i++) {
+    if (Math.random() > 0.7) {
+      const bx = Math.floor(Math.random() * width);
+      const by = Math.floor(Math.random() * height);
+      const bw = 20 + Math.floor(Math.random() * 100 * amount);
+      const bh = 5 + Math.floor(Math.random() * 30 * amount);
+      const offsetX = Math.floor((Math.random() - 0.5) * 50 * amount);
+      const offsetY = Math.floor((Math.random() - 0.5) * 20 * amount);
+      
+      for (let y = by; y < Math.min(by + bh, height); y++) {
+        for (let x = bx; x < Math.min(bx + bw, width); x++) {
+          const srcX = (x + offsetX + width) % width;
+          const srcY = (y + offsetY + height) % height;
+          const srcI = (srcY * width + srcX) * 4;
+          const dstI = (y * width + x) * 4;
+          
+          data[dstI] = data[srcI];
+          data[dstI+1] = data[srcI+1];
+          data[dstI+2] = data[srcI+2];
+        }
+      }
+    }
+  }
+  
+  // Static noise bursts
+  if (Math.random() < amount * 0.3) {
+    const burstY = Math.floor(Math.random() * height);
+    const burstH = 5 + Math.floor(Math.random() * 50 * amount);
+    for (let y = burstY; y < Math.min(burstY + burstH, height); y++) {
+      for (let x = 0; x < width; x++) {
+        if (Math.random() < 0.4 * amount) {
+          const i = (y * width + x) * 4;
+          const noise = Math.random() * 255;
+          data[i] = noise;
+          data[i+1] = noise;
+          data[i+2] = noise;
+        }
+      }
+    }
+  }
+  
+  // Scanlines
+  for (let y = 0; y < height; y += 3) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      data[i] = Math.floor(data[i] * 0.85);
+      data[i+1] = Math.floor(data[i+1] * 0.85);
+      data[i+2] = Math.floor(data[i+2] * 0.85);
+    }
+  }
+  
+  // Vertical sync wobble on edges
+  if (amount > 0.5) {
+    const wobbleStrength = (amount - 0.5) * 40;
+    for (let y = 0; y < height; y++) {
+      const wobble = Math.sin(y * 0.05 + t * 5) * wobbleStrength;
+      if (Math.abs(wobble) > 2) {
+        for (let x = 0; x < Math.min(Math.abs(wobble), 30); x++) {
+          const i = (y * width + x) * 4;
+          const i2 = (y * width + (width - 1 - x)) * 4;
+          // Black bars on edges during bad sync
+          data[i] = data[i+1] = data[i+2] = 0;
+          data[i2] = data[i2+1] = data[i2+2] = 0;
+        }
+      }
+    }
+  }
+}
+
+// Add phosphor glow / bloom effect
+function addGlow(amount) {
+  const data = frameBuffer.data;
+  const glowRadius = 2;
+  const tempData = new Uint8ClampedArray(data);
+  
+  for (let y = glowRadius; y < height - glowRadius; y += 2) {
+    for (let x = glowRadius; x < width - glowRadius; x += 2) {
+      const i = (y * width + x) * 4;
+      
+      // Simple box blur for bright pixels only
+      if (tempData[i] > 150 || tempData[i+1] > 150 || tempData[i+2] > 150) {
+        for (let dy = -glowRadius; dy <= glowRadius; dy++) {
+          for (let dx = -glowRadius; dx <= glowRadius; dx++) {
+            const ni = ((y + dy) * width + (x + dx)) * 4;
+            const falloff = 0.15 / (Math.abs(dx) + Math.abs(dy) + 1);
+            data[ni] = Math.min(255, data[ni] + tempData[i] * falloff);
+            data[ni+1] = Math.min(255, data[ni+1] + tempData[i+1] * falloff);
+            data[ni+2] = Math.min(255, data[ni+2] + tempData[i+2] * falloff);
+          }
+        }
+      }
+    }
+  }
+}
+
+// Frame blend for motion blur / phosphor persistence
+function blendWithLastFrame(persistence) {
+  const data = frameBuffer.data;
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = data[i] * (1 - persistence) + lastFrame[i] * persistence;
+    data[i+1] = data[i+1] * (1 - persistence) + lastFrame[i+1] * persistence;
+    data[i+2] = data[i+2] * (1 - persistence) + lastFrame[i+2] * persistence;
+  }
+  lastFrame.set(data);
+}
+
+function draw() {
+  time += 0.016;
+  
+  // Smooth corruption transitions
+  corruption += (targetCorruption - corruption) * 0.05;
+  
+  // Occasional glitch spikes
+  if (Math.random() < 0.005) {
+    corruption = Math.min(1, corruption + 0.3);
+  }
+  
+  // Generate base pattern
+  generateBasePattern(time);
+  
+  // Apply corruption effects
+  applyCorruption(time, corruption);
+  
+  // Add glow
+  addGlow(corruption);
+  
+  // Phosphor persistence
+  blendWithLastFrame(0.2);
+  
+  // Draw to canvas
+  ctx.putImageData(frameBuffer, 0, 0);
+  
+  // Vignette overlay
+  const gradient = ctx.createRadialGradient(
+    width/2, height/2, 0,
+    width/2, height/2, Math.max(width, height) * 0.7
+  );
+  gradient.addColorStop(0, 'rgba(0,0,0,0)');
+  gradient.addColorStop(0.7, 'rgba(0,0,0,0.1)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0.6)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+  
+  // CRT curvature simulation - subtle barrel distortion text
+  ctx.fillStyle = `rgba(0, 255, 200, ${0.03 + corruption * 0.05})`;
+  ctx.font = '10px monospace';
+  ctx.fillText(`SIGNAL: ${Math.floor((1 - corruption) * 100)}%`, 20, height - 20);
+  ctx.fillText(`TRACK: ${corruption > 0.5 ? 'UNSTABLE' : 'OK'}`, 20, height - 35);
+  
+  requestAnimationFrame(draw);
+}
+
+draw();
+</script>
 </body>
 </html>
