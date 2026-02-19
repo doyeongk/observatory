@@ -3,15 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>signal decay</title>
+<title>breathing geometry</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { 
-  background: #0a0a0a; 
+  background: #0a0a0f; 
   overflow: hidden; 
-  cursor: crosshair;
+  font-family: monospace;
 }
-canvas { display: block; }
+canvas { 
+  display: block; 
+  position: fixed;
+  top: 0;
+  left: 0;
+}
 </style>
 </head>
 <body>
@@ -20,305 +25,227 @@ canvas { display: block; }
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
-let width, height;
+let width, height, centerX, centerY;
 let mouseX = 0, mouseY = 0;
-let targetCorruption = 0.3;
-let corruption = 0.3;
-let time = 0;
-let frameBuffer = null;
-let lastFrame = null;
+let targetRotX = 0, targetRotY = 0;
+let rotX = 0, rotY = 0;
+let rotZ = 0;
 
 function resize() {
   width = canvas.width = window.innerWidth;
   height = canvas.height = window.innerHeight;
-  frameBuffer = ctx.createImageData(width, height);
-  lastFrame = new Uint8ClampedArray(width * height * 4);
+  centerX = width / 2;
+  centerY = height / 2;
 }
-
-window.addEventListener('resize', resize);
 resize();
+window.addEventListener('resize', resize);
 
-// Track mouse for corruption intensity
+// Mouse controls rotation target
 document.addEventListener('mousemove', (e) => {
-  mouseX = e.clientX;
-  mouseY = e.clientY;
-  // Closer to center = more stable, edges = more corrupt
-  const dx = (mouseX - width/2) / (width/2);
-  const dy = (mouseY - height/2) / (height/2);
-  targetCorruption = 0.15 + Math.sqrt(dx*dx + dy*dy) * 0.6;
+  mouseX = (e.clientX / width - 0.5) * 2;
+  mouseY = (e.clientY / height - 0.5) * 2;
+  targetRotY = mouseX * Math.PI * 0.5;
+  targetRotX = mouseY * Math.PI * 0.3;
 });
 
-document.addEventListener('click', () => {
-  // Spike corruption on click
-  corruption = 1.0;
+// Golden ratio for icosahedron
+const phi = (1 + Math.sqrt(5)) / 2;
+
+// Icosahedron vertices (normalized)
+const baseVertices = [
+  [-1, phi, 0], [1, phi, 0], [-1, -phi, 0], [1, -phi, 0],
+  [0, -1, phi], [0, 1, phi], [0, -1, -phi], [0, 1, -phi],
+  [phi, 0, -1], [phi, 0, 1], [-phi, 0, -1], [-phi, 0, 1]
+].map(v => {
+  const len = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+  return [v[0]/len, v[1]/len, v[2]/len];
 });
 
-// Generate base pattern - geometric grid that gets corrupted
-function generateBasePattern(t) {
-  const data = frameBuffer.data;
-  const cellSize = 40;
-  
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
-      
-      // Create underlying geometric pattern
-      const gx = Math.floor(x / cellSize);
-      const gy = Math.floor(y / cellSize);
-      const cellX = x % cellSize;
-      const cellY = y % cellSize;
-      
-      // Diagonal lines pattern
-      const diag1 = (x + y + t * 20) % 80 < 3;
-      const diag2 = (x - y + t * 15 + 1000) % 60 < 2;
-      
-      // Grid intersections
-      const gridX = cellX < 2 || cellX > cellSize - 3;
-      const gridY = cellY < 2 || cellY > cellSize - 3;
-      const isGrid = gridX || gridY;
-      
-      // Pulsing circles at intersections
-      const cx = gx * cellSize + cellSize/2;
-      const cy = gy * cellSize + cellSize/2;
-      const dist = Math.sqrt((x-cx)**2 + (y-cy)**2);
-      const pulse = Math.sin(t * 2 + gx * 0.5 + gy * 0.3) * 0.5 + 0.5;
-      const circle = dist < 8 + pulse * 6 && dist > 4 + pulse * 3;
-      
-      // Horizontal scan bars
-      const scanbar = Math.sin(y * 0.1 + t * 3) > 0.95;
-      
-      // Base colors
-      let r = 10, g = 8, b = 15;
-      
-      if (isGrid) {
-        r = 30; g = 20; b = 50;
-      }
-      if (diag1) {
-        r = 255; g = 50; b = 150; // hot pink
-      }
-      if (diag2) {
-        r = 50; g = 220; b = 255; // cyan
-      }
-      if (circle) {
-        r = 200; g = 80; b = 220; // purple
-      }
-      if (scanbar) {
-        r = Math.min(255, r + 40);
-        g = Math.min(255, g + 30);
-        b = Math.min(255, b + 50);
-      }
-      
-      data[i] = r;
-      data[i+1] = g;
-      data[i+2] = b;
-      data[i+3] = 255;
-    }
-  }
+// Icosahedron edges (20 triangular faces = 30 edges)
+const edges = [
+  [0,1], [0,5], [0,7], [0,10], [0,11],
+  [1,5], [1,7], [1,8], [1,9],
+  [2,3], [2,4], [2,6], [2,10], [2,11],
+  [3,4], [3,6], [3,8], [3,9],
+  [4,5], [4,9], [4,11],
+  [5,9], [5,11],
+  [6,7], [6,8], [6,10],
+  [7,8], [7,10],
+  [8,9],
+  [10,11]
+];
+
+// Colors
+const colors = {
+  cyan: '#00ffff',
+  pink: '#ff1493',
+  purple: '#9400d3',
+  white: '#ffffff'
+};
+
+function rotateX(point, angle) {
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  return [
+    point[0],
+    point[1] * cos - point[2] * sin,
+    point[1] * sin + point[2] * cos
+  ];
 }
 
-// Apply VHS-style corruption
-function applyCorruption(t, amount) {
-  const data = frameBuffer.data;
-  
-  // Tracking lines - horizontal displacement
-  const numTrackingLines = Math.floor(amount * 8);
-  for (let i = 0; i < numTrackingLines; i++) {
-    const lineY = Math.floor((Math.sin(t * 0.7 + i * 2.5) * 0.5 + 0.5) * height);
-    const lineHeight = 2 + Math.floor(Math.random() * 15 * amount);
-    const offset = Math.floor((Math.sin(t * 3 + i) * 30 + Math.random() * 20) * amount);
-    
-    for (let y = lineY; y < Math.min(lineY + lineHeight, height); y++) {
-      for (let x = 0; x < width; x++) {
-        const srcX = (x + offset + width) % width;
-        const srcI = (y * width + srcX) * 4;
-        const dstI = (y * width + x) * 4;
-        
-        // Copy with slight color shift
-        if (srcI < data.length - 4 && dstI < data.length - 4) {
-          const temp = [data[srcI], data[srcI+1], data[srcI+2]];
-          data[dstI] = temp[0];
-          data[dstI+1] = temp[1];
-          data[dstI+2] = temp[2];
-        }
-      }
-    }
-  }
-  
-  // Chromatic aberration - RGB channel separation
-  const aberration = Math.floor(amount * 12);
-  if (aberration > 0) {
-    const tempData = new Uint8ClampedArray(data);
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const i = (y * width + x) * 4;
-        // Red channel shifts left
-        const rSrcX = Math.min(width - 1, x + aberration);
-        const rSrcI = (y * width + rSrcX) * 4;
-        // Blue channel shifts right  
-        const bSrcX = Math.max(0, x - aberration);
-        const bSrcI = (y * width + bSrcX) * 4;
-        
-        data[i] = tempData[rSrcI];     // Red from right
-        data[i+2] = tempData[bSrcI+2]; // Blue from left
-      }
-    }
-  }
-  
-  // Block corruption - random displaced rectangles
-  const numBlocks = Math.floor(amount * 6);
-  for (let i = 0; i < numBlocks; i++) {
-    if (Math.random() > 0.7) {
-      const bx = Math.floor(Math.random() * width);
-      const by = Math.floor(Math.random() * height);
-      const bw = 20 + Math.floor(Math.random() * 100 * amount);
-      const bh = 5 + Math.floor(Math.random() * 30 * amount);
-      const offsetX = Math.floor((Math.random() - 0.5) * 50 * amount);
-      const offsetY = Math.floor((Math.random() - 0.5) * 20 * amount);
-      
-      for (let y = by; y < Math.min(by + bh, height); y++) {
-        for (let x = bx; x < Math.min(bx + bw, width); x++) {
-          const srcX = (x + offsetX + width) % width;
-          const srcY = (y + offsetY + height) % height;
-          const srcI = (srcY * width + srcX) * 4;
-          const dstI = (y * width + x) * 4;
-          
-          data[dstI] = data[srcI];
-          data[dstI+1] = data[srcI+1];
-          data[dstI+2] = data[srcI+2];
-        }
-      }
-    }
-  }
-  
-  // Static noise bursts
-  if (Math.random() < amount * 0.3) {
-    const burstY = Math.floor(Math.random() * height);
-    const burstH = 5 + Math.floor(Math.random() * 50 * amount);
-    for (let y = burstY; y < Math.min(burstY + burstH, height); y++) {
-      for (let x = 0; x < width; x++) {
-        if (Math.random() < 0.4 * amount) {
-          const i = (y * width + x) * 4;
-          const noise = Math.random() * 255;
-          data[i] = noise;
-          data[i+1] = noise;
-          data[i+2] = noise;
-        }
-      }
-    }
-  }
-  
-  // Scanlines
-  for (let y = 0; y < height; y += 3) {
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
-      data[i] = Math.floor(data[i] * 0.85);
-      data[i+1] = Math.floor(data[i+1] * 0.85);
-      data[i+2] = Math.floor(data[i+2] * 0.85);
-    }
-  }
-  
-  // Vertical sync wobble on edges
-  if (amount > 0.5) {
-    const wobbleStrength = (amount - 0.5) * 40;
-    for (let y = 0; y < height; y++) {
-      const wobble = Math.sin(y * 0.05 + t * 5) * wobbleStrength;
-      if (Math.abs(wobble) > 2) {
-        for (let x = 0; x < Math.min(Math.abs(wobble), 30); x++) {
-          const i = (y * width + x) * 4;
-          const i2 = (y * width + (width - 1 - x)) * 4;
-          // Black bars on edges during bad sync
-          data[i] = data[i+1] = data[i+2] = 0;
-          data[i2] = data[i2+1] = data[i2+2] = 0;
-        }
-      }
-    }
-  }
+function rotateY(point, angle) {
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  return [
+    point[0] * cos + point[2] * sin,
+    point[1],
+    -point[0] * sin + point[2] * cos
+  ];
 }
 
-// Add phosphor glow / bloom effect
-function addGlow(amount) {
-  const data = frameBuffer.data;
-  const glowRadius = 2;
-  const tempData = new Uint8ClampedArray(data);
-  
-  for (let y = glowRadius; y < height - glowRadius; y += 2) {
-    for (let x = glowRadius; x < width - glowRadius; x += 2) {
-      const i = (y * width + x) * 4;
-      
-      // Simple box blur for bright pixels only
-      if (tempData[i] > 150 || tempData[i+1] > 150 || tempData[i+2] > 150) {
-        for (let dy = -glowRadius; dy <= glowRadius; dy++) {
-          for (let dx = -glowRadius; dx <= glowRadius; dx++) {
-            const ni = ((y + dy) * width + (x + dx)) * 4;
-            const falloff = 0.15 / (Math.abs(dx) + Math.abs(dy) + 1);
-            data[ni] = Math.min(255, data[ni] + tempData[i] * falloff);
-            data[ni+1] = Math.min(255, data[ni+1] + tempData[i+1] * falloff);
-            data[ni+2] = Math.min(255, data[ni+2] + tempData[i+2] * falloff);
-          }
-        }
-      }
-    }
-  }
+function rotateZ(point, angle) {
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  return [
+    point[0] * cos - point[1] * sin,
+    point[0] * sin + point[1] * cos,
+    point[2]
+  ];
 }
 
-// Frame blend for motion blur / phosphor persistence
-function blendWithLastFrame(persistence) {
-  const data = frameBuffer.data;
-  for (let i = 0; i < data.length; i += 4) {
-    data[i] = data[i] * (1 - persistence) + lastFrame[i] * persistence;
-    data[i+1] = data[i+1] * (1 - persistence) + lastFrame[i+1] * persistence;
-    data[i+2] = data[i+2] * (1 - persistence) + lastFrame[i+2] * persistence;
-  }
-  lastFrame.set(data);
+function project(point, scale) {
+  const perspective = 4;
+  const z = point[2] + perspective;
+  const factor = perspective / z;
+  return {
+    x: centerX + point[0] * scale * factor,
+    y: centerY + point[1] * scale * factor,
+    z: point[2],
+    factor: factor
+  };
 }
 
-function draw() {
-  time += 0.016;
+function draw(time) {
+  // Breathing effect - slow inhale/exhale
+  const breathCycle = Math.sin(time * 0.0008) * 0.5 + 0.5; // 0-1 over ~8 seconds
+  const breathScale = 1 + breathCycle * 0.15; // 1.0 to 1.15
   
-  // Smooth corruption transitions
-  corruption += (targetCorruption - corruption) * 0.05;
+  // Secondary subtle pulse
+  const pulse = Math.sin(time * 0.003) * 0.02;
   
-  // Occasional glitch spikes
-  if (Math.random() < 0.005) {
-    corruption = Math.min(1, corruption + 0.3);
-  }
+  // Smooth rotation towards mouse
+  rotX += (targetRotX - rotX) * 0.02;
+  rotY += (targetRotY - rotY) * 0.02;
   
-  // Generate base pattern
-  generateBasePattern(time);
+  // Auto rotation on Z axis
+  rotZ += 0.002;
   
-  // Apply corruption effects
-  applyCorruption(time, corruption);
-  
-  // Add glow
-  addGlow(corruption);
-  
-  // Phosphor persistence
-  blendWithLastFrame(0.2);
-  
-  // Draw to canvas
-  ctx.putImageData(frameBuffer, 0, 0);
-  
-  // Vignette overlay
-  const gradient = ctx.createRadialGradient(
-    width/2, height/2, 0,
-    width/2, height/2, Math.max(width, height) * 0.7
-  );
-  gradient.addColorStop(0, 'rgba(0,0,0,0)');
-  gradient.addColorStop(0.7, 'rgba(0,0,0,0.1)');
-  gradient.addColorStop(1, 'rgba(0,0,0,0.6)');
-  ctx.fillStyle = gradient;
+  // Clear with trail effect
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
   ctx.fillRect(0, 0, width, height);
   
-  // CRT curvature simulation - subtle barrel distortion text
-  ctx.fillStyle = `rgba(0, 255, 200, ${0.03 + corruption * 0.05})`;
-  ctx.font = '10px monospace';
-  ctx.fillText(`SIGNAL: ${Math.floor((1 - corruption) * 100)}%`, 20, height - 20);
-  ctx.fillText(`TRACK: ${corruption > 0.5 ? 'UNSTABLE' : 'OK'}`, 20, height - 35);
+  const scale = Math.min(width, height) * 0.25 * (breathScale + pulse);
+  
+  // Transform vertices
+  const transformed = baseVertices.map(v => {
+    let p = [...v];
+    p = rotateX(p, rotX);
+    p = rotateY(p, rotY);
+    p = rotateZ(p, rotZ);
+    return p;
+  });
+  
+  // Project to 2D
+  const projected = transformed.map(v => project(v, scale));
+  
+  // Sort edges by average z for depth ordering
+  const sortedEdges = edges.map((e, i) => ({
+    edge: e,
+    z: (transformed[e[0]][2] + transformed[e[1]][2]) / 2
+  })).sort((a, b) => a.z - b.z);
+  
+  // Draw edges
+  sortedEdges.forEach(({edge, z}) => {
+    const [i, j] = edge;
+    const p1 = projected[i];
+    const p2 = projected[j];
+    
+    // Depth-based opacity and color
+    const depthFactor = (z + 1.5) / 3; // normalize to 0-1ish
+    const alpha = 0.3 + depthFactor * 0.7;
+    
+    // Color gradient based on depth and breath
+    const hue = 280 + depthFactor * 60 + breathCycle * 20; // purple to pink/cyan range
+    
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    
+    // Glow effect
+    ctx.strokeStyle = `hsla(${hue}, 100%, 70%, ${alpha * 0.3})`;
+    ctx.lineWidth = 8 * p1.factor;
+    ctx.stroke();
+    
+    ctx.strokeStyle = `hsla(${hue}, 100%, 80%, ${alpha * 0.6})`;
+    ctx.lineWidth = 4 * p1.factor;
+    ctx.stroke();
+    
+    ctx.strokeStyle = `hsla(${hue}, 100%, 95%, ${alpha})`;
+    ctx.lineWidth = 1.5 * p1.factor;
+    ctx.stroke();
+  });
+  
+  // Draw vertices
+  projected.forEach((p, i) => {
+    const depthFactor = (transformed[i][2] + 1.5) / 3;
+    const size = (2 + depthFactor * 3) * p.factor;
+    const alpha = 0.5 + depthFactor * 0.5;
+    
+    // Outer glow
+    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, size * 4);
+    gradient.addColorStop(0, `rgba(0, 255, 255, ${alpha * 0.8})`);
+    gradient.addColorStop(0.5, `rgba(255, 20, 147, ${alpha * 0.3})`);
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, size * 4, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    
+    // Core
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+    ctx.fill();
+  });
+  
+  // Inner nested shape (smaller, offset rotation)
+  const innerScale = scale * 0.4;
+  const innerTransformed = baseVertices.map(v => {
+    let p = [...v];
+    p = rotateX(p, -rotX * 0.7);
+    p = rotateY(p, -rotY * 0.7);
+    p = rotateZ(p, -rotZ * 1.5);
+    return p;
+  });
+  
+  const innerProjected = innerTransformed.map(v => project(v, innerScale));
+  
+  // Draw inner edges (subtle)
+  edges.forEach(([i, j]) => {
+    const p1 = innerProjected[i];
+    const p2 = innerProjected[j];
+    
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.strokeStyle = `rgba(148, 0, 211, ${0.2 + breathCycle * 0.2})`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
   
   requestAnimationFrame(draw);
 }
 
-draw();
+// Start
+requestAnimationFrame(draw);
 </script>
 </body>
 </html>
