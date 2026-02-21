@@ -3,355 +3,270 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>confluence</title>
+<title>murmuration</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { 
   background: #0a0a0f; 
   overflow: hidden; 
-  cursor: crosshair;
+  cursor: none;
 }
 canvas { display: block; }
+#info {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  color: rgba(255, 100, 200, 0.3);
+  font-family: monospace;
+  font-size: 11px;
+  pointer-events: none;
+}
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
+<canvas id="canvas"></canvas>
+<div id="info">move to guide · click to scatter</div>
 <script>
-const canvas = document.getElementById('c');
+const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
 let W, H;
-const resize = () => {
+function resize() {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
-};
+}
 resize();
 window.addEventListener('resize', resize);
 
 // Mouse state
-let mouse = { x: W / 2, y: H / 2, active: false };
+const mouse = { x: W/2, y: H/2, active: false, scary: false };
 canvas.addEventListener('mousemove', e => {
   mouse.x = e.clientX;
   mouse.y = e.clientY;
   mouse.active = true;
 });
 canvas.addEventListener('mouseleave', () => mouse.active = false);
-canvas.addEventListener('click', () => {
-  // Spawn a new blob at mouse position
-  blobs.push({
-    x: mouse.x,
-    y: mouse.y,
-    vx: (Math.random() - 0.5) * 2,
-    vy: (Math.random() - 0.5) * 2,
-    r: 40 + Math.random() * 30,
-    phase: Math.random() * Math.PI * 2,
-    hue: Math.random() > 0.5 ? 320 : 180 // pink or cyan
-  });
-  if (blobs.length > 12) blobs.shift();
-});
+canvas.addEventListener('mousedown', () => mouse.scary = true);
+canvas.addEventListener('mouseup', () => mouse.scary = false);
 
-// Metaballs
-class Blob {
-  constructor(x, y, r, hue) {
-    this.x = x;
-    this.y = y;
-    this.vx = (Math.random() - 0.5) * 2;
-    this.vy = (Math.random() - 0.5) * 2;
-    this.r = r;
-    this.baseR = r;
-    this.phase = Math.random() * Math.PI * 2;
-    this.hue = hue;
+// Boid class
+class Boid {
+  constructor() {
+    this.x = Math.random() * W;
+    this.y = Math.random() * H;
+    this.vx = (Math.random() - 0.5) * 4;
+    this.vy = (Math.random() - 0.5) * 4;
+    this.history = [];
+    this.maxHistory = 8;
   }
   
-  update(t) {
-    // Breathing radius
-    this.r = this.baseR + Math.sin(t * 0.002 + this.phase) * 10;
+  update(boids) {
+    // Flocking forces
+    let alignX = 0, alignY = 0, alignCount = 0;
+    let cohesionX = 0, cohesionY = 0, cohesionCount = 0;
+    let separationX = 0, separationY = 0;
     
-    // Mouse attraction/repulsion
-    if (mouse.active) {
-      const dx = mouse.x - this.x;
-      const dy = mouse.y - this.y;
+    const perceptionRadius = 80;
+    const separationRadius = 25;
+    
+    for (const other of boids) {
+      if (other === this) continue;
+      
+      const dx = other.x - this.x;
+      const dy = other.y - this.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < 300 && dist > 0) {
-        const force = 0.5 / dist;
-        this.vx += dx * force;
-        this.vy += dy * force;
+      
+      if (dist < perceptionRadius) {
+        // Alignment
+        alignX += other.vx;
+        alignY += other.vy;
+        alignCount++;
+        
+        // Cohesion
+        cohesionX += other.x;
+        cohesionY += other.y;
+        cohesionCount++;
+      }
+      
+      if (dist < separationRadius && dist > 0) {
+        // Separation
+        separationX -= dx / dist;
+        separationY -= dy / dist;
       }
     }
     
-    // Apply velocity with damping
+    // Apply alignment
+    if (alignCount > 0) {
+      alignX /= alignCount;
+      alignY /= alignCount;
+      const alignMag = Math.sqrt(alignX * alignX + alignY * alignY);
+      if (alignMag > 0) {
+        alignX = (alignX / alignMag) * 3 - this.vx;
+        alignY = (alignY / alignMag) * 3 - this.vy;
+      }
+    }
+    
+    // Apply cohesion
+    if (cohesionCount > 0) {
+      cohesionX = cohesionX / cohesionCount - this.x;
+      cohesionY = cohesionY / cohesionCount - this.y;
+      const cohMag = Math.sqrt(cohesionX * cohesionX + cohesionY * cohesionY);
+      if (cohMag > 0) {
+        cohesionX = (cohesionX / cohMag) * 3 - this.vx;
+        cohesionY = (cohesionY / cohMag) * 3 - this.vy;
+      }
+    }
+    
+    // Weight the forces
+    this.vx += alignX * 0.05 + cohesionX * 0.03 + separationX * 0.15;
+    this.vy += alignY * 0.05 + cohesionY * 0.03 + separationY * 0.15;
+    
+    // Mouse interaction
+    if (mouse.active) {
+      const mdx = mouse.x - this.x;
+      const mdy = mouse.y - this.y;
+      const mDist = Math.sqrt(mdx * mdx + mdy * mdy);
+      
+      if (mDist < 200) {
+        const force = (200 - mDist) / 200;
+        if (mouse.scary) {
+          // Flee!
+          this.vx -= (mdx / mDist) * force * 2;
+          this.vy -= (mdy / mDist) * force * 2;
+        } else {
+          // Gentle attraction
+          this.vx += (mdx / mDist) * force * 0.3;
+          this.vy += (mdy / mDist) * force * 0.3;
+        }
+      }
+    }
+    
+    // Speed limits
+    const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+    const maxSpeed = 5;
+    const minSpeed = 1.5;
+    if (speed > maxSpeed) {
+      this.vx = (this.vx / speed) * maxSpeed;
+      this.vy = (this.vy / speed) * maxSpeed;
+    } else if (speed < minSpeed) {
+      this.vx = (this.vx / speed) * minSpeed;
+      this.vy = (this.vy / speed) * minSpeed;
+    }
+    
+    // Update position
     this.x += this.vx;
     this.y += this.vy;
-    this.vx *= 0.98;
-    this.vy *= 0.98;
     
-    // Add some wandering
-    this.vx += (Math.random() - 0.5) * 0.1;
-    this.vy += (Math.random() - 0.5) * 0.1;
+    // Wrap around edges (with soft margin)
+    const margin = 50;
+    if (this.x < -margin) this.x = W + margin;
+    if (this.x > W + margin) this.x = -margin;
+    if (this.y < -margin) this.y = H + margin;
+    if (this.y > H + margin) this.y = -margin;
     
-    // Bounce off edges with soft buffer
-    const buffer = this.r + 50;
-    if (this.x < buffer) { this.x = buffer; this.vx *= -0.5; }
-    if (this.x > W - buffer) { this.x = W - buffer; this.vx *= -0.5; }
-    if (this.y < buffer) { this.y = buffer; this.vy *= -0.5; }
-    if (this.y > H - buffer) { this.y = H - buffer; this.vy *= -0.5; }
-  }
-}
-
-// Initialize blobs
-let blobs = [];
-const initBlobs = () => {
-  blobs = [];
-  const count = 6;
-  for (let i = 0; i < count; i++) {
-    const hue = i % 2 === 0 ? 320 : 180; // alternating pink and cyan
-    blobs.push(new Blob(
-      W * 0.2 + Math.random() * W * 0.6,
-      H * 0.2 + Math.random() * H * 0.6,
-      50 + Math.random() * 40,
-      hue
-    ));
-  }
-};
-initBlobs();
-
-// Marching squares for metaball rendering
-const GRID_SIZE = 6;
-const THRESHOLD = 1;
-
-function sampleField(x, y) {
-  let sum = 0;
-  for (const blob of blobs) {
-    const dx = x - blob.x;
-    const dy = y - blob.y;
-    const d2 = dx * dx + dy * dy;
-    sum += (blob.r * blob.r) / d2;
-  }
-  return sum;
-}
-
-function getColor(x, y) {
-  let totalWeight = 0;
-  let h = 0, s = 0, l = 0;
-  
-  for (const blob of blobs) {
-    const dx = x - blob.x;
-    const dy = y - blob.y;
-    const d2 = dx * dx + dy * dy;
-    const weight = (blob.r * blob.r) / d2;
-    
-    const blobH = blob.hue;
-    const blobS = 80;
-    const blobL = 50;
-    
-    h += blobH * weight;
-    s += blobS * weight;
-    l += blobL * weight;
-    totalWeight += weight;
-  }
-  
-  if (totalWeight > 0) {
-    h /= totalWeight;
-    s /= totalWeight;
-    l /= totalWeight;
-  }
-  
-  return `hsl(${h}, ${s}%, ${l}%)`;
-}
-
-// Marching squares lookup
-const EDGES = [
-  [], [0, 3], [0, 1], [1, 3], [1, 2], [0, 1, 2, 3], [0, 2], [2, 3],
-  [2, 3], [0, 2], [0, 3, 1, 2], [1, 2], [1, 3], [0, 1], [0, 3], []
-];
-
-function lerp(a, b, t) { return a + (b - a) * t; }
-
-function marchingSquares(ctx) {
-  const cols = Math.ceil(W / GRID_SIZE) + 1;
-  const rows = Math.ceil(H / GRID_SIZE) + 1;
-  
-  // Sample field values
-  const field = [];
-  for (let j = 0; j < rows; j++) {
-    field[j] = [];
-    for (let i = 0; i < cols; i++) {
-      field[j][i] = sampleField(i * GRID_SIZE, j * GRID_SIZE);
+    // Store history for trails
+    this.history.push({ x: this.x, y: this.y });
+    if (this.history.length > this.maxHistory) {
+      this.history.shift();
     }
   }
   
-  // March through grid
-  ctx.lineWidth = 2.5;
-  ctx.lineCap = 'round';
-  
-  for (let j = 0; j < rows - 1; j++) {
-    for (let i = 0; i < cols - 1; i++) {
-      const x = i * GRID_SIZE;
-      const y = j * GRID_SIZE;
-      
-      const v0 = field[j][i];
-      const v1 = field[j][i + 1];
-      const v2 = field[j + 1][i + 1];
-      const v3 = field[j + 1][i];
-      
-      // Determine case
-      let caseIndex = 0;
-      if (v0 >= THRESHOLD) caseIndex |= 1;
-      if (v1 >= THRESHOLD) caseIndex |= 2;
-      if (v2 >= THRESHOLD) caseIndex |= 4;
-      if (v3 >= THRESHOLD) caseIndex |= 8;
-      
-      if (caseIndex === 0 || caseIndex === 15) continue;
-      
-      // Edge midpoints with interpolation
-      const edges = EDGES[caseIndex];
-      if (edges.length === 0) continue;
-      
-      // Get interpolated edge positions
-      const getEdgePoint = (edge) => {
-        switch (edge) {
-          case 0: { // top edge
-            const t = (THRESHOLD - v0) / (v1 - v0);
-            return [lerp(x, x + GRID_SIZE, t), y];
-          }
-          case 1: { // right edge
-            const t = (THRESHOLD - v1) / (v2 - v1);
-            return [x + GRID_SIZE, lerp(y, y + GRID_SIZE, t)];
-          }
-          case 2: { // bottom edge
-            const t = (THRESHOLD - v3) / (v2 - v3);
-            return [lerp(x, x + GRID_SIZE, t), y + GRID_SIZE];
-          }
-          case 3: { // left edge
-            const t = (THRESHOLD - v0) / (v3 - v0);
-            return [x, lerp(y, y + GRID_SIZE, t)];
-          }
-        }
-      };
-      
-      // Draw line segments
-      for (let k = 0; k < edges.length; k += 2) {
-        const [x1, y1] = getEdgePoint(edges[k]);
-        const [x2, y2] = getEdgePoint(edges[k + 1]);
-        
-        const mx = (x1 + x2) / 2;
-        const my = (y1 + y2) / 2;
-        
-        ctx.strokeStyle = getColor(mx, my);
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
+  draw() {
+    const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+    const angle = Math.atan2(this.vy, this.vx);
+    
+    // Color based on direction
+    const hueBase = (angle + Math.PI) / (Math.PI * 2);
+    // Map to cyan-pink-purple range
+    const hue = 280 + hueBase * 100; // 280-380 (wraps to pink-purple-cyan)
+    
+    // Draw trail
+    if (this.history.length > 1) {
+      ctx.beginPath();
+      ctx.moveTo(this.history[0].x, this.history[0].y);
+      for (let i = 1; i < this.history.length; i++) {
+        ctx.lineTo(this.history[i].x, this.history[i].y);
       }
+      ctx.strokeStyle = `hsla(${hue}, 80%, 60%, ${0.1 + speed * 0.02})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
     }
-  }
-}
-
-// Fill effect for inside of metaballs
-function fillMetaballs(ctx, t) {
-  const imageData = ctx.createImageData(W, H);
-  const data = imageData.data;
-  
-  // Lower resolution for performance
-  const step = 3;
-  
-  for (let y = 0; y < H; y += step) {
-    for (let x = 0; x < W; x += step) {
-      const val = sampleField(x, y);
-      
-      if (val >= THRESHOLD * 0.7) {
-        // Inside blob - calculate color
-        let totalWeight = 0;
-        let h = 0;
-        
-        for (const blob of blobs) {
-          const dx = x - blob.x;
-          const dy = y - blob.y;
-          const d2 = dx * dx + dy * dy;
-          const weight = (blob.r * blob.r) / d2;
-          h += blob.hue * weight;
-          totalWeight += weight;
-        }
-        
-        if (totalWeight > 0) h /= totalWeight;
-        
-        // Convert HSL to RGB
-        const hue = h / 360;
-        const sat = 0.6;
-        const light = Math.min(0.15 + (val - THRESHOLD) * 0.05, 0.3);
-        
-        const hue2rgb = (p, q, t) => {
-          if (t < 0) t += 1;
-          if (t > 1) t -= 1;
-          if (t < 1/6) return p + (q - p) * 6 * t;
-          if (t < 1/2) return q;
-          if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-          return p;
-        };
-        
-        const q = light < 0.5 ? light * (1 + sat) : light + sat - light * sat;
-        const p = 2 * light - q;
-        const r = hue2rgb(p, q, hue + 1/3);
-        const g = hue2rgb(p, q, hue);
-        const b = hue2rgb(p, q, hue - 1/3);
-        
-        // Fill the step x step block
-        for (let dy = 0; dy < step && y + dy < H; dy++) {
-          for (let dx = 0; dx < step && x + dx < W; dx++) {
-            const idx = ((y + dy) * W + (x + dx)) * 4;
-            data[idx] = r * 255;
-            data[idx + 1] = g * 255;
-            data[idx + 2] = b * 255;
-            data[idx + 3] = 255;
-          }
-        }
-      }
-    }
-  }
-  
-  ctx.putImageData(imageData, 0, 0);
-}
-
-// Glow layer
-function drawGlow(ctx) {
-  for (const blob of blobs) {
-    const gradient = ctx.createRadialGradient(
-      blob.x, blob.y, 0,
-      blob.x, blob.y, blob.r * 2.5
-    );
     
-    const hue = blob.hue;
-    gradient.addColorStop(0, `hsla(${hue}, 100%, 60%, 0.15)`);
-    gradient.addColorStop(0.5, `hsla(${hue}, 80%, 40%, 0.05)`);
-    gradient.addColorStop(1, 'transparent');
+    // Draw boid as small triangle
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(angle);
     
-    ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.arc(blob.x, blob.y, blob.r * 2.5, 0, Math.PI * 2);
+    ctx.moveTo(6, 0);
+    ctx.lineTo(-4, 3);
+    ctx.lineTo(-4, -3);
+    ctx.closePath();
+    
+    ctx.fillStyle = `hsl(${hue}, 80%, ${55 + speed * 5}%)`;
     ctx.fill();
+    
+    ctx.restore();
   }
 }
 
-// Main animation loop
-function animate(t) {
-  // Dark fade for trails
-  ctx.fillStyle = 'rgba(10, 10, 15, 0.3)';
+// Create flock
+const boids = [];
+const numBoids = Math.min(250, Math.floor((W * H) / 8000)); // Scale with screen
+for (let i = 0; i < numBoids; i++) {
+  boids.push(new Boid());
+}
+
+// Background fade canvas
+const fadeCanvas = document.createElement('canvas');
+const fadeCtx = fadeCanvas.getContext('2d');
+fadeCanvas.width = W;
+fadeCanvas.height = H;
+
+window.addEventListener('resize', () => {
+  fadeCanvas.width = W;
+  fadeCanvas.height = H;
+});
+
+// Animation loop
+function animate() {
+  // Subtle fade for motion blur
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
   ctx.fillRect(0, 0, W, H);
   
-  // Update blobs
-  for (const blob of blobs) {
-    blob.update(t);
+  // Update and draw all boids
+  for (const boid of boids) {
+    boid.update(boids);
+  }
+  for (const boid of boids) {
+    boid.draw();
   }
   
-  // Draw layers
-  drawGlow(ctx);
-  fillMetaballs(ctx, t);
-  marchingSquares(ctx);
+  // Draw mouse glow when active
+  if (mouse.active) {
+    const gradient = ctx.createRadialGradient(
+      mouse.x, mouse.y, 0,
+      mouse.x, mouse.y, mouse.scary ? 100 : 60
+    );
+    if (mouse.scary) {
+      gradient.addColorStop(0, 'rgba(255, 50, 100, 0.2)');
+      gradient.addColorStop(1, 'rgba(255, 50, 100, 0)');
+    } else {
+      gradient.addColorStop(0, 'rgba(0, 255, 255, 0.15)');
+      gradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
+    }
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, W, H);
+  }
   
   requestAnimationFrame(animate);
 }
 
-animate(0);
+// Initial background
+ctx.fillStyle = '#0a0a0f';
+ctx.fillRect(0, 0, W, H);
+
+animate();
 </script>
 </body>
 </html>
