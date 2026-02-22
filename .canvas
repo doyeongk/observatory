@@ -3,270 +3,291 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>murmuration</title>
+<title>silk.exe</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { 
   background: #0a0a0f; 
   overflow: hidden; 
-  cursor: none;
+  width: 100vw; 
+  height: 100vh;
 }
-canvas { display: block; }
-#info {
-  position: fixed;
-  bottom: 20px;
-  left: 20px;
-  color: rgba(255, 100, 200, 0.3);
-  font-family: monospace;
-  font-size: 11px;
-  pointer-events: none;
+canvas { 
+  display: block; 
+  width: 100%; 
+  height: 100%; 
 }
 </style>
 </head>
 <body>
 <canvas id="canvas"></canvas>
-<div id="info">move to guide · click to scatter</div>
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
-let W, H;
-function resize() {
-  W = canvas.width = window.innerWidth;
-  H = canvas.height = window.innerHeight;
-}
-resize();
-window.addEventListener('resize', resize);
+let width, height;
+let mouse = { x: 0, y: 0, px: 0, py: 0, down: false };
 
-// Mouse state
-const mouse = { x: W/2, y: H/2, active: false, scary: false };
-canvas.addEventListener('mousemove', e => {
-  mouse.x = e.clientX;
-  mouse.y = e.clientY;
-  mouse.active = true;
-});
-canvas.addEventListener('mouseleave', () => mouse.active = false);
-canvas.addEventListener('mousedown', () => mouse.scary = true);
-canvas.addEventListener('mouseup', () => mouse.scary = false);
+// Cloth parameters
+const COLS = 45;
+const ROWS = 30;
+const SPACING = 18;
+const CONSTRAINT_ITERATIONS = 5;
+const GRAVITY = 0.3;
+const DAMPING = 0.98;
+const TEAR_DISTANCE = 60;
 
-// Boid class
-class Boid {
-  constructor() {
-    this.x = Math.random() * W;
-    this.y = Math.random() * H;
-    this.vx = (Math.random() - 0.5) * 4;
-    this.vy = (Math.random() - 0.5) * 4;
-    this.history = [];
-    this.maxHistory = 8;
+let points = [];
+let constraints = [];
+
+class Point {
+  constructor(x, y, pinned = false) {
+    this.x = x;
+    this.y = y;
+    this.px = x;
+    this.py = y;
+    this.pinned = pinned;
+    this.mass = 1;
   }
-  
-  update(boids) {
-    // Flocking forces
-    let alignX = 0, alignY = 0, alignCount = 0;
-    let cohesionX = 0, cohesionY = 0, cohesionCount = 0;
-    let separationX = 0, separationY = 0;
+
+  update(wind) {
+    if (this.pinned) return;
     
-    const perceptionRadius = 80;
-    const separationRadius = 25;
+    let vx = (this.x - this.px) * DAMPING;
+    let vy = (this.y - this.py) * DAMPING;
     
-    for (const other of boids) {
-      if (other === this) continue;
-      
-      const dx = other.x - this.x;
-      const dy = other.y - this.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      
-      if (dist < perceptionRadius) {
-        // Alignment
-        alignX += other.vx;
-        alignY += other.vy;
-        alignCount++;
-        
-        // Cohesion
-        cohesionX += other.x;
-        cohesionY += other.y;
-        cohesionCount++;
-      }
-      
-      if (dist < separationRadius && dist > 0) {
-        // Separation
-        separationX -= dx / dist;
-        separationY -= dy / dist;
-      }
-    }
+    this.px = this.x;
+    this.py = this.y;
     
-    // Apply alignment
-    if (alignCount > 0) {
-      alignX /= alignCount;
-      alignY /= alignCount;
-      const alignMag = Math.sqrt(alignX * alignX + alignY * alignY);
-      if (alignMag > 0) {
-        alignX = (alignX / alignMag) * 3 - this.vx;
-        alignY = (alignY / alignMag) * 3 - this.vy;
-      }
-    }
+    this.x += vx;
+    this.y += vy;
+    this.y += GRAVITY;
     
-    // Apply cohesion
-    if (cohesionCount > 0) {
-      cohesionX = cohesionX / cohesionCount - this.x;
-      cohesionY = cohesionY / cohesionCount - this.y;
-      const cohMag = Math.sqrt(cohesionX * cohesionX + cohesionY * cohesionY);
-      if (cohMag > 0) {
-        cohesionX = (cohesionX / cohMag) * 3 - this.vx;
-        cohesionY = (cohesionY / cohMag) * 3 - this.vy;
-      }
-    }
-    
-    // Weight the forces
-    this.vx += alignX * 0.05 + cohesionX * 0.03 + separationX * 0.15;
-    this.vy += alignY * 0.05 + cohesionY * 0.03 + separationY * 0.15;
+    // Wind force
+    this.x += wind.x * 0.3;
+    this.y += wind.y * 0.1;
     
     // Mouse interaction
-    if (mouse.active) {
-      const mdx = mouse.x - this.x;
-      const mdy = mouse.y - this.y;
-      const mDist = Math.sqrt(mdx * mdx + mdy * mdy);
-      
-      if (mDist < 200) {
-        const force = (200 - mDist) / 200;
-        if (mouse.scary) {
-          // Flee!
-          this.vx -= (mdx / mDist) * force * 2;
-          this.vy -= (mdy / mDist) * force * 2;
-        } else {
-          // Gentle attraction
-          this.vx += (mdx / mDist) * force * 0.3;
-          this.vy += (mdy / mDist) * force * 0.3;
-        }
+    if (mouse.down) {
+      let dx = this.x - mouse.x;
+      let dy = this.y - mouse.y;
+      let dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 80) {
+        let force = (80 - dist) / 80;
+        this.x += (mouse.x - mouse.px) * force * 0.5;
+        this.y += (mouse.y - mouse.py) * force * 0.5;
       }
     }
+  }
+
+  constrain() {
+    if (this.pinned) return;
     
-    // Speed limits
-    const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-    const maxSpeed = 5;
-    const minSpeed = 1.5;
-    if (speed > maxSpeed) {
-      this.vx = (this.vx / speed) * maxSpeed;
-      this.vy = (this.vy / speed) * maxSpeed;
-    } else if (speed < minSpeed) {
-      this.vx = (this.vx / speed) * minSpeed;
-      this.vy = (this.vy / speed) * minSpeed;
+    // Keep in bounds with some bounce
+    if (this.x < 0) { this.x = 0; this.px = this.x + (this.x - this.px) * 0.5; }
+    if (this.x > width) { this.x = width; this.px = this.x + (this.x - this.px) * 0.5; }
+    if (this.y < 0) { this.y = 0; this.py = this.y + (this.y - this.py) * 0.5; }
+    if (this.y > height) { this.y = height; this.py = this.y + (this.y - this.py) * 0.5; }
+  }
+}
+
+class Constraint {
+  constructor(p1, p2) {
+    this.p1 = p1;
+    this.p2 = p2;
+    this.length = SPACING;
+    this.active = true;
+  }
+
+  resolve() {
+    if (!this.active) return;
+    
+    let dx = this.p2.x - this.p1.x;
+    let dy = this.p2.y - this.p1.y;
+    let dist = Math.sqrt(dx * dx + dy * dy);
+    
+    if (dist > TEAR_DISTANCE) {
+      this.active = false;
+      return;
     }
     
-    // Update position
-    this.x += this.vx;
-    this.y += this.vy;
+    let diff = (this.length - dist) / dist;
+    let offsetX = dx * diff * 0.5;
+    let offsetY = dy * diff * 0.5;
     
-    // Wrap around edges (with soft margin)
-    const margin = 50;
-    if (this.x < -margin) this.x = W + margin;
-    if (this.x > W + margin) this.x = -margin;
-    if (this.y < -margin) this.y = H + margin;
-    if (this.y > H + margin) this.y = -margin;
-    
-    // Store history for trails
-    this.history.push({ x: this.x, y: this.y });
-    if (this.history.length > this.maxHistory) {
-      this.history.shift();
+    if (!this.p1.pinned) {
+      this.p1.x -= offsetX;
+      this.p1.y -= offsetY;
+    }
+    if (!this.p2.pinned) {
+      this.p2.x += offsetX;
+      this.p2.y += offsetY;
+    }
+  }
+}
+
+function init() {
+  width = canvas.width = window.innerWidth * window.devicePixelRatio;
+  height = canvas.height = window.innerHeight * window.devicePixelRatio;
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  
+  points = [];
+  constraints = [];
+  
+  const startX = (width - (COLS - 1) * SPACING) / 2;
+  const startY = height * 0.15;
+  
+  // Create points
+  for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+      let pinned = y === 0 && (x % 4 === 0);
+      points.push(new Point(startX + x * SPACING, startY + y * SPACING, pinned));
     }
   }
   
-  draw() {
-    const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-    const angle = Math.atan2(this.vy, this.vx);
-    
-    // Color based on direction
-    const hueBase = (angle + Math.PI) / (Math.PI * 2);
-    // Map to cyan-pink-purple range
-    const hue = 280 + hueBase * 100; // 280-380 (wraps to pink-purple-cyan)
-    
-    // Draw trail
-    if (this.history.length > 1) {
-      ctx.beginPath();
-      ctx.moveTo(this.history[0].x, this.history[0].y);
-      for (let i = 1; i < this.history.length; i++) {
-        ctx.lineTo(this.history[i].x, this.history[i].y);
+  // Create constraints
+  for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+      let i = y * COLS + x;
+      if (x < COLS - 1) {
+        constraints.push(new Constraint(points[i], points[i + 1]));
       }
-      ctx.strokeStyle = `hsla(${hue}, 80%, 60%, ${0.1 + speed * 0.02})`;
-      ctx.lineWidth = 1;
-      ctx.stroke();
+      if (y < ROWS - 1) {
+        constraints.push(new Constraint(points[i], points[i + COLS]));
+      }
     }
+  }
+}
+
+function getWind(time) {
+  let baseWind = Math.sin(time * 0.0005) * 2;
+  let gust = Math.sin(time * 0.002) * Math.sin(time * 0.0007) * 3;
+  let turbulence = (Math.random() - 0.5) * 0.5;
+  
+  return {
+    x: baseWind + gust + turbulence,
+    y: Math.sin(time * 0.001) * 0.3
+  };
+}
+
+function update(time) {
+  const wind = getWind(time);
+  
+  // Update points
+  for (let p of points) {
+    p.update(wind);
+  }
+  
+  // Resolve constraints multiple times for stability
+  for (let i = 0; i < CONSTRAINT_ITERATIONS; i++) {
+    for (let c of constraints) {
+      c.resolve();
+    }
+    for (let p of points) {
+      p.constrain();
+    }
+  }
+}
+
+function draw(time) {
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
+  ctx.fillRect(0, 0, width, height);
+  
+  // Draw mesh
+  ctx.lineWidth = 1.5;
+  
+  for (let c of constraints) {
+    if (!c.active) continue;
     
-    // Draw boid as small triangle
-    ctx.save();
-    ctx.translate(this.x, this.y);
-    ctx.rotate(angle);
+    // Calculate strain for color
+    let dx = c.p2.x - c.p1.x;
+    let dy = c.p2.y - c.p1.y;
+    let dist = Math.sqrt(dx * dx + dy * dy);
+    let strain = Math.min((dist - SPACING) / (TEAR_DISTANCE - SPACING), 1);
+    
+    // Velocity for brightness
+    let vel1 = Math.sqrt(Math.pow(c.p1.x - c.p1.px, 2) + Math.pow(c.p1.y - c.p1.py, 2));
+    let vel2 = Math.sqrt(Math.pow(c.p2.x - c.p2.px, 2) + Math.pow(c.p2.y - c.p2.py, 2));
+    let avgVel = (vel1 + vel2) / 2;
+    let brightness = 0.3 + Math.min(avgVel * 0.1, 0.7);
+    
+    // Gradient from cyan to pink based on y position and strain
+    let yRatio = (c.p1.y + c.p2.y) / 2 / height;
+    let hue = 180 + yRatio * 140 + strain * 60; // cyan → pink → stressed
+    
+    ctx.strokeStyle = `hsla(${hue}, 80%, ${50 + brightness * 30}%, ${0.4 + brightness * 0.4})`;
     
     ctx.beginPath();
-    ctx.moveTo(6, 0);
-    ctx.lineTo(-4, 3);
-    ctx.lineTo(-4, -3);
-    ctx.closePath();
-    
-    ctx.fillStyle = `hsl(${hue}, 80%, ${55 + speed * 5}%)`;
-    ctx.fill();
-    
-    ctx.restore();
-  }
-}
-
-// Create flock
-const boids = [];
-const numBoids = Math.min(250, Math.floor((W * H) / 8000)); // Scale with screen
-for (let i = 0; i < numBoids; i++) {
-  boids.push(new Boid());
-}
-
-// Background fade canvas
-const fadeCanvas = document.createElement('canvas');
-const fadeCtx = fadeCanvas.getContext('2d');
-fadeCanvas.width = W;
-fadeCanvas.height = H;
-
-window.addEventListener('resize', () => {
-  fadeCanvas.width = W;
-  fadeCanvas.height = H;
-});
-
-// Animation loop
-function animate() {
-  // Subtle fade for motion blur
-  ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
-  ctx.fillRect(0, 0, W, H);
-  
-  // Update and draw all boids
-  for (const boid of boids) {
-    boid.update(boids);
-  }
-  for (const boid of boids) {
-    boid.draw();
+    ctx.moveTo(c.p1.x, c.p1.y);
+    ctx.lineTo(c.p2.x, c.p2.y);
+    ctx.stroke();
   }
   
-  // Draw mouse glow when active
-  if (mouse.active) {
-    const gradient = ctx.createRadialGradient(
-      mouse.x, mouse.y, 0,
-      mouse.x, mouse.y, mouse.scary ? 100 : 60
-    );
-    if (mouse.scary) {
-      gradient.addColorStop(0, 'rgba(255, 50, 100, 0.2)');
-      gradient.addColorStop(1, 'rgba(255, 50, 100, 0)');
-    } else {
-      gradient.addColorStop(0, 'rgba(0, 255, 255, 0.15)');
-      gradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
+  // Draw points with glow on pinned ones
+  for (let p of points) {
+    if (p.pinned) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0, 255, 255, 0.8)';
+      ctx.shadowColor = '#00ffff';
+      ctx.shadowBlur = 15;
+      ctx.fill();
+      ctx.shadowBlur = 0;
     }
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, W, H);
   }
   
+  // Subtle ambient glow on the fabric
+  let gradient = ctx.createRadialGradient(
+    width / 2, height * 0.4, 0,
+    width / 2, height * 0.4, height * 0.5
+  );
+  gradient.addColorStop(0, 'rgba(255, 0, 128, 0.02)');
+  gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+}
+
+function animate(time) {
+  update(time);
+  draw(time);
   requestAnimationFrame(animate);
 }
 
-// Initial background
-ctx.fillStyle = '#0a0a0f';
-ctx.fillRect(0, 0, W, H);
+// Event listeners
+window.addEventListener('resize', init);
 
-animate();
+canvas.addEventListener('mousemove', e => {
+  mouse.px = mouse.x;
+  mouse.py = mouse.y;
+  mouse.x = e.clientX * window.devicePixelRatio;
+  mouse.y = e.clientY * window.devicePixelRatio;
+});
+
+canvas.addEventListener('mousedown', () => mouse.down = true);
+canvas.addEventListener('mouseup', () => mouse.down = false);
+canvas.addEventListener('mouseleave', () => mouse.down = false);
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  mouse.px = mouse.x;
+  mouse.py = mouse.y;
+  mouse.x = e.touches[0].clientX * window.devicePixelRatio;
+  mouse.y = e.touches[0].clientY * window.devicePixelRatio;
+}, { passive: false });
+
+canvas.addEventListener('touchstart', e => {
+  mouse.down = true;
+  mouse.x = e.touches[0].clientX * window.devicePixelRatio;
+  mouse.y = e.touches[0].clientY * window.devicePixelRatio;
+  mouse.px = mouse.x;
+  mouse.py = mouse.y;
+});
+
+canvas.addEventListener('touchend', () => mouse.down = false);
+
+init();
+requestAnimationFrame(animate);
 </script>
 </body>
 </html>
