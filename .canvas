@@ -1,292 +1,324 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>silk.exe</title>
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { 
-  background: #0a0a0f; 
-  overflow: hidden; 
-  width: 100vw; 
-  height: 100vh;
-}
-canvas { 
-  display: block; 
-  width: 100%; 
-  height: 100%; 
-}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>pendulum wave</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            background: #0a0a0f; 
+            overflow: hidden; 
+            cursor: crosshair;
+        }
+        canvas { display: block; }
+    </style>
 </head>
 <body>
-<canvas id="canvas"></canvas>
+<canvas id="c"></canvas>
 <script>
-const canvas = document.getElementById('canvas');
+const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
-let width, height;
-let mouse = { x: 0, y: 0, px: 0, py: 0, down: false };
+let W, H, centerY, anchorY;
+const pendulums = [];
+const NUM_PENDULUMS = 24;
+const TRAIL_LENGTH = 40;
 
-// Cloth parameters
-const COLS = 45;
-const ROWS = 30;
-const SPACING = 18;
-const CONSTRAINT_ITERATIONS = 5;
-const GRAVITY = 0.3;
-const DAMPING = 0.98;
-const TEAR_DISTANCE = 60;
+// Physics
+const g = 9.81;
+const BASE_LENGTH = 180;
+const LENGTH_INCREMENT = 8;
 
-let points = [];
-let constraints = [];
+// Interaction
+let mouseX = 0, mouseY = 0;
+let mouseInfluence = 0;
+let isMouseDown = false;
 
-class Point {
-  constructor(x, y, pinned = false) {
-    this.x = x;
-    this.y = y;
-    this.px = x;
-    this.py = y;
-    this.pinned = pinned;
-    this.mass = 1;
-  }
-
-  update(wind) {
-    if (this.pinned) return;
-    
-    let vx = (this.x - this.px) * DAMPING;
-    let vy = (this.y - this.py) * DAMPING;
-    
-    this.px = this.x;
-    this.py = this.y;
-    
-    this.x += vx;
-    this.y += vy;
-    this.y += GRAVITY;
-    
-    // Wind force
-    this.x += wind.x * 0.3;
-    this.y += wind.y * 0.1;
-    
-    // Mouse interaction
-    if (mouse.down) {
-      let dx = this.x - mouse.x;
-      let dy = this.y - mouse.y;
-      let dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < 80) {
-        let force = (80 - dist) / 80;
-        this.x += (mouse.x - mouse.px) * force * 0.5;
-        this.y += (mouse.y - mouse.py) * force * 0.5;
-      }
-    }
-  }
-
-  constrain() {
-    if (this.pinned) return;
-    
-    // Keep in bounds with some bounce
-    if (this.x < 0) { this.x = 0; this.px = this.x + (this.x - this.px) * 0.5; }
-    if (this.x > width) { this.x = width; this.px = this.x + (this.x - this.px) * 0.5; }
-    if (this.y < 0) { this.y = 0; this.py = this.y + (this.y - this.py) * 0.5; }
-    if (this.y > height) { this.y = height; this.py = this.y + (this.y - this.py) * 0.5; }
-  }
+function resize() {
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+    centerY = H * 0.15;
+    anchorY = H * 0.08;
+    initPendulums();
 }
 
-class Constraint {
-  constructor(p1, p2) {
-    this.p1 = p1;
-    this.p2 = p2;
-    this.length = SPACING;
-    this.active = true;
-  }
-
-  resolve() {
-    if (!this.active) return;
+function initPendulums() {
+    pendulums.length = 0;
+    const spacing = W / (NUM_PENDULUMS + 1);
     
-    let dx = this.p2.x - this.p1.x;
-    let dy = this.p2.y - this.p1.y;
-    let dist = Math.sqrt(dx * dx + dy * dy);
-    
-    if (dist > TEAR_DISTANCE) {
-      this.active = false;
-      return;
+    for (let i = 0; i < NUM_PENDULUMS; i++) {
+        const length = BASE_LENGTH + i * LENGTH_INCREMENT;
+        // Period = 2π√(L/g), we want them to complete different numbers of cycles
+        // in a given time to create the wave effect
+        const period = 2 * Math.PI * Math.sqrt(length / (g * 50));
+        
+        pendulums.push({
+            x: spacing * (i + 1),
+            anchorX: spacing * (i + 1),
+            length: length,
+            angle: Math.PI / 6, // Start angle
+            angularVelocity: 0,
+            period: period,
+            damping: 0.9995,
+            trail: [],
+            hue: 280 + (i / NUM_PENDULUMS) * 100 // Purple to cyan gradient
+        });
     }
-    
-    let diff = (this.length - dist) / dist;
-    let offsetX = dx * diff * 0.5;
-    let offsetY = dy * diff * 0.5;
-    
-    if (!this.p1.pinned) {
-      this.p1.x -= offsetX;
-      this.p1.y -= offsetY;
-    }
-    if (!this.p2.pinned) {
-      this.p2.x += offsetX;
-      this.p2.y += offsetY;
-    }
-  }
 }
 
-function init() {
-  width = canvas.width = window.innerWidth * window.devicePixelRatio;
-  height = canvas.height = window.innerHeight * window.devicePixelRatio;
-  canvas.style.width = window.innerWidth + 'px';
-  canvas.style.height = window.innerHeight + 'px';
-  
-  points = [];
-  constraints = [];
-  
-  const startX = (width - (COLS - 1) * SPACING) / 2;
-  const startY = height * 0.15;
-  
-  // Create points
-  for (let y = 0; y < ROWS; y++) {
-    for (let x = 0; x < COLS; x++) {
-      let pinned = y === 0 && (x % 4 === 0);
-      points.push(new Point(startX + x * SPACING, startY + y * SPACING, pinned));
+function updatePendulum(p, dt) {
+    // Simple harmonic motion with damping
+    const angularAcceleration = -(g / p.length) * Math.sin(p.angle) * 50;
+    
+    // Mouse disturbance
+    if (mouseInfluence > 0) {
+        const bobX = p.anchorX + Math.sin(p.angle) * p.length;
+        const bobY = anchorY + Math.cos(p.angle) * p.length;
+        const dx = mouseX - bobX;
+        const dy = mouseY - bobY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < 200) {
+            const force = (1 - dist / 200) * mouseInfluence * 0.02;
+            const pushAngle = Math.atan2(dx, dy);
+            p.angularVelocity += (pushAngle - p.angle) * force;
+        }
     }
-  }
-  
-  // Create constraints
-  for (let y = 0; y < ROWS; y++) {
-    for (let x = 0; x < COLS; x++) {
-      let i = y * COLS + x;
-      if (x < COLS - 1) {
-        constraints.push(new Constraint(points[i], points[i + 1]));
-      }
-      if (y < ROWS - 1) {
-        constraints.push(new Constraint(points[i], points[i + COLS]));
-      }
-    }
-  }
+    
+    p.angularVelocity += angularAcceleration * dt;
+    p.angularVelocity *= p.damping;
+    p.angle += p.angularVelocity * dt;
+    
+    // Calculate bob position
+    const bobX = p.anchorX + Math.sin(p.angle) * p.length;
+    const bobY = anchorY + Math.cos(p.angle) * p.length;
+    
+    // Update trail
+    p.trail.unshift({ x: bobX, y: bobY, vx: p.angularVelocity });
+    if (p.trail.length > TRAIL_LENGTH) p.trail.pop();
+    
+    return { x: bobX, y: bobY };
 }
 
-function getWind(time) {
-  let baseWind = Math.sin(time * 0.0005) * 2;
-  let gust = Math.sin(time * 0.002) * Math.sin(time * 0.0007) * 3;
-  let turbulence = (Math.random() - 0.5) * 0.5;
-  
-  return {
-    x: baseWind + gust + turbulence,
-    y: Math.sin(time * 0.001) * 0.3
-  };
+function drawPendulum(p, bob) {
+    // Draw rod
+    ctx.strokeStyle = `hsla(${p.hue}, 60%, 40%, 0.4)`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(p.anchorX, anchorY);
+    ctx.lineTo(bob.x, bob.y);
+    ctx.stroke();
+    
+    // Draw trail
+    if (p.trail.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(p.trail[0].x, p.trail[0].y);
+        
+        for (let i = 1; i < p.trail.length; i++) {
+            const t = p.trail[i];
+            ctx.lineTo(t.x, t.y);
+        }
+        
+        const gradient = ctx.createLinearGradient(
+            p.trail[0].x, p.trail[0].y,
+            p.trail[p.trail.length - 1].x, p.trail[p.trail.length - 1].y
+        );
+        gradient.addColorStop(0, `hsla(${p.hue}, 100%, 60%, 0.8)`);
+        gradient.addColorStop(1, `hsla(${p.hue}, 100%, 60%, 0)`);
+        
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+    }
+    
+    // Draw bob with glow
+    const velocity = Math.abs(p.angularVelocity);
+    const glowIntensity = Math.min(velocity * 20, 1);
+    const bobRadius = 8 + velocity * 15;
+    
+    // Outer glow
+    const glow = ctx.createRadialGradient(bob.x, bob.y, 0, bob.x, bob.y, bobRadius * 3);
+    glow.addColorStop(0, `hsla(${p.hue}, 100%, 70%, ${0.5 * glowIntensity})`);
+    glow.addColorStop(0.5, `hsla(${p.hue}, 100%, 50%, ${0.2 * glowIntensity})`);
+    glow.addColorStop(1, 'transparent');
+    
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(bob.x, bob.y, bobRadius * 3, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Inner bob
+    ctx.fillStyle = `hsl(${p.hue}, 100%, 70%)`;
+    ctx.beginPath();
+    ctx.arc(bob.x, bob.y, bobRadius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Core
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(bob.x, bob.y, bobRadius * 0.4, 0, Math.PI * 2);
+    ctx.fill();
 }
 
-function update(time) {
-  const wind = getWind(time);
-  
-  // Update points
-  for (let p of points) {
-    p.update(wind);
-  }
-  
-  // Resolve constraints multiple times for stability
-  for (let i = 0; i < CONSTRAINT_ITERATIONS; i++) {
-    for (let c of constraints) {
-      c.resolve();
-    }
-    for (let p of points) {
-      p.constrain();
-    }
-  }
+function drawAnchorBar() {
+    // Draw the bar all pendulums hang from
+    const gradient = ctx.createLinearGradient(0, anchorY - 5, 0, anchorY + 5);
+    gradient.addColorStop(0, '#2a1a3a');
+    gradient.addColorStop(0.5, '#4a2a5a');
+    gradient.addColorStop(1, '#2a1a3a');
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, anchorY - 4, W, 8);
+    
+    // Anchor points
+    pendulums.forEach(p => {
+        ctx.fillStyle = '#6a3a7a';
+        ctx.beginPath();
+        ctx.arc(p.anchorX, anchorY, 5, 0, Math.PI * 2);
+        ctx.fill();
+    });
 }
 
-function draw(time) {
-  ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
-  ctx.fillRect(0, 0, width, height);
-  
-  // Draw mesh
-  ctx.lineWidth = 1.5;
-  
-  for (let c of constraints) {
-    if (!c.active) continue;
-    
-    // Calculate strain for color
-    let dx = c.p2.x - c.p1.x;
-    let dy = c.p2.y - c.p1.y;
-    let dist = Math.sqrt(dx * dx + dy * dy);
-    let strain = Math.min((dist - SPACING) / (TEAR_DISTANCE - SPACING), 1);
-    
-    // Velocity for brightness
-    let vel1 = Math.sqrt(Math.pow(c.p1.x - c.p1.px, 2) + Math.pow(c.p1.y - c.p1.py, 2));
-    let vel2 = Math.sqrt(Math.pow(c.p2.x - c.p2.px, 2) + Math.pow(c.p2.y - c.p2.py, 2));
-    let avgVel = (vel1 + vel2) / 2;
-    let brightness = 0.3 + Math.min(avgVel * 0.1, 0.7);
-    
-    // Gradient from cyan to pink based on y position and strain
-    let yRatio = (c.p1.y + c.p2.y) / 2 / height;
-    let hue = 180 + yRatio * 140 + strain * 60; // cyan → pink → stressed
-    
-    ctx.strokeStyle = `hsla(${hue}, 80%, ${50 + brightness * 30}%, ${0.4 + brightness * 0.4})`;
+function drawWaveConnector() {
+    // Draw a line connecting all the bobs to visualize the wave pattern
+    if (pendulums.length < 2) return;
     
     ctx.beginPath();
-    ctx.moveTo(c.p1.x, c.p1.y);
-    ctx.lineTo(c.p2.x, c.p2.y);
-    ctx.stroke();
-  }
-  
-  // Draw points with glow on pinned ones
-  for (let p of points) {
-    if (p.pinned) {
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0, 255, 255, 0.8)';
-      ctx.shadowColor = '#00ffff';
-      ctx.shadowBlur = 15;
-      ctx.fill();
-      ctx.shadowBlur = 0;
+    const bobs = pendulums.map(p => ({
+        x: p.anchorX + Math.sin(p.angle) * p.length,
+        y: anchorY + Math.cos(p.angle) * p.length
+    }));
+    
+    ctx.moveTo(bobs[0].x, bobs[0].y);
+    
+    // Smooth curve through all points
+    for (let i = 1; i < bobs.length - 1; i++) {
+        const xc = (bobs[i].x + bobs[i + 1].x) / 2;
+        const yc = (bobs[i].y + bobs[i + 1].y) / 2;
+        ctx.quadraticCurveTo(bobs[i].x, bobs[i].y, xc, yc);
     }
-  }
-  
-  // Subtle ambient glow on the fabric
-  let gradient = ctx.createRadialGradient(
-    width / 2, height * 0.4, 0,
-    width / 2, height * 0.4, height * 0.5
-  );
-  gradient.addColorStop(0, 'rgba(255, 0, 128, 0.02)');
-  gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width, height);
+    ctx.quadraticCurveTo(
+        bobs[bobs.length - 1].x, 
+        bobs[bobs.length - 1].y,
+        bobs[bobs.length - 1].x, 
+        bobs[bobs.length - 1].y
+    );
+    
+    const waveGradient = ctx.createLinearGradient(0, 0, W, 0);
+    waveGradient.addColorStop(0, 'rgba(200, 100, 255, 0.3)');
+    waveGradient.addColorStop(0.5, 'rgba(100, 200, 255, 0.3)');
+    waveGradient.addColorStop(1, 'rgba(200, 100, 255, 0.3)');
+    
+    ctx.strokeStyle = waveGradient;
+    ctx.lineWidth = 2;
+    ctx.stroke();
 }
 
-function animate(time) {
-  update(time);
-  draw(time);
-  requestAnimationFrame(animate);
+let lastTime = 0;
+function animate(timestamp) {
+    const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+    lastTime = timestamp;
+    
+    // Fade effect
+    ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
+    ctx.fillRect(0, 0, W, H);
+    
+    // Update mouse influence decay
+    if (!isMouseDown) {
+        mouseInfluence *= 0.95;
+    }
+    
+    // Draw wave connector first (behind everything)
+    drawWaveConnector();
+    
+    // Update and draw all pendulums
+    const bobs = [];
+    pendulums.forEach(p => {
+        const bob = updatePendulum(p, dt);
+        bobs.push(bob);
+    });
+    
+    // Draw pendulums
+    pendulums.forEach((p, i) => {
+        drawPendulum(p, bobs[i]);
+    });
+    
+    // Draw anchor bar on top
+    drawAnchorBar();
+    
+    // Instructions hint (fades out)
+    if (timestamp < 5000) {
+        const alpha = Math.max(0, 1 - timestamp / 5000);
+        ctx.fillStyle = `rgba(150, 100, 200, ${alpha * 0.5})`;
+        ctx.font = '14px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('move mouse to disturb · click to sync', W / 2, H - 30);
+    }
+    
+    requestAnimationFrame(animate);
 }
 
-// Event listeners
-window.addEventListener('resize', init);
-
-canvas.addEventListener('mousemove', e => {
-  mouse.px = mouse.x;
-  mouse.py = mouse.y;
-  mouse.x = e.clientX * window.devicePixelRatio;
-  mouse.y = e.clientY * window.devicePixelRatio;
+// Event handlers
+canvas.addEventListener('mousemove', (e) => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+    if (isMouseDown) {
+        mouseInfluence = 1;
+    } else {
+        mouseInfluence = Math.max(mouseInfluence, 0.3);
+    }
 });
 
-canvas.addEventListener('mousedown', () => mouse.down = true);
-canvas.addEventListener('mouseup', () => mouse.down = false);
-canvas.addEventListener('mouseleave', () => mouse.down = false);
-
-canvas.addEventListener('touchmove', e => {
-  e.preventDefault();
-  mouse.px = mouse.x;
-  mouse.py = mouse.y;
-  mouse.x = e.touches[0].clientX * window.devicePixelRatio;
-  mouse.y = e.touches[0].clientY * window.devicePixelRatio;
-}, { passive: false });
-
-canvas.addEventListener('touchstart', e => {
-  mouse.down = true;
-  mouse.x = e.touches[0].clientX * window.devicePixelRatio;
-  mouse.y = e.touches[0].clientY * window.devicePixelRatio;
-  mouse.px = mouse.x;
-  mouse.py = mouse.y;
+canvas.addEventListener('mousedown', () => {
+    isMouseDown = true;
+    mouseInfluence = 1;
+    
+    // Sync all pendulums - reset to same phase
+    pendulums.forEach(p => {
+        p.angle = Math.PI / 6;
+        p.angularVelocity = 0;
+        p.trail = [];
+    });
 });
 
-canvas.addEventListener('touchend', () => mouse.down = false);
+canvas.addEventListener('mouseup', () => {
+    isMouseDown = false;
+});
 
-init();
+canvas.addEventListener('mouseleave', () => {
+    isMouseDown = false;
+});
+
+// Touch support
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    isMouseDown = true;
+    mouseInfluence = 1;
+    mouseX = e.touches[0].clientX;
+    mouseY = e.touches[0].clientY;
+    
+    pendulums.forEach(p => {
+        p.angle = Math.PI / 6;
+        p.angularVelocity = 0;
+        p.trail = [];
+    });
+});
+
+canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    mouseX = e.touches[0].clientX;
+    mouseY = e.touches[0].clientY;
+    mouseInfluence = 1;
+});
+
+canvas.addEventListener('touchend', () => {
+    isMouseDown = false;
+});
+
+window.addEventListener('resize', resize);
+
+resize();
 requestAnimationFrame(animate);
 </script>
 </body>
