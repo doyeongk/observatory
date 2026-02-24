@@ -1,325 +1,403 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>pendulum wave</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            background: #0a0a0f; 
-            overflow: hidden; 
-            cursor: crosshair;
-        }
-        canvas { display: block; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>territorial</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { 
+  background: #0a0a0f; 
+  overflow: hidden; 
+  cursor: crosshair;
+}
+canvas { display: block; }
+</style>
 </head>
 <body>
-<canvas id="c"></canvas>
+<canvas id="canvas"></canvas>
 <script>
-const canvas = document.getElementById('c');
+const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
-let W, H, centerY, anchorY;
-const pendulums = [];
-const NUM_PENDULUMS = 24;
-const TRAIL_LENGTH = 40;
+let width, height;
+let seeds = [];
+let targetSeeds = [];
+let edges = [];
+let time = 0;
 
-// Physics
-const g = 9.81;
-const BASE_LENGTH = 180;
-const LENGTH_INCREMENT = 8;
-
-// Interaction
-let mouseX = 0, mouseY = 0;
-let mouseInfluence = 0;
-let isMouseDown = false;
+const palette = {
+  bg: '#0a0a0f',
+  purple: '#9b4dca',
+  pink: '#ff3d8b',
+  cyan: '#00ffd5',
+  white: '#ffffff'
+};
 
 function resize() {
-    W = canvas.width = window.innerWidth;
-    H = canvas.height = window.innerHeight;
-    centerY = H * 0.15;
-    anchorY = H * 0.08;
-    initPendulums();
+  width = canvas.width = window.innerWidth;
+  height = canvas.height = window.innerHeight;
+  if (seeds.length === 0) initSeeds();
 }
 
-function initPendulums() {
-    pendulums.length = 0;
-    const spacing = W / (NUM_PENDULUMS + 1);
+class Seed {
+  constructor(x, y, age = 0) {
+    this.x = x;
+    this.y = y;
+    this.tx = x;
+    this.ty = y;
+    this.vx = (Math.random() - 0.5) * 0.3;
+    this.vy = (Math.random() - 0.5) * 0.3;
+    this.age = age;
+    this.birthTime = time;
+    this.hue = Math.random();
+    this.pressure = 0;
+  }
+  
+  update() {
+    // Gentle drift
+    this.x += this.vx;
+    this.y += this.vy;
     
-    for (let i = 0; i < NUM_PENDULUMS; i++) {
-        const length = BASE_LENGTH + i * LENGTH_INCREMENT;
-        // Period = 2π√(L/g), we want them to complete different numbers of cycles
-        // in a given time to create the wave effect
-        const period = 2 * Math.PI * Math.sqrt(length / (g * 50));
-        
-        pendulums.push({
-            x: spacing * (i + 1),
-            anchorX: spacing * (i + 1),
-            length: length,
-            angle: Math.PI / 6, // Start angle
-            angularVelocity: 0,
-            period: period,
-            damping: 0.9995,
-            trail: [],
-            hue: 280 + (i / NUM_PENDULUMS) * 100 // Purple to cyan gradient
-        });
-    }
+    // Soft boundary bounce
+    if (this.x < 50 || this.x > width - 50) this.vx *= -0.8;
+    if (this.y < 50 || this.y > height - 50) this.vy *= -0.8;
+    
+    // Clamp
+    this.x = Math.max(20, Math.min(width - 20, this.x));
+    this.y = Math.max(20, Math.min(height - 20, this.y));
+    
+    // Slight random perturbation
+    this.vx += (Math.random() - 0.5) * 0.02;
+    this.vy += (Math.random() - 0.5) * 0.02;
+    
+    // Damping
+    this.vx *= 0.995;
+    this.vy *= 0.995;
+    
+    this.age++;
+  }
 }
 
-function updatePendulum(p, dt) {
-    // Simple harmonic motion with damping
-    const angularAcceleration = -(g / p.length) * Math.sin(p.angle) * 50;
-    
-    // Mouse disturbance
-    if (mouseInfluence > 0) {
-        const bobX = p.anchorX + Math.sin(p.angle) * p.length;
-        const bobY = anchorY + Math.cos(p.angle) * p.length;
-        const dx = mouseX - bobX;
-        const dy = mouseY - bobY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        
-        if (dist < 200) {
-            const force = (1 - dist / 200) * mouseInfluence * 0.02;
-            const pushAngle = Math.atan2(dx, dy);
-            p.angularVelocity += (pushAngle - p.angle) * force;
+function initSeeds() {
+  seeds = [];
+  const count = Math.floor(Math.min(width, height) / 80);
+  for (let i = 0; i < count; i++) {
+    seeds.push(new Seed(
+      100 + Math.random() * (width - 200),
+      100 + Math.random() * (height - 200)
+    ));
+  }
+}
+
+// Voronoi via Fortune's algorithm approximation (brute force for simplicity + real-time)
+function computeVoronoi() {
+  const resolution = 3;
+  const gridW = Math.ceil(width / resolution);
+  const gridH = Math.ceil(height / resolution);
+  const ownership = new Int16Array(gridW * gridH);
+  const distances = new Float32Array(gridW * gridH);
+  
+  // Assign each pixel to nearest seed
+  for (let gy = 0; gy < gridH; gy++) {
+    for (let gx = 0; gx < gridW; gx++) {
+      const px = gx * resolution;
+      const py = gy * resolution;
+      let minDist = Infinity;
+      let owner = 0;
+      
+      for (let i = 0; i < seeds.length; i++) {
+        const dx = px - seeds[i].x;
+        const dy = py - seeds[i].y;
+        const dist = dx * dx + dy * dy;
+        if (dist < minDist) {
+          minDist = dist;
+          owner = i;
         }
+      }
+      
+      const idx = gy * gridW + gx;
+      ownership[idx] = owner;
+      distances[idx] = Math.sqrt(minDist);
     }
-    
-    p.angularVelocity += angularAcceleration * dt;
-    p.angularVelocity *= p.damping;
-    p.angle += p.angularVelocity * dt;
-    
-    // Calculate bob position
-    const bobX = p.anchorX + Math.sin(p.angle) * p.length;
-    const bobY = anchorY + Math.cos(p.angle) * p.length;
-    
-    // Update trail
-    p.trail.unshift({ x: bobX, y: bobY, vx: p.angularVelocity });
-    if (p.trail.length > TRAIL_LENGTH) p.trail.pop();
-    
-    return { x: bobX, y: bobY };
+  }
+  
+  return { ownership, distances, gridW, gridH, resolution };
 }
 
-function drawPendulum(p, bob) {
-    // Draw rod
-    ctx.strokeStyle = `hsla(${p.hue}, 60%, 40%, 0.4)`;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(p.anchorX, anchorY);
-    ctx.lineTo(bob.x, bob.y);
-    ctx.stroke();
-    
-    // Draw trail
-    if (p.trail.length > 1) {
-        ctx.beginPath();
-        ctx.moveTo(p.trail[0].x, p.trail[0].y);
-        
-        for (let i = 1; i < p.trail.length; i++) {
-            const t = p.trail[i];
-            ctx.lineTo(t.x, t.y);
+function getColor(seed, pressure, alpha = 1) {
+  const age = Math.min(seed.age / 300, 1);
+  const h = seed.hue;
+  
+  // Interpolate through palette based on hue and pressure
+  let r, g, b;
+  
+  if (h < 0.33) {
+    // Purple to pink
+    const t = h / 0.33;
+    r = Math.floor(155 + t * 100);
+    g = Math.floor(77 - t * 16);
+    b = Math.floor(202 - t * 63);
+  } else if (h < 0.66) {
+    // Pink to cyan
+    const t = (h - 0.33) / 0.33;
+    r = Math.floor(255 - t * 255);
+    g = Math.floor(61 + t * 194);
+    b = Math.floor(139 + t * 74);
+  } else {
+    // Cyan to purple
+    const t = (h - 0.66) / 0.34;
+    r = Math.floor(0 + t * 155);
+    g = Math.floor(255 - t * 178);
+    b = Math.floor(213 - t * 11);
+  }
+  
+  // Pressure adds brightness
+  const pressureBrightness = 1 + pressure * 0.5;
+  r = Math.min(255, Math.floor(r * pressureBrightness));
+  g = Math.min(255, Math.floor(g * pressureBrightness));
+  b = Math.min(255, Math.floor(b * pressureBrightness));
+  
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function drawVoronoi(voronoi) {
+  const { ownership, distances, gridW, gridH, resolution } = voronoi;
+  const imageData = ctx.createImageData(width, height);
+  const data = imageData.data;
+  
+  // Reset pressure
+  seeds.forEach(s => s.pressure = 0);
+  
+  // Count cells and find edges
+  const cellSizes = new Float32Array(seeds.length);
+  
+  for (let gy = 0; gy < gridH; gy++) {
+    for (let gx = 0; gx < gridW; gx++) {
+      const idx = gy * gridW + gx;
+      const owner = ownership[idx];
+      const dist = distances[idx];
+      
+      cellSizes[owner]++;
+      
+      // Check if edge (neighbor has different owner)
+      let isEdge = false;
+      let edgeIntensity = 0;
+      
+      if (gx > 0 && ownership[idx - 1] !== owner) { isEdge = true; edgeIntensity++; }
+      if (gx < gridW - 1 && ownership[idx + 1] !== owner) { isEdge = true; edgeIntensity++; }
+      if (gy > 0 && ownership[idx - gridW] !== owner) { isEdge = true; edgeIntensity++; }
+      if (gy < gridH - 1 && ownership[idx + gridW] !== owner) { isEdge = true; edgeIntensity++; }
+      
+      const seed = seeds[owner];
+      const px = gx * resolution;
+      const py = gy * resolution;
+      
+      // Fill pixels
+      for (let dy = 0; dy < resolution && py + dy < height; dy++) {
+        for (let dx = 0; dx < resolution && px + dx < width; dx++) {
+          const pixelIdx = ((py + dy) * width + (px + dx)) * 4;
+          
+          if (isEdge) {
+            // Edge glow - cyan/pink based on tension
+            const tension = edgeIntensity / 4;
+            const pulse = Math.sin(time * 0.02 + seed.hue * Math.PI * 2) * 0.3 + 0.7;
+            
+            if (seed.hue < 0.5) {
+              data[pixelIdx] = Math.floor(0 + tension * 100);
+              data[pixelIdx + 1] = Math.floor(255 * pulse);
+              data[pixelIdx + 2] = Math.floor(213 * pulse);
+            } else {
+              data[pixelIdx] = Math.floor(255 * pulse * tension);
+              data[pixelIdx + 1] = Math.floor(61);
+              data[pixelIdx + 2] = Math.floor(139 + tension * 50);
+            }
+            data[pixelIdx + 3] = Math.floor(200 + tension * 55);
+            
+            seeds[owner].pressure += 0.001;
+          } else {
+            // Interior gradient - darker toward edges, brighter at center
+            const maxDist = Math.sqrt(width * width + height * height) / seeds.length;
+            const normalizedDist = Math.min(dist / maxDist, 1);
+            const brightness = Math.pow(1 - normalizedDist * 0.7, 1.5);
+            
+            const age = Math.min(seed.age / 500, 1);
+            const h = seed.hue;
+            
+            let r, g, b;
+            if (h < 0.33) {
+              r = 155; g = 77; b = 202;
+            } else if (h < 0.66) {
+              r = 255; g = 61; b = 139;
+            } else {
+              r = 0; g = 200; b = 180;
+            }
+            
+            const alpha = 0.15 + brightness * 0.25;
+            data[pixelIdx] = Math.floor(r * brightness * 0.4);
+            data[pixelIdx + 1] = Math.floor(g * brightness * 0.4);
+            data[pixelIdx + 2] = Math.floor(b * brightness * 0.4);
+            data[pixelIdx + 3] = Math.floor(alpha * 255);
+          }
         }
-        
-        const gradient = ctx.createLinearGradient(
-            p.trail[0].x, p.trail[0].y,
-            p.trail[p.trail.length - 1].x, p.trail[p.trail.length - 1].y
-        );
-        gradient.addColorStop(0, `hsla(${p.hue}, 100%, 60%, 0.8)`);
-        gradient.addColorStop(1, `hsla(${p.hue}, 100%, 60%, 0)`);
-        
-        ctx.strokeStyle = gradient;
-        ctx.lineWidth = 3;
-        ctx.stroke();
+      }
     }
-    
-    // Draw bob with glow
-    const velocity = Math.abs(p.angularVelocity);
-    const glowIntensity = Math.min(velocity * 20, 1);
-    const bobRadius = 8 + velocity * 15;
+  }
+  
+  ctx.putImageData(imageData, 0, 0);
+  
+  // Calculate pressure from cell size variance
+  const avgSize = cellSizes.reduce((a, b) => a + b, 0) / seeds.length;
+  seeds.forEach((s, i) => {
+    s.pressure += Math.abs(cellSizes[i] - avgSize) / avgSize * 0.5;
+  });
+}
+
+function drawSeeds() {
+  seeds.forEach((seed, i) => {
+    const pulse = Math.sin(time * 0.03 + seed.hue * Math.PI * 4) * 0.3 + 0.7;
+    const size = 3 + seed.pressure * 2 + pulse * 2;
     
     // Outer glow
-    const glow = ctx.createRadialGradient(bob.x, bob.y, 0, bob.x, bob.y, bobRadius * 3);
-    glow.addColorStop(0, `hsla(${p.hue}, 100%, 70%, ${0.5 * glowIntensity})`);
-    glow.addColorStop(0.5, `hsla(${p.hue}, 100%, 50%, ${0.2 * glowIntensity})`);
-    glow.addColorStop(1, 'transparent');
+    const gradient = ctx.createRadialGradient(seed.x, seed.y, 0, seed.x, seed.y, size * 4);
+    gradient.addColorStop(0, getColor(seed, seed.pressure, 0.8));
+    gradient.addColorStop(0.5, getColor(seed, seed.pressure, 0.2));
+    gradient.addColorStop(1, 'transparent');
     
-    ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(bob.x, bob.y, bobRadius * 3, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Inner bob
-    ctx.fillStyle = `hsl(${p.hue}, 100%, 70%)`;
-    ctx.beginPath();
-    ctx.arc(bob.x, bob.y, bobRadius, 0, Math.PI * 2);
+    ctx.arc(seed.x, seed.y, size * 4, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
     ctx.fill();
     
     // Core
-    ctx.fillStyle = '#fff';
     ctx.beginPath();
-    ctx.arc(bob.x, bob.y, bobRadius * 0.4, 0, Math.PI * 2);
+    ctx.arc(seed.x, seed.y, size, 0, Math.PI * 2);
+    ctx.fillStyle = getColor(seed, seed.pressure + 0.3, 1);
     ctx.fill();
+  });
 }
 
-function drawAnchorBar() {
-    // Draw the bar all pendulums hang from
-    const gradient = ctx.createLinearGradient(0, anchorY - 5, 0, anchorY + 5);
-    gradient.addColorStop(0, '#2a1a3a');
-    gradient.addColorStop(0.5, '#4a2a5a');
-    gradient.addColorStop(1, '#2a1a3a');
-    
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, anchorY - 4, W, 8);
-    
-    // Anchor points
-    pendulums.forEach(p => {
-        ctx.fillStyle = '#6a3a7a';
+function drawConnections() {
+  // Draw faint lines between close seeds
+  ctx.lineWidth = 0.5;
+  
+  for (let i = 0; i < seeds.length; i++) {
+    for (let j = i + 1; j < seeds.length; j++) {
+      const dx = seeds[j].x - seeds[i].x;
+      const dy = seeds[j].y - seeds[i].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const maxDist = 200;
+      
+      if (dist < maxDist) {
+        const alpha = (1 - dist / maxDist) * 0.15;
+        const midHue = (seeds[i].hue + seeds[j].hue) / 2;
+        
         ctx.beginPath();
-        ctx.arc(p.anchorX, anchorY, 5, 0, Math.PI * 2);
-        ctx.fill();
-    });
+        ctx.moveTo(seeds[i].x, seeds[i].y);
+        ctx.lineTo(seeds[j].x, seeds[j].y);
+        ctx.strokeStyle = `rgba(150, 100, 200, ${alpha})`;
+        ctx.stroke();
+      }
+    }
+  }
 }
 
-function drawWaveConnector() {
-    // Draw a line connecting all the bobs to visualize the wave pattern
-    if (pendulums.length < 2) return;
-    
-    ctx.beginPath();
-    const bobs = pendulums.map(p => ({
-        x: p.anchorX + Math.sin(p.angle) * p.length,
-        y: anchorY + Math.cos(p.angle) * p.length
-    }));
-    
-    ctx.moveTo(bobs[0].x, bobs[0].y);
-    
-    // Smooth curve through all points
-    for (let i = 1; i < bobs.length - 1; i++) {
-        const xc = (bobs[i].x + bobs[i + 1].x) / 2;
-        const yc = (bobs[i].y + bobs[i + 1].y) / 2;
-        ctx.quadraticCurveTo(bobs[i].x, bobs[i].y, xc, yc);
-    }
-    ctx.quadraticCurveTo(
-        bobs[bobs.length - 1].x, 
-        bobs[bobs.length - 1].y,
-        bobs[bobs.length - 1].x, 
-        bobs[bobs.length - 1].y
-    );
-    
-    const waveGradient = ctx.createLinearGradient(0, 0, W, 0);
-    waveGradient.addColorStop(0, 'rgba(200, 100, 255, 0.3)');
-    waveGradient.addColorStop(0.5, 'rgba(100, 200, 255, 0.3)');
-    waveGradient.addColorStop(1, 'rgba(200, 100, 255, 0.3)');
-    
-    ctx.strokeStyle = waveGradient;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-}
+let mouseX = width / 2;
+let mouseY = height / 2;
+let mouseInfluence = 0;
 
-let lastTime = 0;
-function animate(timestamp) {
-    const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
-    lastTime = timestamp;
-    
-    // Fade effect
-    ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
-    ctx.fillRect(0, 0, W, H);
-    
-    // Update mouse influence decay
-    if (!isMouseDown) {
-        mouseInfluence *= 0.95;
-    }
-    
-    // Draw wave connector first (behind everything)
-    drawWaveConnector();
-    
-    // Update and draw all pendulums
-    const bobs = [];
-    pendulums.forEach(p => {
-        const bob = updatePendulum(p, dt);
-        bobs.push(bob);
-    });
-    
-    // Draw pendulums
-    pendulums.forEach((p, i) => {
-        drawPendulum(p, bobs[i]);
-    });
-    
-    // Draw anchor bar on top
-    drawAnchorBar();
-    
-    // Instructions hint (fades out)
-    if (timestamp < 5000) {
-        const alpha = Math.max(0, 1 - timestamp / 5000);
-        ctx.fillStyle = `rgba(150, 100, 200, ${alpha * 0.5})`;
-        ctx.font = '14px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('move mouse to disturb · click to sync', W / 2, H - 30);
-    }
-    
-    requestAnimationFrame(animate);
-}
-
-// Event handlers
 canvas.addEventListener('mousemove', (e) => {
-    mouseX = e.clientX;
-    mouseY = e.clientY;
-    if (isMouseDown) {
-        mouseInfluence = 1;
-    } else {
-        mouseInfluence = Math.max(mouseInfluence, 0.3);
-    }
-});
-
-canvas.addEventListener('mousedown', () => {
-    isMouseDown = true;
-    mouseInfluence = 1;
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+  mouseInfluence = 1;
+  
+  // Push nearby seeds away gently
+  seeds.forEach(seed => {
+    const dx = seed.x - mouseX;
+    const dy = seed.y - mouseY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
     
-    // Sync all pendulums - reset to same phase
-    pendulums.forEach(p => {
-        p.angle = Math.PI / 6;
-        p.angularVelocity = 0;
-        p.trail = [];
+    if (dist < 150 && dist > 0) {
+      const force = (150 - dist) / 150 * 0.5;
+      seed.vx += (dx / dist) * force;
+      seed.vy += (dy / dist) * force;
+    }
+  });
+});
+
+canvas.addEventListener('click', (e) => {
+  // Add new seed at click position
+  if (seeds.length < 30) {
+    const newSeed = new Seed(e.clientX, e.clientY);
+    newSeed.hue = Math.random();
+    seeds.push(newSeed);
+  } else {
+    // Replace oldest seed
+    let oldest = 0;
+    let maxAge = 0;
+    seeds.forEach((s, i) => {
+      if (s.age > maxAge) {
+        maxAge = s.age;
+        oldest = i;
+      }
     });
-});
-
-canvas.addEventListener('mouseup', () => {
-    isMouseDown = false;
-});
-
-canvas.addEventListener('mouseleave', () => {
-    isMouseDown = false;
+    seeds[oldest] = new Seed(e.clientX, e.clientY);
+  }
 });
 
 // Touch support
 canvas.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    isMouseDown = true;
-    mouseInfluence = 1;
-    mouseX = e.touches[0].clientX;
-    mouseY = e.touches[0].clientY;
-    
-    pendulums.forEach(p => {
-        p.angle = Math.PI / 6;
-        p.angularVelocity = 0;
-        p.trail = [];
-    });
+  e.preventDefault();
+  const touch = e.touches[0];
+  if (seeds.length < 30) {
+    seeds.push(new Seed(touch.clientX, touch.clientY));
+  }
 });
 
 canvas.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    mouseX = e.touches[0].clientX;
-    mouseY = e.touches[0].clientY;
-    mouseInfluence = 1;
+  e.preventDefault();
+  const touch = e.touches[0];
+  mouseX = touch.clientX;
+  mouseY = touch.clientY;
+  
+  seeds.forEach(seed => {
+    const dx = seed.x - mouseX;
+    const dy = seed.y - mouseY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    
+    if (dist < 150 && dist > 0) {
+      const force = (150 - dist) / 150 * 0.3;
+      seed.vx += (dx / dist) * force;
+      seed.vy += (dy / dist) * force;
+    }
+  });
 });
 
-canvas.addEventListener('touchend', () => {
-    isMouseDown = false;
-});
+function animate() {
+  time++;
+  
+  // Fade background
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.3)';
+  ctx.fillRect(0, 0, width, height);
+  
+  // Update seeds
+  seeds.forEach(seed => seed.update());
+  
+  // Compute and draw Voronoi
+  const voronoi = computeVoronoi();
+  drawVoronoi(voronoi);
+  drawConnections();
+  drawSeeds();
+  
+  // Mouse influence decay
+  mouseInfluence *= 0.95;
+  
+  requestAnimationFrame(animate);
+}
 
 window.addEventListener('resize', resize);
-
 resize();
-requestAnimationFrame(animate);
+animate();
 </script>
 </body>
 </html>
