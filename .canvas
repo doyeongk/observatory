@@ -1,296 +1,298 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>fracture</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-      background: #0a0a0f; 
-      overflow: hidden; 
-      cursor: crosshair;
-    }
-    canvas { display: block; }
-    #hint {
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      color: rgba(255, 0, 127, 0.4);
-      font-family: 'Courier New', monospace;
-      font-size: 12px;
-      letter-spacing: 2px;
-      pointer-events: none;
-      transition: opacity 2s;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>event horizon</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { 
+  background: #000; 
+  overflow: hidden; 
+  cursor: none;
+}
+canvas { display: block; }
+</style>
 </head>
 <body>
-  <canvas id="canvas"></canvas>
-  <div id="hint">click to fracture</div>
-  <script>
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const hint = document.getElementById('hint');
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let W, H, cx, cy;
+let mouseX, mouseY;
+let blackHoleX, blackHoleY;
+let blackHoleMass = 150;
+let time = 0;
+
+const stars = [];
+const accretionParticles = [];
+const STAR_COUNT = 800;
+const ACCRETION_COUNT = 400;
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  cx = W / 2;
+  cy = H / 2;
+  blackHoleX = cx;
+  blackHoleY = cy;
+  mouseX = cx;
+  mouseY = cy;
+}
+
+function initStars() {
+  stars.length = 0;
+  for (let i = 0; i < STAR_COUNT; i++) {
+    stars.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      baseX: Math.random() * W,
+      baseY: Math.random() * H,
+      size: Math.random() * 2 + 0.5,
+      brightness: Math.random() * 0.7 + 0.3,
+      twinkleSpeed: Math.random() * 0.02 + 0.01,
+      twinkleOffset: Math.random() * Math.PI * 2
+    });
+  }
+}
+
+function initAccretion() {
+  accretionParticles.length = 0;
+  for (let i = 0; i < ACCRETION_COUNT; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 80 + Math.random() * 120;
+    accretionParticles.push({
+      angle: angle,
+      dist: dist,
+      baseDist: dist,
+      speed: 0.02 + Math.random() * 0.03,
+      size: Math.random() * 3 + 1,
+      hue: Math.random() < 0.5 ? 300 + Math.random() * 30 : 180 + Math.random() * 20,
+      brightness: Math.random() * 0.5 + 0.5,
+      z: (Math.random() - 0.5) * 0.3 // vertical offset for 3D effect
+    });
+  }
+}
+
+// Gravitational lensing - bend light around the black hole
+function lensPosition(x, y, bhX, bhY, mass) {
+  const dx = x - bhX;
+  const dy = y - bhY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  
+  if (dist < 20) return null; // inside event horizon
+  
+  const schwarzschild = mass * 0.5;
+  const bendStrength = schwarzschild / (dist * dist) * 200;
+  
+  // Einstein ring deflection
+  const deflection = Math.min(bendStrength, 0.8);
+  const perpX = -dy / dist;
+  const perpY = dx / dist;
+  
+  // Bend towards the black hole then curve around
+  const bentX = x + perpX * deflection * dist * 0.5 - dx * deflection * 0.3;
+  const bentY = y + perpY * deflection * dist * 0.5 - dy * deflection * 0.3;
+  
+  return { x: bentX, y: bentY, distortion: bendStrength };
+}
+
+function drawBlackHole() {
+  // Smooth follow mouse
+  blackHoleX += (mouseX - blackHoleX) * 0.03;
+  blackHoleY += (mouseY - blackHoleY) * 0.03;
+  
+  // Event horizon - pure black
+  const gradient = ctx.createRadialGradient(blackHoleX, blackHoleY, 0, blackHoleX, blackHoleY, 60);
+  gradient.addColorStop(0, 'rgba(0,0,0,1)');
+  gradient.addColorStop(0.7, 'rgba(0,0,0,1)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+  
+  ctx.beginPath();
+  ctx.arc(blackHoleX, blackHoleY, 60, 0, Math.PI * 2);
+  ctx.fillStyle = gradient;
+  ctx.fill();
+  
+  // Photon sphere glow
+  ctx.beginPath();
+  ctx.arc(blackHoleX, blackHoleY, 45, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(180, 100, 255, 0.1)';
+  ctx.lineWidth = 8;
+  ctx.stroke();
+  
+  ctx.beginPath();
+  ctx.arc(blackHoleX, blackHoleY, 42, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(0, 255, 255, 0.05)';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+}
+
+function drawAccretionDisk() {
+  // Sort by z for pseudo-3D
+  accretionParticles.sort((a, b) => a.z - b.z);
+  
+  for (const p of accretionParticles) {
+    p.angle += p.speed * (100 / p.dist); // inner particles orbit faster
     
-    let W, H;
-    const cracks = [];
-    const maxDepth = 7;
-    let clickCount = 0;
+    // Elliptical orbit for disk perspective
+    const tilt = 0.3;
+    const wobble = Math.sin(time * 0.5) * 0.1;
+    const x = blackHoleX + Math.cos(p.angle) * p.dist;
+    const y = blackHoleY + Math.sin(p.angle) * p.dist * tilt + Math.sin(p.angle + wobble) * p.z * p.dist;
     
-    // Colors from palette
-    const colors = {
-      cyan: '#00ffff',
-      pink: '#ff0080',
-      purple: '#8b00ff',
-      white: '#ffffff'
-    };
+    // Check if behind black hole
+    const dx = x - blackHoleX;
+    const dy = y - blackHoleY;
+    const distFromCenter = Math.sqrt(dx * dx + dy * dy);
     
-    function resize() {
-      W = canvas.width = window.innerWidth;
-      H = canvas.height = window.innerHeight;
-      redraw();
-    }
+    if (distFromCenter < 35) continue;
     
-    class Crack {
-      constructor(x, y, angle, depth, parent) {
-        this.x = x;
-        this.y = y;
-        this.angle = angle;
-        this.depth = depth;
-        this.parent = parent;
-        this.length = 0;
-        this.maxLength = (80 + Math.random() * 120) * Math.pow(0.7, depth);
-        this.speed = (3 + Math.random() * 4) * Math.pow(0.85, depth);
-        this.branched = false;
-        this.done = false;
-        this.segments = [{x, y}];
-        this.branchChance = 0.02 + depth * 0.005;
-        this.wobble = (Math.random() - 0.5) * 0.3;
-        
-        // Color based on depth
-        const t = depth / maxDepth;
-        if (t < 0.3) {
-          this.color = colors.cyan;
-          this.glow = colors.cyan;
-        } else if (t < 0.6) {
-          this.color = colors.pink;
-          this.glow = colors.pink;
-        } else {
-          this.color = colors.purple;
-          this.glow = colors.purple;
-        }
-        this.alpha = 1 - (depth * 0.1);
-      }
-      
-      update() {
-        if (this.done) return;
-        
-        // Grow
-        const prevX = this.segments[this.segments.length - 1].x;
-        const prevY = this.segments[this.segments.length - 1].y;
-        
-        // Slight angle wobble
-        this.angle += (Math.random() - 0.5) * 0.15 + this.wobble * 0.02;
-        
-        const newX = prevX + Math.cos(this.angle) * this.speed;
-        const newY = prevY + Math.sin(this.angle) * this.speed;
-        
-        this.segments.push({x: newX, y: newY});
-        this.length += this.speed;
-        
-        // Branch chance increases as we grow
-        if (!this.branched && this.depth < maxDepth && this.length > 20) {
-          if (Math.random() < this.branchChance) {
-            this.branch();
-          }
-        }
-        
-        // Done conditions
-        if (this.length >= this.maxLength || 
-            newX < -50 || newX > W + 50 || 
-            newY < -50 || newY > H + 50) {
-          this.done = true;
-        }
-      }
-      
-      branch() {
-        this.branched = true;
-        const lastSeg = this.segments[this.segments.length - 1];
-        
-        // Create 1-2 branches
-        const numBranches = Math.random() < 0.4 ? 2 : 1;
-        
-        for (let i = 0; i < numBranches; i++) {
-          const branchAngle = this.angle + (Math.random() - 0.5) * Math.PI * 0.8;
-          cracks.push(new Crack(
-            lastSeg.x, 
-            lastSeg.y, 
-            branchAngle, 
-            this.depth + 1,
-            this
-          ));
-        }
-        
-        // Maybe branch again later
-        if (Math.random() < 0.3) {
-          this.branched = false;
-        }
-      }
-      
-      draw() {
-        if (this.segments.length < 2) return;
-        
-        const lineWidth = Math.max(0.5, 3 - this.depth * 0.4);
-        
-        // Glow layer
-        ctx.save();
-        ctx.strokeStyle = this.glow;
-        ctx.lineWidth = lineWidth + 4;
-        ctx.globalAlpha = this.alpha * 0.15;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.shadowColor = this.glow;
-        ctx.shadowBlur = 15;
-        
-        ctx.beginPath();
-        ctx.moveTo(this.segments[0].x, this.segments[0].y);
-        for (let i = 1; i < this.segments.length; i++) {
-          ctx.lineTo(this.segments[i].x, this.segments[i].y);
-        }
-        ctx.stroke();
-        ctx.restore();
-        
-        // Main line
-        ctx.save();
-        ctx.strokeStyle = this.color;
-        ctx.lineWidth = lineWidth;
-        ctx.globalAlpha = this.alpha * 0.9;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        
-        ctx.beginPath();
-        ctx.moveTo(this.segments[0].x, this.segments[0].y);
-        for (let i = 1; i < this.segments.length; i++) {
-          ctx.lineTo(this.segments[i].x, this.segments[i].y);
-        }
-        ctx.stroke();
-        ctx.restore();
-        
-        // Bright core for fresh segments
-        if (!this.done && this.segments.length > 1) {
-          const tip = this.segments[this.segments.length - 1];
-          ctx.save();
-          ctx.fillStyle = '#ffffff';
-          ctx.globalAlpha = 0.8;
-          ctx.shadowColor = this.color;
-          ctx.shadowBlur = 10;
-          ctx.beginPath();
-          ctx.arc(tip.x, tip.y, lineWidth * 0.8, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-        }
-      }
-    }
+    // Doppler shift - approaching side brighter
+    const dopplerFactor = 1 + Math.cos(p.angle) * 0.5;
     
-    function spawnFracture(x, y) {
-      // Spawn 3-5 initial cracks from impact point
-      const numCracks = 3 + Math.floor(Math.random() * 3);
-      const baseAngle = Math.random() * Math.PI * 2;
-      
-      for (let i = 0; i < numCracks; i++) {
-        const angle = baseAngle + (i / numCracks) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
-        cracks.push(new Crack(x, y, angle, 0, null));
-      }
-      
-      // Impact flash
-      ctx.save();
-      ctx.fillStyle = colors.cyan;
-      ctx.globalAlpha = 0.6;
-      ctx.shadowColor = colors.cyan;
-      ctx.shadowBlur = 30;
+    const alpha = p.brightness * dopplerFactor * (p.z > 0 ? 0.8 : 0.4);
+    const sat = 80 + dopplerFactor * 20;
+    const light = 50 + dopplerFactor * 30;
+    
+    ctx.beginPath();
+    ctx.arc(x, y, p.size * dopplerFactor, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${p.hue}, ${sat}%, ${light}%, ${alpha})`;
+    ctx.fill();
+    
+    // Glow for brighter particles
+    if (dopplerFactor > 1.2 && p.z > 0) {
       ctx.beginPath();
-      ctx.arc(x, y, 8, 0, Math.PI * 2);
+      ctx.arc(x, y, p.size * 3, 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(${p.hue}, 100%, 70%, ${alpha * 0.2})`;
       ctx.fill();
-      ctx.restore();
-      
-      clickCount++;
-      if (clickCount === 1) {
-        hint.style.opacity = '0';
-      }
     }
+  }
+}
+
+function drawStars() {
+  for (const star of stars) {
+    const lensed = lensPosition(star.baseX, star.baseY, blackHoleX, blackHoleY, blackHoleMass);
     
-    function redraw() {
-      // Clear with slight trail
-      ctx.fillStyle = 'rgba(10, 10, 15, 1)';
-      ctx.fillRect(0, 0, W, H);
-      
-      // Draw all cracks
-      for (const crack of cracks) {
-        crack.draw();
-      }
+    if (!lensed) continue; // consumed by the void
+    
+    star.x = lensed.x;
+    star.y = lensed.y;
+    
+    // Twinkle
+    const twinkle = Math.sin(time * star.twinkleSpeed + star.twinkleOffset) * 0.3 + 0.7;
+    
+    // Brighten near the edge (lensing amplification)
+    const amplification = 1 + lensed.distortion * 2;
+    const brightness = Math.min(star.brightness * twinkle * amplification, 1);
+    
+    // Color shift from lensing (gravitational redshift on one side, blueshift on other)
+    const dx = star.x - blackHoleX;
+    const shift = dx / W;
+    const r = Math.floor(200 + shift * 55);
+    const g = Math.floor(180 + Math.abs(shift) * 40);
+    const b = Math.floor(220 - shift * 35);
+    
+    ctx.beginPath();
+    ctx.arc(star.x, star.y, star.size * amplification, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${r},${g},${b},${brightness})`;
+    ctx.fill();
+    
+    // Streak effect for highly lensed stars
+    if (lensed.distortion > 0.3) {
+      const streakAngle = Math.atan2(star.y - blackHoleY, star.x - blackHoleX);
+      const streakLen = lensed.distortion * 20;
+      ctx.beginPath();
+      ctx.moveTo(star.x - Math.cos(streakAngle + Math.PI/2) * streakLen, 
+                 star.y - Math.sin(streakAngle + Math.PI/2) * streakLen);
+      ctx.lineTo(star.x + Math.cos(streakAngle + Math.PI/2) * streakLen,
+                 star.y + Math.sin(streakAngle + Math.PI/2) * streakLen);
+      ctx.strokeStyle = `rgba(${r},${g},${b},${brightness * 0.5})`;
+      ctx.lineWidth = star.size * 0.5;
+      ctx.stroke();
     }
+  }
+}
+
+function drawEinsteinRing() {
+  // Faint Einstein ring at critical radius
+  const ringRadius = 90;
+  const gradient = ctx.createRadialGradient(
+    blackHoleX, blackHoleY, ringRadius - 10,
+    blackHoleX, blackHoleY, ringRadius + 10
+  );
+  gradient.addColorStop(0, 'rgba(180, 100, 255, 0)');
+  gradient.addColorStop(0.5, 'rgba(0, 255, 255, 0.08)');
+  gradient.addColorStop(1, 'rgba(180, 100, 255, 0)');
+  
+  ctx.beginPath();
+  ctx.arc(blackHoleX, blackHoleY, ringRadius, 0, Math.PI * 2);
+  ctx.strokeStyle = gradient;
+  ctx.lineWidth = 20;
+  ctx.stroke();
+}
+
+function drawHawkingRadiation() {
+  // Occasional quantum fluctuation at the event horizon
+  if (Math.random() < 0.02) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 38 + Math.random() * 5;
+    const x = blackHoleX + Math.cos(angle) * radius;
+    const y = blackHoleY + Math.sin(angle) * radius;
     
-    function animate() {
-      // Very subtle fade for the growing tips
-      ctx.fillStyle = 'rgba(10, 10, 15, 0.03)';
-      ctx.fillRect(0, 0, W, H);
-      
-      // Redraw all (cracks are permanent)
-      for (const crack of cracks) {
-        crack.draw();
-      }
-      
-      // Update growing cracks
-      let anyActive = false;
-      for (const crack of cracks) {
-        if (!crack.done) {
-          crack.update();
-          anyActive = true;
-        }
-      }
-      
-      requestAnimationFrame(animate);
-    }
-    
-    // Auto-spawn initial fractures for visual interest
-    function autoSpawn() {
-      if (cracks.length === 0) {
-        // First auto-spawn after 3 seconds if no clicks
-        setTimeout(() => {
-          if (clickCount === 0) {
-            spawnFracture(W * 0.3 + Math.random() * W * 0.4, H * 0.3 + Math.random() * H * 0.4);
-          }
-        }, 3000);
-      }
-    }
-    
-    // Events
-    window.addEventListener('resize', resize);
-    
-    canvas.addEventListener('click', (e) => {
-      spawnFracture(e.clientX, e.clientY);
-    });
-    
-    canvas.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      const touch = e.touches[0];
-      spawnFracture(touch.clientX, touch.clientY);
-    }, { passive: false });
-    
-    // Keyboard: spacebar to clear and restart
-    window.addEventListener('keydown', (e) => {
-      if (e.code === 'Space') {
-        cracks.length = 0;
-        redraw();
-      }
-    });
-    
-    // Init
-    resize();
-    autoSpawn();
-    animate();
-  </script>
+    ctx.beginPath();
+    ctx.arc(x, y, 1 + Math.random() * 2, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255, 200, 255, ${0.3 + Math.random() * 0.4})`;
+    ctx.fill();
+  }
+}
+
+function draw() {
+  // Fade trail effect
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+  ctx.fillRect(0, 0, W, H);
+  
+  time += 0.016;
+  
+  drawStars();
+  drawEinsteinRing();
+  drawAccretionDisk();
+  drawBlackHole();
+  drawHawkingRadiation();
+  
+  requestAnimationFrame(draw);
+}
+
+window.addEventListener('resize', () => {
+  resize();
+  initStars();
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+});
+
+canvas.addEventListener('click', () => {
+  // Pulse the mass briefly
+  const originalMass = blackHoleMass;
+  blackHoleMass = 250;
+  setTimeout(() => {
+    blackHoleMass = originalMass;
+  }, 500);
+});
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  mouseX = e.touches[0].clientX;
+  mouseY = e.touches[0].clientY;
+});
+
+resize();
+initStars();
+initAccretion();
+draw();
+</script>
 </body>
 </html>
