@@ -3,296 +3,332 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>event horizon</title>
+<title>pulse</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { 
-  background: #000; 
+  background: #0a0a0a; 
   overflow: hidden; 
-  cursor: none;
+  cursor: crosshair;
 }
 canvas { display: block; }
+#start-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(10, 10, 10, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  cursor: pointer;
+}
+#start-overlay span {
+  color: #ff66b2;
+  font-family: monospace;
+  font-size: 14px;
+  letter-spacing: 2px;
+  opacity: 0.7;
+  animation: pulse-text 2s ease-in-out infinite;
+}
+@keyframes pulse-text {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.9; }
+}
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
+<div id="start-overlay"><span>click to feel the pulse</span></div>
+<canvas id="canvas"></canvas>
 <script>
-const canvas = document.getElementById('c');
+const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('start-overlay');
 
-let W, H, cx, cy;
-let mouseX, mouseY;
-let blackHoleX, blackHoleY;
-let blackHoleMass = 150;
-let time = 0;
+let width, height, centerX, centerY;
+let audioCtx, gainNode;
+let heartRate = 72; // BPM
+let lastBeat = 0;
+let beatPhase = 0;
+let mouseX = 0, mouseY = 0;
+let audioStarted = false;
 
-const stars = [];
-const accretionParticles = [];
-const STAR_COUNT = 800;
-const ACCRETION_COUNT = 400;
+// Arterial network
+let arteries = [];
+let pulseWaves = [];
 
 function resize() {
-  W = canvas.width = window.innerWidth;
-  H = canvas.height = window.innerHeight;
-  cx = W / 2;
-  cy = H / 2;
-  blackHoleX = cx;
-  blackHoleY = cy;
-  mouseX = cx;
-  mouseY = cy;
+  width = canvas.width = window.innerWidth;
+  height = canvas.height = window.innerHeight;
+  centerX = width / 2;
+  centerY = height / 2;
+  generateArteries();
 }
 
-function initStars() {
-  stars.length = 0;
-  for (let i = 0; i < STAR_COUNT; i++) {
-    stars.push({
-      x: Math.random() * W,
-      y: Math.random() * H,
-      baseX: Math.random() * W,
-      baseY: Math.random() * H,
-      size: Math.random() * 2 + 0.5,
-      brightness: Math.random() * 0.7 + 0.3,
-      twinkleSpeed: Math.random() * 0.02 + 0.01,
-      twinkleOffset: Math.random() * Math.PI * 2
-    });
+// Generate branching arterial tree
+function generateArteries() {
+  arteries = [];
+  const numBranches = 6;
+  
+  for (let i = 0; i < numBranches; i++) {
+    const angle = (i / numBranches) * Math.PI * 2 + Math.random() * 0.3;
+    generateBranch(centerX, centerY, angle, 180, 8, 0);
   }
 }
 
-function initAccretion() {
-  accretionParticles.length = 0;
-  for (let i = 0; i < ACCRETION_COUNT; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const dist = 80 + Math.random() * 120;
-    accretionParticles.push({
-      angle: angle,
-      dist: dist,
-      baseDist: dist,
-      speed: 0.02 + Math.random() * 0.03,
-      size: Math.random() * 3 + 1,
-      hue: Math.random() < 0.5 ? 300 + Math.random() * 30 : 180 + Math.random() * 20,
-      brightness: Math.random() * 0.5 + 0.5,
-      z: (Math.random() - 0.5) * 0.3 // vertical offset for 3D effect
-    });
+function generateBranch(x, y, angle, length, thickness, depth) {
+  if (depth > 6 || length < 15) return;
+  
+  const segments = [];
+  let cx = x, cy = y;
+  const segmentLength = length / 8;
+  
+  for (let i = 0; i < 8; i++) {
+    const wobble = (Math.random() - 0.5) * 0.15;
+    cx += Math.cos(angle + wobble) * segmentLength;
+    cy += Math.sin(angle + wobble) * segmentLength;
+    segments.push({ x: cx, y: cy });
+  }
+  
+  arteries.push({
+    startX: x,
+    startY: y,
+    segments,
+    thickness,
+    depth,
+    pulseOffset: Math.random() * Math.PI * 2,
+    hue: depth < 2 ? 330 : (depth < 4 ? 280 : 190) // pink -> purple -> cyan
+  });
+  
+  // Branch
+  const endX = segments[segments.length - 1].x;
+  const endY = segments[segments.length - 1].y;
+  
+  if (Math.random() > 0.3) {
+    generateBranch(endX, endY, angle + 0.4 + Math.random() * 0.3, length * 0.7, thickness * 0.7, depth + 1);
+  }
+  if (Math.random() > 0.3) {
+    generateBranch(endX, endY, angle - 0.4 - Math.random() * 0.3, length * 0.7, thickness * 0.7, depth + 1);
   }
 }
 
-// Gravitational lensing - bend light around the black hole
-function lensPosition(x, y, bhX, bhY, mass) {
-  const dx = x - bhX;
-  const dy = y - bhY;
+// Audio synthesis for heartbeat
+function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  gainNode = audioCtx.createGain();
+  gainNode.connect(audioCtx.destination);
+  gainNode.gain.value = 0;
+}
+
+function playHeartbeat() {
+  if (!audioCtx) return;
+  
+  const now = audioCtx.currentTime;
+  
+  // First thump (lub)
+  createThump(now, 55, 0.12, 0.4);
+  
+  // Second thump (dub) - slightly higher, quieter
+  createThump(now + 0.12, 45, 0.08, 0.25);
+}
+
+function createThump(time, freq, duration, volume) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  const filter = audioCtx.createBiquadFilter();
+  
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq, time);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.5, time + duration);
+  
+  filter.type = 'lowpass';
+  filter.frequency.value = 150;
+  
+  gain.gain.setValueAtTime(0, time);
+  gain.gain.linearRampToValueAtTime(volume, time + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+  
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(audioCtx.destination);
+  
+  osc.start(time);
+  osc.stop(time + duration + 0.1);
+}
+
+function update(time) {
+  // Mouse distance from center affects heart rate
+  const dx = mouseX - centerX;
+  const dy = mouseY - centerY;
   const dist = Math.sqrt(dx * dx + dy * dy);
+  const maxDist = Math.min(width, height) / 2;
   
-  if (dist < 20) return null; // inside event horizon
+  // Close to center = calm (60 BPM), far = anxious (120 BPM)
+  const targetRate = 60 + (dist / maxDist) * 60;
+  heartRate += (targetRate - heartRate) * 0.02;
   
-  const schwarzschild = mass * 0.5;
-  const bendStrength = schwarzschild / (dist * dist) * 200;
+  const beatInterval = 60000 / heartRate;
   
-  // Einstein ring deflection
-  const deflection = Math.min(bendStrength, 0.8);
-  const perpX = -dy / dist;
-  const perpY = dx / dist;
+  if (time - lastBeat > beatInterval) {
+    lastBeat = time;
+    beatPhase = 1;
+    
+    if (audioStarted) {
+      playHeartbeat();
+    }
+    
+    // Spawn pulse wave
+    pulseWaves.push({
+      radius: 0,
+      maxRadius: maxDist * 1.5,
+      alpha: 1,
+      birth: time
+    });
+  }
   
-  // Bend towards the black hole then curve around
-  const bentX = x + perpX * deflection * dist * 0.5 - dx * deflection * 0.3;
-  const bentY = y + perpY * deflection * dist * 0.5 - dy * deflection * 0.3;
+  // Decay beat phase
+  beatPhase *= 0.92;
   
-  return { x: bentX, y: bentY, distortion: bendStrength };
+  // Update pulse waves
+  pulseWaves = pulseWaves.filter(wave => {
+    wave.radius += 8 + heartRate / 20;
+    wave.alpha = 1 - (wave.radius / wave.maxRadius);
+    return wave.alpha > 0;
+  });
 }
 
-function drawBlackHole() {
-  // Smooth follow mouse
-  blackHoleX += (mouseX - blackHoleX) * 0.03;
-  blackHoleY += (mouseY - blackHoleY) * 0.03;
+function draw(time) {
+  // Dark fade with slight persistence
+  ctx.fillStyle = 'rgba(10, 10, 10, 0.15)';
+  ctx.fillRect(0, 0, width, height);
   
-  // Event horizon - pure black
-  const gradient = ctx.createRadialGradient(blackHoleX, blackHoleY, 0, blackHoleX, blackHoleY, 60);
-  gradient.addColorStop(0, 'rgba(0,0,0,1)');
-  gradient.addColorStop(0.7, 'rgba(0,0,0,1)');
-  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+  // Draw pulse waves
+  pulseWaves.forEach(wave => {
+    const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, wave.radius);
+    gradient.addColorStop(0, `rgba(255, 102, 178, 0)`);
+    gradient.addColorStop(0.7, `rgba(255, 102, 178, ${wave.alpha * 0.05})`);
+    gradient.addColorStop(1, `rgba(255, 102, 178, 0)`);
+    
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, wave.radius, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+  });
+  
+  // Draw arteries
+  arteries.forEach(artery => {
+    const pulseProgress = Math.sin(time * 0.003 * (heartRate / 72) + artery.pulseOffset);
+    const expansion = 1 + beatPhase * 0.4 * (1 - artery.depth / 7);
+    const thickness = artery.thickness * expansion;
+    
+    // Blood flow glow
+    const flowIntensity = 0.3 + beatPhase * 0.7;
+    
+    ctx.beginPath();
+    ctx.moveTo(artery.startX, artery.startY);
+    
+    artery.segments.forEach((seg, i) => {
+      const wobble = Math.sin(time * 0.002 + i + artery.pulseOffset) * (2 - artery.depth * 0.2);
+      ctx.lineTo(seg.x + wobble, seg.y + wobble);
+    });
+    
+    // Outer glow
+    ctx.strokeStyle = `hsla(${artery.hue}, 100%, 60%, ${flowIntensity * 0.3})`;
+    ctx.lineWidth = thickness * 3;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+    
+    // Core
+    ctx.strokeStyle = `hsla(${artery.hue}, 100%, 70%, ${flowIntensity * 0.8})`;
+    ctx.lineWidth = thickness;
+    ctx.stroke();
+    
+    // Bright center
+    ctx.strokeStyle = `hsla(${artery.hue}, 50%, 90%, ${flowIntensity * 0.5})`;
+    ctx.lineWidth = thickness * 0.3;
+    ctx.stroke();
+  });
+  
+  // Central heart
+  const heartSize = 30 + beatPhase * 25;
+  const heartGlow = 60 + beatPhase * 40;
+  
+  // Outer glow
+  const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, heartGlow);
+  gradient.addColorStop(0, `rgba(255, 102, 178, ${0.4 + beatPhase * 0.4})`);
+  gradient.addColorStop(0.5, `rgba(180, 50, 180, ${0.2 + beatPhase * 0.2})`);
+  gradient.addColorStop(1, 'rgba(100, 0, 100, 0)');
   
   ctx.beginPath();
-  ctx.arc(blackHoleX, blackHoleY, 60, 0, Math.PI * 2);
+  ctx.arc(centerX, centerY, heartGlow, 0, Math.PI * 2);
   ctx.fillStyle = gradient;
   ctx.fill();
   
-  // Photon sphere glow
+  // Heart core
   ctx.beginPath();
-  ctx.arc(blackHoleX, blackHoleY, 45, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(180, 100, 255, 0.1)';
-  ctx.lineWidth = 8;
-  ctx.stroke();
+  ctx.arc(centerX, centerY, heartSize, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(255, 102, 178, ${0.8 + beatPhase * 0.2})`;
+  ctx.fill();
   
+  // Inner bright spot
   ctx.beginPath();
-  ctx.arc(blackHoleX, blackHoleY, 42, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(0, 255, 255, 0.05)';
-  ctx.lineWidth = 3;
-  ctx.stroke();
-}
-
-function drawAccretionDisk() {
-  // Sort by z for pseudo-3D
-  accretionParticles.sort((a, b) => a.z - b.z);
+  ctx.arc(centerX, centerY, heartSize * 0.4, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(255, 200, 230, ${0.6 + beatPhase * 0.4})`;
+  ctx.fill();
   
-  for (const p of accretionParticles) {
-    p.angle += p.speed * (100 / p.dist); // inner particles orbit faster
-    
-    // Elliptical orbit for disk perspective
-    const tilt = 0.3;
-    const wobble = Math.sin(time * 0.5) * 0.1;
-    const x = blackHoleX + Math.cos(p.angle) * p.dist;
-    const y = blackHoleY + Math.sin(p.angle) * p.dist * tilt + Math.sin(p.angle + wobble) * p.z * p.dist;
-    
-    // Check if behind black hole
-    const dx = x - blackHoleX;
-    const dy = y - blackHoleY;
-    const distFromCenter = Math.sqrt(dx * dx + dy * dy);
-    
-    if (distFromCenter < 35) continue;
-    
-    // Doppler shift - approaching side brighter
-    const dopplerFactor = 1 + Math.cos(p.angle) * 0.5;
-    
-    const alpha = p.brightness * dopplerFactor * (p.z > 0 ? 0.8 : 0.4);
-    const sat = 80 + dopplerFactor * 20;
-    const light = 50 + dopplerFactor * 30;
-    
-    ctx.beginPath();
-    ctx.arc(x, y, p.size * dopplerFactor, 0, Math.PI * 2);
-    ctx.fillStyle = `hsla(${p.hue}, ${sat}%, ${light}%, ${alpha})`;
-    ctx.fill();
-    
-    // Glow for brighter particles
-    if (dopplerFactor > 1.2 && p.z > 0) {
-      ctx.beginPath();
-      ctx.arc(x, y, p.size * 3, 0, Math.PI * 2);
-      ctx.fillStyle = `hsla(${p.hue}, 100%, 70%, ${alpha * 0.2})`;
-      ctx.fill();
-    }
-  }
+  // BPM display
+  ctx.font = '12px monospace';
+  ctx.fillStyle = `rgba(0, 255, 255, ${0.3 + beatPhase * 0.3})`;
+  ctx.textAlign = 'center';
+  ctx.fillText(`${Math.round(heartRate)} BPM`, centerX, height - 30);
 }
 
-function drawStars() {
-  for (const star of stars) {
-    const lensed = lensPosition(star.baseX, star.baseY, blackHoleX, blackHoleY, blackHoleMass);
-    
-    if (!lensed) continue; // consumed by the void
-    
-    star.x = lensed.x;
-    star.y = lensed.y;
-    
-    // Twinkle
-    const twinkle = Math.sin(time * star.twinkleSpeed + star.twinkleOffset) * 0.3 + 0.7;
-    
-    // Brighten near the edge (lensing amplification)
-    const amplification = 1 + lensed.distortion * 2;
-    const brightness = Math.min(star.brightness * twinkle * amplification, 1);
-    
-    // Color shift from lensing (gravitational redshift on one side, blueshift on other)
-    const dx = star.x - blackHoleX;
-    const shift = dx / W;
-    const r = Math.floor(200 + shift * 55);
-    const g = Math.floor(180 + Math.abs(shift) * 40);
-    const b = Math.floor(220 - shift * 35);
-    
-    ctx.beginPath();
-    ctx.arc(star.x, star.y, star.size * amplification, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(${r},${g},${b},${brightness})`;
-    ctx.fill();
-    
-    // Streak effect for highly lensed stars
-    if (lensed.distortion > 0.3) {
-      const streakAngle = Math.atan2(star.y - blackHoleY, star.x - blackHoleX);
-      const streakLen = lensed.distortion * 20;
-      ctx.beginPath();
-      ctx.moveTo(star.x - Math.cos(streakAngle + Math.PI/2) * streakLen, 
-                 star.y - Math.sin(streakAngle + Math.PI/2) * streakLen);
-      ctx.lineTo(star.x + Math.cos(streakAngle + Math.PI/2) * streakLen,
-                 star.y + Math.sin(streakAngle + Math.PI/2) * streakLen);
-      ctx.strokeStyle = `rgba(${r},${g},${b},${brightness * 0.5})`;
-      ctx.lineWidth = star.size * 0.5;
-      ctx.stroke();
-    }
-  }
+function animate(time) {
+  update(time);
+  draw(time);
+  requestAnimationFrame(animate);
 }
 
-function drawEinsteinRing() {
-  // Faint Einstein ring at critical radius
-  const ringRadius = 90;
-  const gradient = ctx.createRadialGradient(
-    blackHoleX, blackHoleY, ringRadius - 10,
-    blackHoleX, blackHoleY, ringRadius + 10
-  );
-  gradient.addColorStop(0, 'rgba(180, 100, 255, 0)');
-  gradient.addColorStop(0.5, 'rgba(0, 255, 255, 0.08)');
-  gradient.addColorStop(1, 'rgba(180, 100, 255, 0)');
-  
-  ctx.beginPath();
-  ctx.arc(blackHoleX, blackHoleY, ringRadius, 0, Math.PI * 2);
-  ctx.strokeStyle = gradient;
-  ctx.lineWidth = 20;
-  ctx.stroke();
-}
+// Event listeners
+window.addEventListener('resize', resize);
 
-function drawHawkingRadiation() {
-  // Occasional quantum fluctuation at the event horizon
-  if (Math.random() < 0.02) {
-    const angle = Math.random() * Math.PI * 2;
-    const radius = 38 + Math.random() * 5;
-    const x = blackHoleX + Math.cos(angle) * radius;
-    const y = blackHoleY + Math.sin(angle) * radius;
-    
-    ctx.beginPath();
-    ctx.arc(x, y, 1 + Math.random() * 2, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(255, 200, 255, ${0.3 + Math.random() * 0.4})`;
-    ctx.fill();
-  }
-}
-
-function draw() {
-  // Fade trail effect
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
-  ctx.fillRect(0, 0, W, H);
-  
-  time += 0.016;
-  
-  drawStars();
-  drawEinsteinRing();
-  drawAccretionDisk();
-  drawBlackHole();
-  drawHawkingRadiation();
-  
-  requestAnimationFrame(draw);
-}
-
-window.addEventListener('resize', () => {
-  resize();
-  initStars();
-});
-
-canvas.addEventListener('mousemove', (e) => {
+document.addEventListener('mousemove', e => {
   mouseX = e.clientX;
   mouseY = e.clientY;
 });
 
-canvas.addEventListener('click', () => {
-  // Pulse the mass briefly
-  const originalMass = blackHoleMass;
-  blackHoleMass = 250;
-  setTimeout(() => {
-    blackHoleMass = originalMass;
-  }, 500);
+document.addEventListener('click', () => {
+  if (!audioStarted) {
+    overlay.style.display = 'none';
+    initAudio();
+    audioStarted = true;
+    // Force immediate beat
+    lastBeat = 0;
+  }
 });
 
-canvas.addEventListener('touchmove', (e) => {
-  e.preventDefault();
-  mouseX = e.touches[0].clientX;
-  mouseY = e.touches[0].clientY;
+// Touch support
+document.addEventListener('touchmove', e => {
+  if (e.touches.length > 0) {
+    mouseX = e.touches[0].clientX;
+    mouseY = e.touches[0].clientY;
+  }
 });
 
+document.addEventListener('touchstart', () => {
+  if (!audioStarted) {
+    overlay.style.display = 'none';
+    initAudio();
+    audioStarted = true;
+    lastBeat = 0;
+  }
+});
+
+// Initialize
 resize();
-initStars();
-initAccretion();
-draw();
+mouseX = centerX;
+mouseY = centerY;
+requestAnimationFrame(animate);
 </script>
 </body>
 </html>
