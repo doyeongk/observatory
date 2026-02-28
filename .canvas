@@ -3,332 +3,274 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>pulse</title>
+<title>cymatics</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { 
-  background: #0a0a0a; 
+  background: #0a0a0f; 
   overflow: hidden; 
   cursor: crosshair;
 }
 canvas { display: block; }
-#start-overlay {
+#hint {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(10, 10, 10, 0.95);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  cursor: pointer;
-}
-#start-overlay span {
-  color: #ff66b2;
-  font-family: monospace;
-  font-size: 14px;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: rgba(255, 50, 150, 0.4);
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
   letter-spacing: 2px;
-  opacity: 0.7;
-  animation: pulse-text 2s ease-in-out infinite;
-}
-@keyframes pulse-text {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.9; }
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 2s ease;
 }
 </style>
 </head>
 <body>
-<div id="start-overlay"><span>click to feel the pulse</span></div>
 <canvas id="canvas"></canvas>
+<div id="hint">click to strike the membrane</div>
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const overlay = document.getElementById('start-overlay');
+const hint = document.getElementById('hint');
 
-let width, height, centerX, centerY;
-let audioCtx, gainNode;
-let heartRate = 72; // BPM
-let lastBeat = 0;
-let beatPhase = 0;
-let mouseX = 0, mouseY = 0;
-let audioStarted = false;
+let width, height, gridW, gridH;
+const cellSize = 4;
+let current, previous, damping = 0.985;
 
-// Arterial network
-let arteries = [];
-let pulseWaves = [];
-
-function resize() {
-  width = canvas.width = window.innerWidth;
-  height = canvas.height = window.innerHeight;
-  centerX = width / 2;
-  centerY = height / 2;
-  generateArteries();
-}
-
-// Generate branching arterial tree
-function generateArteries() {
-  arteries = [];
-  const numBranches = 6;
-  
-  for (let i = 0; i < numBranches; i++) {
-    const angle = (i / numBranches) * Math.PI * 2 + Math.random() * 0.3;
-    generateBranch(centerX, centerY, angle, 180, 8, 0);
+// Web Audio setup
+let audioCtx = null;
+const initAudio = () => {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   }
-}
+};
 
-function generateBranch(x, y, angle, length, thickness, depth) {
-  if (depth > 6 || length < 15) return;
-  
-  const segments = [];
-  let cx = x, cy = y;
-  const segmentLength = length / 8;
-  
-  for (let i = 0; i < 8; i++) {
-    const wobble = (Math.random() - 0.5) * 0.15;
-    cx += Math.cos(angle + wobble) * segmentLength;
-    cy += Math.sin(angle + wobble) * segmentLength;
-    segments.push({ x: cx, y: cy });
-  }
-  
-  arteries.push({
-    startX: x,
-    startY: y,
-    segments,
-    thickness,
-    depth,
-    pulseOffset: Math.random() * Math.PI * 2,
-    hue: depth < 2 ? 330 : (depth < 4 ? 280 : 190) // pink -> purple -> cyan
-  });
-  
-  // Branch
-  const endX = segments[segments.length - 1].x;
-  const endY = segments[segments.length - 1].y;
-  
-  if (Math.random() > 0.3) {
-    generateBranch(endX, endY, angle + 0.4 + Math.random() * 0.3, length * 0.7, thickness * 0.7, depth + 1);
-  }
-  if (Math.random() > 0.3) {
-    generateBranch(endX, endY, angle - 0.4 - Math.random() * 0.3, length * 0.7, thickness * 0.7, depth + 1);
-  }
-}
-
-// Audio synthesis for heartbeat
-function initAudio() {
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  gainNode = audioCtx.createGain();
-  gainNode.connect(audioCtx.destination);
-  gainNode.gain.value = 0;
-}
-
-function playHeartbeat() {
+// Create resonant tone on strike
+const playTone = (x, y, intensity) => {
   if (!audioCtx) return;
   
-  const now = audioCtx.currentTime;
-  
-  // First thump (lub)
-  createThump(now, 55, 0.12, 0.4);
-  
-  // Second thump (dub) - slightly higher, quieter
-  createThump(now + 0.12, 45, 0.08, 0.25);
-}
-
-function createThump(time, freq, duration, volume) {
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   const filter = audioCtx.createBiquadFilter();
   
+  // Frequency based on position (creates harmonic relationship)
+  const baseFreq = 80;
+  const xHarmonic = Math.floor((x / gridW) * 8) + 1;
+  const yHarmonic = Math.floor((y / gridH) * 6) + 1;
+  const freq = baseFreq * (xHarmonic + yHarmonic * 0.5);
+  
   osc.type = 'sine';
-  osc.frequency.setValueAtTime(freq, time);
-  osc.frequency.exponentialRampToValueAtTime(freq * 0.5, time + duration);
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.5, audioCtx.currentTime + 1.5);
   
   filter.type = 'lowpass';
-  filter.frequency.value = 150;
+  filter.frequency.setValueAtTime(2000, audioCtx.currentTime);
+  filter.Q.setValueAtTime(8, audioCtx.currentTime);
   
-  gain.gain.setValueAtTime(0, time);
-  gain.gain.linearRampToValueAtTime(volume, time + 0.015);
-  gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+  gain.gain.setValueAtTime(Math.min(0.15, intensity * 0.003), audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
   
   osc.connect(filter);
   filter.connect(gain);
   gain.connect(audioCtx.destination);
   
-  osc.start(time);
-  osc.stop(time + duration + 0.1);
+  osc.start();
+  osc.stop(audioCtx.currentTime + 1.5);
+};
+
+function resize() {
+  width = canvas.width = window.innerWidth;
+  height = canvas.height = window.innerHeight;
+  gridW = Math.ceil(width / cellSize);
+  gridH = Math.ceil(height / cellSize);
+  
+  current = new Float32Array(gridW * gridH);
+  previous = new Float32Array(gridW * gridH);
 }
 
-function update(time) {
-  // Mouse distance from center affects heart rate
-  const dx = mouseX - centerX;
-  const dy = mouseY - centerY;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  const maxDist = Math.min(width, height) / 2;
+function idx(x, y) {
+  return y * gridW + x;
+}
+
+// Strike the membrane at a point
+function strike(cx, cy, radius, force) {
+  const gx = Math.floor(cx / cellSize);
+  const gy = Math.floor(cy / cellSize);
   
-  // Close to center = calm (60 BPM), far = anxious (120 BPM)
-  const targetRate = 60 + (dist / maxDist) * 60;
-  heartRate += (targetRate - heartRate) * 0.02;
-  
-  const beatInterval = 60000 / heartRate;
-  
-  if (time - lastBeat > beatInterval) {
-    lastBeat = time;
-    beatPhase = 1;
-    
-    if (audioStarted) {
-      playHeartbeat();
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      const x = gx + dx;
+      const y = gy + dy;
+      if (x < 0 || x >= gridW || y < 0 || y >= gridH) continue;
+      
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < radius) {
+        const falloff = 1 - (dist / radius);
+        const wave = Math.cos(dist * 0.5) * falloff * falloff;
+        current[idx(x, y)] += force * wave;
+      }
     }
-    
-    // Spawn pulse wave
-    pulseWaves.push({
-      radius: 0,
-      maxRadius: maxDist * 1.5,
-      alpha: 1,
-      birth: time
-    });
   }
   
-  // Decay beat phase
-  beatPhase *= 0.92;
-  
-  // Update pulse waves
-  pulseWaves = pulseWaves.filter(wave => {
-    wave.radius += 8 + heartRate / 20;
-    wave.alpha = 1 - (wave.radius / wave.maxRadius);
-    return wave.alpha > 0;
-  });
+  playTone(gx, gy, force);
 }
 
-function draw(time) {
-  // Dark fade with slight persistence
-  ctx.fillStyle = 'rgba(10, 10, 10, 0.15)';
+// 2D wave equation simulation
+function simulate() {
+  const next = new Float32Array(gridW * gridH);
+  
+  for (let y = 1; y < gridH - 1; y++) {
+    for (let x = 1; x < gridW - 1; x++) {
+      const i = idx(x, y);
+      
+      // Laplacian (neighbors average)
+      const neighbors = 
+        current[idx(x-1, y)] + 
+        current[idx(x+1, y)] + 
+        current[idx(x, y-1)] + 
+        current[idx(x, y+1)];
+      
+      // Wave equation: acceleration proportional to curvature
+      next[i] = (neighbors / 2) - previous[i];
+      next[i] *= damping;
+    }
+  }
+  
+  previous = current;
+  current = next;
+}
+
+function render() {
+  // Dark fade with subtle trail
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
   ctx.fillRect(0, 0, width, height);
   
-  // Draw pulse waves
-  pulseWaves.forEach(wave => {
-    const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, wave.radius);
-    gradient.addColorStop(0, `rgba(255, 102, 178, 0)`);
-    gradient.addColorStop(0.7, `rgba(255, 102, 178, ${wave.alpha * 0.05})`);
-    gradient.addColorStop(1, `rgba(255, 102, 178, 0)`);
-    
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, wave.radius, 0, Math.PI * 2);
-    ctx.fillStyle = gradient;
-    ctx.fill();
-  });
+  const imageData = ctx.createImageData(width, height);
+  const data = imageData.data;
   
-  // Draw arteries
-  arteries.forEach(artery => {
-    const pulseProgress = Math.sin(time * 0.003 * (heartRate / 72) + artery.pulseOffset);
-    const expansion = 1 + beatPhase * 0.4 * (1 - artery.depth / 7);
-    const thickness = artery.thickness * expansion;
-    
-    // Blood flow glow
-    const flowIntensity = 0.3 + beatPhase * 0.7;
-    
-    ctx.beginPath();
-    ctx.moveTo(artery.startX, artery.startY);
-    
-    artery.segments.forEach((seg, i) => {
-      const wobble = Math.sin(time * 0.002 + i + artery.pulseOffset) * (2 - artery.depth * 0.2);
-      ctx.lineTo(seg.x + wobble, seg.y + wobble);
-    });
-    
-    // Outer glow
-    ctx.strokeStyle = `hsla(${artery.hue}, 100%, 60%, ${flowIntensity * 0.3})`;
-    ctx.lineWidth = thickness * 3;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.stroke();
-    
-    // Core
-    ctx.strokeStyle = `hsla(${artery.hue}, 100%, 70%, ${flowIntensity * 0.8})`;
-    ctx.lineWidth = thickness;
-    ctx.stroke();
-    
-    // Bright center
-    ctx.strokeStyle = `hsla(${artery.hue}, 50%, 90%, ${flowIntensity * 0.5})`;
-    ctx.lineWidth = thickness * 0.3;
-    ctx.stroke();
-  });
+  for (let y = 0; y < gridH; y++) {
+    for (let x = 0; x < gridW; x++) {
+      const val = current[idx(x, y)];
+      const absVal = Math.abs(val);
+      
+      if (absVal > 0.1) {
+        // Map value to colors
+        // Positive = cyan, negative = pink, intensity = brightness
+        const intensity = Math.min(1, absVal / 30);
+        
+        let r, g, b;
+        if (val > 0) {
+          // Cyan to white
+          r = Math.floor(50 + intensity * 200);
+          g = Math.floor(200 + intensity * 55);
+          b = Math.floor(220 + intensity * 35);
+        } else {
+          // Pink/magenta to white
+          r = Math.floor(220 + intensity * 35);
+          g = Math.floor(50 + intensity * 150);
+          b = Math.floor(180 + intensity * 75);
+        }
+        
+        // Draw the cell
+        for (let py = 0; py < cellSize; py++) {
+          for (let px = 0; px < cellSize; px++) {
+            const screenX = x * cellSize + px;
+            const screenY = y * cellSize + py;
+            if (screenX >= width || screenY >= height) continue;
+            
+            const pi = (screenY * width + screenX) * 4;
+            const edgeFade = (px === 0 || py === 0) ? 0.7 : 1;
+            data[pi] = r * edgeFade;
+            data[pi + 1] = g * edgeFade;
+            data[pi + 2] = b * edgeFade;
+            data[pi + 3] = Math.floor(intensity * 255 * edgeFade);
+          }
+        }
+      }
+    }
+  }
   
-  // Central heart
-  const heartSize = 30 + beatPhase * 25;
-  const heartGlow = 60 + beatPhase * 40;
+  ctx.putImageData(imageData, 0, 0);
   
-  // Outer glow
-  const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, heartGlow);
-  gradient.addColorStop(0, `rgba(255, 102, 178, ${0.4 + beatPhase * 0.4})`);
-  gradient.addColorStop(0.5, `rgba(180, 50, 180, ${0.2 + beatPhase * 0.2})`);
-  gradient.addColorStop(1, 'rgba(100, 0, 100, 0)');
-  
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, heartGlow, 0, Math.PI * 2);
-  ctx.fillStyle = gradient;
-  ctx.fill();
-  
-  // Heart core
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, heartSize, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(255, 102, 178, ${0.8 + beatPhase * 0.2})`;
-  ctx.fill();
-  
-  // Inner bright spot
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, heartSize * 0.4, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(255, 200, 230, ${0.6 + beatPhase * 0.4})`;
-  ctx.fill();
-  
-  // BPM display
-  ctx.font = '12px monospace';
-  ctx.fillStyle = `rgba(0, 255, 255, ${0.3 + beatPhase * 0.3})`;
-  ctx.textAlign = 'center';
-  ctx.fillText(`${Math.round(heartRate)} BPM`, centerX, height - 30);
+  // Add glow layer
+  ctx.globalCompositeOperation = 'screen';
+  ctx.filter = 'blur(8px)';
+  ctx.globalAlpha = 0.3;
+  ctx.drawImage(canvas, 0, 0);
+  ctx.filter = 'none';
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
 }
 
-function animate(time) {
-  update(time);
-  draw(time);
+// Auto-strike for ambient animation
+let autoStrikeTimer = 0;
+function autoStrike() {
+  autoStrikeTimer++;
+  if (autoStrikeTimer > 120) { // Every ~2 seconds
+    const x = Math.random() * width;
+    const y = Math.random() * height;
+    const radius = 8 + Math.random() * 12;
+    const force = 20 + Math.random() * 30;
+    strike(x, y, radius, force);
+    autoStrikeTimer = Math.random() * 60; // Randomize next
+  }
+}
+
+function animate() {
+  simulate();
+  autoStrike();
+  render();
   requestAnimationFrame(animate);
 }
 
-// Event listeners
-window.addEventListener('resize', resize);
+// Mouse interaction
+let isPressed = false;
+let lastStrike = 0;
 
-document.addEventListener('mousemove', e => {
-  mouseX = e.clientX;
-  mouseY = e.clientY;
+canvas.addEventListener('mousedown', (e) => {
+  initAudio();
+  isPressed = true;
+  hint.style.opacity = '0';
+  strike(e.clientX, e.clientY, 15 + Math.random() * 10, 50);
+  lastStrike = Date.now();
 });
 
-document.addEventListener('click', () => {
-  if (!audioStarted) {
-    overlay.style.display = 'none';
-    initAudio();
-    audioStarted = true;
-    // Force immediate beat
-    lastBeat = 0;
+canvas.addEventListener('mousemove', (e) => {
+  if (isPressed && Date.now() - lastStrike > 50) {
+    strike(e.clientX, e.clientY, 8, 25);
+    lastStrike = Date.now();
   }
 });
+
+canvas.addEventListener('mouseup', () => isPressed = false);
+canvas.addEventListener('mouseleave', () => isPressed = false);
 
 // Touch support
-document.addEventListener('touchmove', e => {
-  if (e.touches.length > 0) {
-    mouseX = e.touches[0].clientX;
-    mouseY = e.touches[0].clientY;
-  }
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  initAudio();
+  hint.style.opacity = '0';
+  const touch = e.touches[0];
+  strike(touch.clientX, touch.clientY, 15, 50);
 });
 
-document.addEventListener('touchstart', () => {
-  if (!audioStarted) {
-    overlay.style.display = 'none';
-    initAudio();
-    audioStarted = true;
-    lastBeat = 0;
-  }
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  strike(touch.clientX, touch.clientY, 8, 25);
 });
 
-// Initialize
+window.addEventListener('resize', resize);
 resize();
-mouseX = centerX;
-mouseY = centerY;
-requestAnimationFrame(animate);
+
+// Initial ambient strikes
+setTimeout(() => strike(width * 0.3, height * 0.4, 12, 35), 500);
+setTimeout(() => strike(width * 0.7, height * 0.6, 10, 30), 1200);
+setTimeout(() => strike(width * 0.5, height * 0.3, 14, 40), 2000);
+
+animate();
 </script>
 </body>
 </html>
