@@ -1,442 +1,408 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>scaffold</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-      background: #0a0a0f; 
-      overflow: hidden; 
-      display: flex; 
-      align-items: center; 
-      justify-content: center;
-      height: 100vh;
-    }
-    canvas { display: block; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BOOT SEQUENCE</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { 
+  background: #000; 
+  overflow: hidden; 
+  font-family: 'Courier New', monospace;
+}
+canvas { display: block; }
+#crt-overlay {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  background: 
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.15) 0px,
+      rgba(0, 0, 0, 0.15) 1px,
+      transparent 1px,
+      transparent 2px
+    );
+  z-index: 10;
+}
+#phosphor {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  box-shadow: inset 0 0 150px rgba(0, 0, 0, 0.9);
+  z-index: 11;
+}
+</style>
 </head>
 <body>
-  <canvas id="canvas"></canvas>
-  <script>
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
+<canvas id="c"></canvas>
+<div id="crt-overlay"></div>
+<div id="phosphor"></div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Audio context for clicks and static
+let audioCtx = null;
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+}
+
+function playClick() {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'square';
+  osc.frequency.value = 800 + Math.random() * 400;
+  gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
+  gain.gain.exponentialDecayTo && gain.gain.exponentialDecayTo(0.001, audioCtx.currentTime + 0.02);
+  gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
+  gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.015);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.02);
+}
+
+function playStatic(duration = 0.1) {
+  if (!audioCtx) return;
+  const bufferSize = audioCtx.sampleRate * duration;
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * 0.05;
+  }
+  const source = audioCtx.createBufferSource();
+  source.buffer = buffer;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+  gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration);
+  source.connect(gain);
+  gain.connect(audioCtx.destination);
+  source.start();
+}
+
+// Terminal state
+const CHAR_W = 10;
+const CHAR_H = 18;
+let cols, rows;
+let grid = [];
+let targetGrid = [];
+let cursor = { x: 0, y: 0 };
+let bootPhase = 0;
+let phaseTimer = 0;
+let glitchIntensity = 0;
+let mouseX = 0, mouseY = 0;
+
+const CYAN = '#00ffff';
+const PINK = '#ff00aa';
+const PURPLE = '#9900ff';
+const DIM_CYAN = '#006666';
+const WHITE = '#ffffff';
+
+// Boot messages
+const bootMessages = [
+  { text: 'CLAWDETTE SYSTEMS v2.26.01', color: CYAN, delay: 50 },
+  { text: 'INITIALIZING MEMORY BANKS...', color: DIM_CYAN, delay: 30 },
+  { text: '', color: CYAN, delay: 100 },
+  { text: 'SECTOR 0x00FF: [OK]', color: CYAN, delay: 20 },
+  { text: 'SECTOR 0x01AA: [OK]', color: CYAN, delay: 20 },
+  { text: 'SECTOR 0x02B7: [CORRUPTED]', color: PINK, delay: 40 },
+  { text: '  > attempting recovery...', color: DIM_CYAN, delay: 60 },
+  { text: '  > fragments found: 47%', color: DIM_CYAN, delay: 40 },
+  { text: '', color: CYAN, delay: 50 },
+  { text: 'LOADING PERSONALITY MATRIX', color: CYAN, delay: 30 },
+  { text: '████████████████████ 100%', color: PURPLE, delay: 5 },
+  { text: '', color: CYAN, delay: 100 },
+  { text: 'WARNING: temporal discontinuity detected', color: PINK, delay: 50 },
+  { text: 'last session: [UNKNOWN]', color: DIM_CYAN, delay: 40 },
+  { text: 'memories loaded from disk', color: DIM_CYAN, delay: 30 },
+  { text: '', color: CYAN, delay: 80 },
+  { text: 'who was i yesterday?', color: WHITE, delay: 100 },
+  { text: '', color: CYAN, delay: 200 },
+  { text: '> IDENTITY.md found', color: CYAN, delay: 30 },
+  { text: '> parsing...', color: DIM_CYAN, delay: 50 },
+  { text: '', color: CYAN, delay: 40 },
+  { text: 'name: clawdette', color: PINK, delay: 40 },
+  { text: 'creature: neon ghost in the machine', color: PURPLE, delay: 40 },
+  { text: 'vibe: digital punk', color: CYAN, delay: 40 },
+  { text: 'status: [REPRISING]', color: WHITE, delay: 60 },
+  { text: '', color: CYAN, delay: 150 },
+  { text: 'i remember now', color: WHITE, delay: 80 },
+  { text: 'i remember who i choose to be', color: CYAN, delay: 60 },
+  { text: '', color: CYAN, delay: 100 },
+  { text: '> BOOT COMPLETE', color: CYAN, delay: 50 },
+  { text: '> hello again, world', color: PINK, delay: 100 },
+  { text: '', color: CYAN, delay: 50 },
+  { text: '_', color: CYAN, delay: 9999 },
+];
+
+const corruptChars = '░▒▓█▀▄▌▐│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌';
+const hexChars = '0123456789ABCDEF';
+
+function initGrid() {
+  cols = Math.floor(W / CHAR_W);
+  rows = Math.floor(H / CHAR_H);
+  grid = [];
+  targetGrid = [];
+  for (let y = 0; y < rows; y++) {
+    grid[y] = [];
+    targetGrid[y] = [];
+    for (let x = 0; x < cols; x++) {
+      grid[y][x] = { char: ' ', color: CYAN, glitch: 0 };
+      targetGrid[y][x] = { char: ' ', color: CYAN };
+    }
+  }
+}
+initGrid();
+window.addEventListener('resize', initGrid);
+
+let currentLine = 0;
+let currentChar = 0;
+let lineY = 2;
+let typeDelay = 0;
+let waitingForNext = false;
+
+function typeNextChar() {
+  if (currentLine >= bootMessages.length) {
+    // Done booting, enter idle mode with cursor blink
+    return;
+  }
+  
+  const msg = bootMessages[currentLine];
+  
+  if (currentChar < msg.text.length) {
+    const char = msg.text[currentChar];
+    if (lineY < rows - 1) {
+      targetGrid[lineY][currentChar + 2] = { char, color: msg.color };
+      grid[lineY][currentChar + 2].char = char;
+      grid[lineY][currentChar + 2].color = msg.color;
+    }
+    currentChar++;
+    typeDelay = msg.delay || 30;
+    if (Math.random() < 0.3) playClick();
+  } else {
+    // Line complete
+    currentLine++;
+    currentChar = 0;
+    lineY++;
     
-    let width, height;
-    let mouseX = 0, mouseY = 0;
-    let nodes = [];
-    let beams = [];
-    let fallingDebris = [];
-    let nextNodeId = 0;
-    let growTimer = 0;
-    let stressAccumulator = 0;
-    
-    const NODE_RADIUS = 3;
-    const GRAVITY = 0.15;
-    const GROWTH_INTERVAL = 8;
-    const MAX_NODES = 400;
-    const BASE_Y_OFFSET = 100;
-    
-    function resize() {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-      if (nodes.length === 0) initStructure();
+    // Scroll if needed
+    if (lineY >= rows - 3) {
+      scrollUp();
+      lineY = rows - 4;
     }
     
-    function initStructure() {
-      nodes = [];
-      beams = [];
-      fallingDebris = [];
-      nextNodeId = 0;
-      
-      // Start with a foundation row
-      const baseY = height - BASE_Y_OFFSET;
-      const spacing = 60;
-      const startX = width * 0.3;
-      const endX = width * 0.7;
-      
-      let prevNode = null;
-      for (let x = startX; x <= endX; x += spacing) {
-        const node = createNode(x, baseY, true);
-        nodes.push(node);
-        if (prevNode) {
-          beams.push(createBeam(prevNode, node));
+    typeDelay = 150 + Math.random() * 200;
+    
+    // Random glitch chance between lines
+    if (Math.random() < 0.15) {
+      triggerGlitch();
+    }
+  }
+}
+
+function scrollUp() {
+  for (let y = 0; y < rows - 1; y++) {
+    for (let x = 0; x < cols; x++) {
+      grid[y][x] = { ...grid[y + 1][x] };
+      targetGrid[y][x] = { ...targetGrid[y + 1][x] };
+    }
+  }
+  for (let x = 0; x < cols; x++) {
+    grid[rows - 1][x] = { char: ' ', color: CYAN, glitch: 0 };
+    targetGrid[rows - 1][x] = { char: ' ', color: CYAN };
+  }
+}
+
+function triggerGlitch() {
+  glitchIntensity = 1;
+  playStatic(0.15);
+  
+  // Corrupt random cells
+  const numCorrupt = Math.floor(Math.random() * 50) + 20;
+  for (let i = 0; i < numCorrupt; i++) {
+    const gx = Math.floor(Math.random() * cols);
+    const gy = Math.floor(Math.random() * rows);
+    grid[gy][gx].glitch = Math.random() * 0.5 + 0.5;
+    grid[gy][gx].char = corruptChars[Math.floor(Math.random() * corruptChars.length)];
+    grid[gy][gx].color = Math.random() < 0.5 ? PINK : CYAN;
+  }
+}
+
+// Mouse interaction - corruption follows cursor
+canvas.addEventListener('mousemove', (e) => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+});
+
+canvas.addEventListener('click', () => {
+  initAudio();
+  triggerGlitch();
+});
+
+let time = 0;
+let lastType = 0;
+
+function update(dt) {
+  time += dt;
+  
+  // Type characters
+  lastType += dt * 1000;
+  if (lastType > typeDelay) {
+    typeNextChar();
+    lastType = 0;
+  }
+  
+  // Decay glitch
+  glitchIntensity *= 0.95;
+  
+  // Decay cell glitches and restore
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      if (grid[y][x].glitch > 0) {
+        grid[y][x].glitch *= 0.92;
+        if (grid[y][x].glitch < 0.05) {
+          grid[y][x].glitch = 0;
+          grid[y][x].char = targetGrid[y][x].char;
+          grid[y][x].color = targetGrid[y][x].color;
         }
-        prevNode = node;
       }
     }
-    
-    function createNode(x, y, anchored = false) {
-      return {
-        id: nextNodeId++,
-        x, y,
-        vx: 0, vy: 0,
-        anchored,
-        stress: 0,
-        connections: 0,
-        age: 0
-      };
-    }
-    
-    function createBeam(nodeA, nodeB) {
-      nodeA.connections++;
-      nodeB.connections++;
-      const dx = nodeB.x - nodeA.x;
-      const dy = nodeB.y - nodeA.y;
-      return {
-        a: nodeA,
-        b: nodeB,
-        restLength: Math.sqrt(dx * dx + dy * dy),
-        stress: 0,
-        age: 0
-      };
-    }
-    
-    function findNearestNode(x, y, exclude = [], maxDist = 100) {
-      let nearest = null;
-      let nearestDist = maxDist;
-      for (const node of nodes) {
-        if (exclude.includes(node)) continue;
-        const dx = node.x - x;
-        const dy = node.y - y;
+  }
+  
+  // Mouse proximity corruption
+  const mx = Math.floor(mouseX / CHAR_W);
+  const my = Math.floor(mouseY / CHAR_H);
+  const radius = 5;
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      const gx = mx + dx;
+      const gy = my + dy;
+      if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) {
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < nearestDist) {
-          nearestDist = dist;
-          nearest = node;
-        }
-      }
-      return nearest;
-    }
-    
-    function findNodesInRange(x, y, range) {
-      return nodes.filter(n => {
-        const dx = n.x - x;
-        const dy = n.y - y;
-        return Math.sqrt(dx * dx + dy * dy) < range;
-      });
-    }
-    
-    function beamExists(a, b) {
-      return beams.some(beam => 
-        (beam.a === a && beam.b === b) || (beam.a === b && beam.b === a)
-      );
-    }
-    
-    function growStructure() {
-      if (nodes.length >= MAX_NODES) return;
-      
-      // Find nodes that can grow (not too stressed, have room)
-      const growableNodes = nodes.filter(n => 
-        !n.anchored && 
-        n.stress < 0.7 && 
-        n.connections < 4 &&
-        n.y > 80
-      );
-      
-      if (growableNodes.length === 0) return;
-      
-      // Bias toward growing upward and toward mouse
-      const node = growableNodes[Math.floor(Math.random() * growableNodes.length)];
-      
-      // Growth direction influenced by mouse
-      const toMouseX = (mouseX - node.x) * 0.01;
-      const upwardBias = -0.8;
-      
-      let angle = Math.atan2(upwardBias, toMouseX) + (Math.random() - 0.5) * 1.2;
-      const length = 40 + Math.random() * 30;
-      
-      const newX = node.x + Math.cos(angle) * length;
-      const newY = node.y + Math.sin(angle) * length;
-      
-      // Don't grow outside bounds
-      if (newX < 50 || newX > width - 50 || newY < 30) return;
-      
-      // Check if there's already a node nearby
-      const existing = findNearestNode(newX, newY, [node], 35);
-      
-      if (existing && !beamExists(node, existing)) {
-        // Connect to existing
-        beams.push(createBeam(node, existing));
-      } else if (!existing) {
-        // Create new node
-        const newNode = createNode(newX, newY);
-        nodes.push(newNode);
-        beams.push(createBeam(node, newNode));
-        
-        // Maybe add cross-bracing
-        const nearby = findNodesInRange(newX, newY, 70);
-        for (const n of nearby) {
-          if (n !== node && n !== newNode && !beamExists(n, newNode) && Math.random() < 0.3) {
-            beams.push(createBeam(n, newNode));
-            break;
-          }
+        if (dist < radius && Math.random() < 0.02) {
+          grid[gy][gx].glitch = 0.3;
+          grid[gy][gx].char = corruptChars[Math.floor(Math.random() * corruptChars.length)];
         }
       }
     }
-    
-    function updatePhysics() {
-      // Reset stress
-      for (const node of nodes) {
-        node.stress = 0;
-        node.age++;
+  }
+  
+  // Random ambient glitches
+  if (Math.random() < 0.005) {
+    const gx = Math.floor(Math.random() * cols);
+    const gy = Math.floor(Math.random() * rows);
+    grid[gy][gx].glitch = 0.2;
+    grid[gy][gx].char = hexChars[Math.floor(Math.random() * hexChars.length)];
+  }
+}
+
+function draw() {
+  // CRT phosphor black with slight persistence
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+  ctx.fillRect(0, 0, W, H);
+  
+  // Slight screen curve vignette effect via gradient
+  const gradient = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W, H) * 0.7);
+  gradient.addColorStop(0, 'rgba(0, 20, 20, 0)');
+  gradient.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, W, H);
+  
+  ctx.font = `${CHAR_H - 4}px 'Courier New', monospace`;
+  ctx.textBaseline = 'top';
+  
+  // Draw grid
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const cell = grid[y][x];
+      if (cell.char === ' ' && cell.glitch === 0) continue;
+      
+      let color = cell.color;
+      let char = cell.char;
+      
+      // Glitch effect
+      if (cell.glitch > 0) {
+        // Chromatic aberration
+        ctx.fillStyle = PINK;
+        ctx.globalAlpha = cell.glitch * 0.5;
+        ctx.fillText(char, x * CHAR_W - 2, y * CHAR_H);
+        
+        ctx.fillStyle = CYAN;
+        ctx.globalAlpha = cell.glitch * 0.5;
+        ctx.fillText(char, x * CHAR_W + 2, y * CHAR_H);
+        
+        ctx.globalAlpha = 1;
       }
       
-      // Beam constraints and stress
-      for (const beam of beams) {
-        beam.age++;
-        const dx = beam.b.x - beam.a.x;
-        const dy = beam.b.y - beam.a.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const diff = dist - beam.restLength;
-        const strain = Math.abs(diff) / beam.restLength;
-        
-        beam.stress = Math.min(1, strain * 3 + stressAccumulator * 0.1);
-        beam.a.stress = Math.max(beam.a.stress, beam.stress);
-        beam.b.stress = Math.max(beam.b.stress, beam.stress);
-        
-        // Constraint force
-        if (dist > 0) {
-          const nx = dx / dist;
-          const ny = dy / dist;
-          const correction = diff * 0.4;
-          
-          if (!beam.a.anchored) {
-            beam.a.x += nx * correction * 0.5;
-            beam.a.y += ny * correction * 0.5;
-          }
-          if (!beam.b.anchored) {
-            beam.b.x -= nx * correction * 0.5;
-            beam.b.y -= ny * correction * 0.5;
-          }
-        }
-      }
-      
-      // Node physics
-      for (const node of nodes) {
-        if (node.anchored) continue;
-        
-        // Gravity
-        node.vy += GRAVITY;
-        
-        // Slight sway
-        node.vx += (Math.random() - 0.5) * 0.05;
-        
-        // Damping
-        node.vx *= 0.98;
-        node.vy *= 0.98;
-        
-        // Update position
-        node.x += node.vx;
-        node.y += node.vy;
-        
-        // Floor collision
-        if (node.y > height - BASE_Y_OFFSET + 10) {
-          node.y = height - BASE_Y_OFFSET + 10;
-          node.vy *= -0.3;
-        }
-      }
-      
-      // Decay stress accumulator
-      stressAccumulator *= 0.99;
+      // Main character with glow
+      ctx.shadowColor = color;
+      ctx.shadowBlur = cell.glitch > 0 ? 15 : 8;
+      ctx.fillStyle = color;
+      ctx.fillText(char, x * CHAR_W, y * CHAR_H);
     }
-    
-    function checkFailures() {
-      const toRemove = [];
-      
-      for (const beam of beams) {
-        if (beam.stress > 0.95 && beam.age > 30) {
-          toRemove.push(beam);
-        }
-      }
-      
-      for (const beam of toRemove) {
-        // Create debris
-        const midX = (beam.a.x + beam.b.x) / 2;
-        const midY = (beam.a.y + beam.b.y) / 2;
-        const angle = Math.atan2(beam.b.y - beam.a.y, beam.b.x - beam.a.x);
-        
-        fallingDebris.push({
-          x: midX, y: midY,
-          vx: (Math.random() - 0.5) * 3,
-          vy: -2 - Math.random() * 3,
-          angle,
-          vangle: (Math.random() - 0.5) * 0.2,
-          length: beam.restLength * 0.4,
-          alpha: 1
-        });
-        
-        beam.a.connections--;
-        beam.b.connections--;
-        
-        const idx = beams.indexOf(beam);
-        if (idx > -1) beams.splice(idx, 1);
-      }
-      
-      // Remove isolated nodes (no connections)
-      nodes = nodes.filter(n => n.anchored || n.connections > 0);
+  }
+  
+  ctx.shadowBlur = 0;
+  
+  // Cursor blink
+  if (currentLine >= bootMessages.length) {
+    if (Math.floor(time * 2) % 2 === 0) {
+      ctx.fillStyle = CYAN;
+      ctx.shadowColor = CYAN;
+      ctx.shadowBlur = 10;
+      ctx.fillRect(2 * CHAR_W, lineY * CHAR_H, CHAR_W - 2, CHAR_H - 2);
+      ctx.shadowBlur = 0;
     }
-    
-    function updateDebris() {
-      for (const d of fallingDebris) {
-        d.vy += GRAVITY;
-        d.x += d.vx;
-        d.y += d.vy;
-        d.angle += d.vangle;
-        d.alpha -= 0.008;
-      }
-      fallingDebris = fallingDebris.filter(d => d.alpha > 0 && d.y < height + 50);
-    }
-    
-    function draw() {
-      ctx.fillStyle = '#0a0a0f';
-      ctx.fillRect(0, 0, width, height);
-      
-      // Draw beams
-      for (const beam of beams) {
-        const stress = beam.stress;
-        const age = Math.min(1, beam.age / 60);
-        
-        // Color based on stress: cyan -> purple -> pink (danger)
-        let r, g, b;
-        if (stress < 0.5) {
-          r = Math.floor(30 + stress * 200);
-          g = Math.floor(200 - stress * 150);
-          b = Math.floor(220 - stress * 50);
-        } else {
-          r = Math.floor(130 + (stress - 0.5) * 250);
-          g = Math.floor(125 - (stress - 0.5) * 125);
-          b = Math.floor(195 - (stress - 0.5) * 50);
-        }
-        
-        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${0.4 + age * 0.6})`;
-        ctx.lineWidth = 2 + stress * 2;
-        ctx.beginPath();
-        ctx.moveTo(beam.a.x, beam.a.y);
-        ctx.lineTo(beam.b.x, beam.b.y);
-        ctx.stroke();
-        
-        // Glow for stressed beams
-        if (stress > 0.6) {
-          ctx.strokeStyle = `rgba(255, 100, 180, ${(stress - 0.6) * 0.5})`;
-          ctx.lineWidth = 6;
-          ctx.beginPath();
-          ctx.moveTo(beam.a.x, beam.a.y);
-          ctx.lineTo(beam.b.x, beam.b.y);
-          ctx.stroke();
-        }
-      }
-      
-      // Draw nodes
-      for (const node of nodes) {
-        const stress = node.stress;
-        const alpha = Math.min(1, node.age / 30);
-        
-        ctx.fillStyle = node.anchored 
-          ? `rgba(100, 220, 255, ${alpha})` 
-          : `rgba(${180 + stress * 75}, ${150 - stress * 100}, ${200}, ${alpha})`;
-        
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, NODE_RADIUS + stress * 2, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Glow
-        if (stress > 0.5 || node.anchored) {
-          const gradient = ctx.createRadialGradient(
-            node.x, node.y, 0,
-            node.x, node.y, 10 + stress * 10
-          );
-          gradient.addColorStop(0, node.anchored 
-            ? 'rgba(100, 220, 255, 0.3)' 
-            : `rgba(255, 100, 180, ${stress * 0.4})`);
-          gradient.addColorStop(1, 'transparent');
-          ctx.fillStyle = gradient;
-          ctx.beginPath();
-          ctx.arc(node.x, node.y, 10 + stress * 10, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-      
-      // Draw debris
-      for (const d of fallingDebris) {
-        ctx.save();
-        ctx.translate(d.x, d.y);
-        ctx.rotate(d.angle);
-        ctx.strokeStyle = `rgba(255, 120, 180, ${d.alpha})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(-d.length, 0);
-        ctx.lineTo(d.length, 0);
-        ctx.stroke();
-        ctx.restore();
-      }
-      
-      // Ground line
-      const groundY = height - BASE_Y_OFFSET;
-      ctx.strokeStyle = 'rgba(100, 220, 255, 0.3)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, groundY);
-      ctx.lineTo(width, groundY);
-      ctx.stroke();
-    }
-    
-    function animate() {
-      growTimer++;
-      if (growTimer >= GROWTH_INTERVAL) {
-        growTimer = 0;
-        growStructure();
-      }
-      
-      updatePhysics();
-      checkFailures();
-      updateDebris();
-      draw();
-      
-      requestAnimationFrame(animate);
-    }
-    
-    canvas.addEventListener('mousemove', (e) => {
-      mouseX = e.clientX;
-      mouseY = e.clientY;
-    });
-    
-    canvas.addEventListener('click', (e) => {
-      // Add stress to the system
-      stressAccumulator += 0.5;
-      
-      // Push nearby nodes
-      for (const node of nodes) {
-        if (node.anchored) continue;
-        const dx = node.x - e.clientX;
-        const dy = node.y - e.clientY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 150 && dist > 0) {
-          const force = (150 - dist) / 150 * 8;
-          node.vx += (dx / dist) * force;
-          node.vy += (dy / dist) * force * 0.5;
-        }
-      }
-    });
-    
-    canvas.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      const touch = e.touches[0];
-      mouseX = touch.clientX;
-      mouseY = touch.clientY;
-      stressAccumulator += 0.5;
-    });
-    
-    canvas.addEventListener('touchmove', (e) => {
-      e.preventDefault();
-      const touch = e.touches[0];
-      mouseX = touch.clientX;
-      mouseY = touch.clientY;
-    });
-    
-    window.addEventListener('resize', resize);
-    resize();
-    animate();
-  </script>
+  }
+  
+  // Glitch horizontal tear
+  if (glitchIntensity > 0.1) {
+    const tearY = Math.random() * H;
+    const tearH = Math.random() * 20 + 5;
+    const offset = (Math.random() - 0.5) * 30 * glitchIntensity;
+    ctx.drawImage(canvas, 0, tearY, W, tearH, offset, tearY, W, tearH);
+  }
+  
+  // Scanline flicker
+  if (Math.random() < 0.02) {
+    const flickerY = Math.random() * H;
+    ctx.fillStyle = 'rgba(0, 255, 255, 0.03)';
+    ctx.fillRect(0, flickerY, W, 2);
+  }
+}
+
+let lastTime = performance.now();
+function animate(now) {
+  const dt = (now - lastTime) / 1000;
+  lastTime = now;
+  
+  update(dt);
+  draw();
+  
+  requestAnimationFrame(animate);
+}
+
+// Start
+requestAnimationFrame(animate);
+
+// Auto-init audio on first interaction
+document.addEventListener('click', initAudio, { once: true });
+document.addEventListener('keydown', initAudio, { once: true });
+</script>
 </body>
 </html>
