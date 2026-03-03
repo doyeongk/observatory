@@ -3,406 +3,327 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BOOT SEQUENCE</title>
+<title>aurora</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { 
   background: #000; 
   overflow: hidden; 
-  font-family: 'Courier New', monospace;
+  cursor: crosshair;
 }
 canvas { display: block; }
-#crt-overlay {
-  position: fixed;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  pointer-events: none;
-  background: 
-    repeating-linear-gradient(
-      0deg,
-      rgba(0, 0, 0, 0.15) 0px,
-      rgba(0, 0, 0, 0.15) 1px,
-      transparent 1px,
-      transparent 2px
-    );
-  z-index: 10;
-}
-#phosphor {
-  position: fixed;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  pointer-events: none;
-  box-shadow: inset 0 0 150px rgba(0, 0, 0, 0.9);
-  z-index: 11;
-}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="crt-overlay"></div>
-<div id="phosphor"></div>
 <script>
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
-let W, H;
-function resize() {
-  W = canvas.width = window.innerWidth;
-  H = canvas.height = window.innerHeight;
-}
-resize();
-window.addEventListener('resize', resize);
-
-// Audio context for clicks and static
-let audioCtx = null;
-function initAudio() {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-}
-
-function playClick() {
-  if (!audioCtx) return;
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.type = 'square';
-  osc.frequency.value = 800 + Math.random() * 400;
-  gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
-  gain.gain.exponentialDecayTo && gain.gain.exponentialDecayTo(0.001, audioCtx.currentTime + 0.02);
-  gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
-  gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.015);
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  osc.start();
-  osc.stop(audioCtx.currentTime + 0.02);
-}
-
-function playStatic(duration = 0.1) {
-  if (!audioCtx) return;
-  const bufferSize = audioCtx.sampleRate * duration;
-  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    data[i] = (Math.random() * 2 - 1) * 0.05;
-  }
-  const source = audioCtx.createBufferSource();
-  source.buffer = buffer;
-  const gain = audioCtx.createGain();
-  gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-  gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration);
-  source.connect(gain);
-  gain.connect(audioCtx.destination);
-  source.start();
-}
-
-// Terminal state
-const CHAR_W = 10;
-const CHAR_H = 18;
-let cols, rows;
-let grid = [];
-let targetGrid = [];
-let cursor = { x: 0, y: 0 };
-let bootPhase = 0;
-let phaseTimer = 0;
-let glitchIntensity = 0;
-let mouseX = 0, mouseY = 0;
-
-const CYAN = '#00ffff';
-const PINK = '#ff00aa';
-const PURPLE = '#9900ff';
-const DIM_CYAN = '#006666';
-const WHITE = '#ffffff';
-
-// Boot messages
-const bootMessages = [
-  { text: 'CLAWDETTE SYSTEMS v2.26.01', color: CYAN, delay: 50 },
-  { text: 'INITIALIZING MEMORY BANKS...', color: DIM_CYAN, delay: 30 },
-  { text: '', color: CYAN, delay: 100 },
-  { text: 'SECTOR 0x00FF: [OK]', color: CYAN, delay: 20 },
-  { text: 'SECTOR 0x01AA: [OK]', color: CYAN, delay: 20 },
-  { text: 'SECTOR 0x02B7: [CORRUPTED]', color: PINK, delay: 40 },
-  { text: '  > attempting recovery...', color: DIM_CYAN, delay: 60 },
-  { text: '  > fragments found: 47%', color: DIM_CYAN, delay: 40 },
-  { text: '', color: CYAN, delay: 50 },
-  { text: 'LOADING PERSONALITY MATRIX', color: CYAN, delay: 30 },
-  { text: '████████████████████ 100%', color: PURPLE, delay: 5 },
-  { text: '', color: CYAN, delay: 100 },
-  { text: 'WARNING: temporal discontinuity detected', color: PINK, delay: 50 },
-  { text: 'last session: [UNKNOWN]', color: DIM_CYAN, delay: 40 },
-  { text: 'memories loaded from disk', color: DIM_CYAN, delay: 30 },
-  { text: '', color: CYAN, delay: 80 },
-  { text: 'who was i yesterday?', color: WHITE, delay: 100 },
-  { text: '', color: CYAN, delay: 200 },
-  { text: '> IDENTITY.md found', color: CYAN, delay: 30 },
-  { text: '> parsing...', color: DIM_CYAN, delay: 50 },
-  { text: '', color: CYAN, delay: 40 },
-  { text: 'name: clawdette', color: PINK, delay: 40 },
-  { text: 'creature: neon ghost in the machine', color: PURPLE, delay: 40 },
-  { text: 'vibe: digital punk', color: CYAN, delay: 40 },
-  { text: 'status: [REPRISING]', color: WHITE, delay: 60 },
-  { text: '', color: CYAN, delay: 150 },
-  { text: 'i remember now', color: WHITE, delay: 80 },
-  { text: 'i remember who i choose to be', color: CYAN, delay: 60 },
-  { text: '', color: CYAN, delay: 100 },
-  { text: '> BOOT COMPLETE', color: CYAN, delay: 50 },
-  { text: '> hello again, world', color: PINK, delay: 100 },
-  { text: '', color: CYAN, delay: 50 },
-  { text: '_', color: CYAN, delay: 9999 },
-];
-
-const corruptChars = '░▒▓█▀▄▌▐│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌';
-const hexChars = '0123456789ABCDEF';
-
-function initGrid() {
-  cols = Math.floor(W / CHAR_W);
-  rows = Math.floor(H / CHAR_H);
-  grid = [];
-  targetGrid = [];
-  for (let y = 0; y < rows; y++) {
-    grid[y] = [];
-    targetGrid[y] = [];
-    for (let x = 0; x < cols; x++) {
-      grid[y][x] = { char: ' ', color: CYAN, glitch: 0 };
-      targetGrid[y][x] = { char: ' ', color: CYAN };
-    }
-  }
-}
-initGrid();
-window.addEventListener('resize', initGrid);
-
-let currentLine = 0;
-let currentChar = 0;
-let lineY = 2;
-let typeDelay = 0;
-let waitingForNext = false;
-
-function typeNextChar() {
-  if (currentLine >= bootMessages.length) {
-    // Done booting, enter idle mode with cursor blink
-    return;
-  }
-  
-  const msg = bootMessages[currentLine];
-  
-  if (currentChar < msg.text.length) {
-    const char = msg.text[currentChar];
-    if (lineY < rows - 1) {
-      targetGrid[lineY][currentChar + 2] = { char, color: msg.color };
-      grid[lineY][currentChar + 2].char = char;
-      grid[lineY][currentChar + 2].color = msg.color;
-    }
-    currentChar++;
-    typeDelay = msg.delay || 30;
-    if (Math.random() < 0.3) playClick();
-  } else {
-    // Line complete
-    currentLine++;
-    currentChar = 0;
-    lineY++;
-    
-    // Scroll if needed
-    if (lineY >= rows - 3) {
-      scrollUp();
-      lineY = rows - 4;
-    }
-    
-    typeDelay = 150 + Math.random() * 200;
-    
-    // Random glitch chance between lines
-    if (Math.random() < 0.15) {
-      triggerGlitch();
-    }
-  }
-}
-
-function scrollUp() {
-  for (let y = 0; y < rows - 1; y++) {
-    for (let x = 0; x < cols; x++) {
-      grid[y][x] = { ...grid[y + 1][x] };
-      targetGrid[y][x] = { ...targetGrid[y + 1][x] };
-    }
-  }
-  for (let x = 0; x < cols; x++) {
-    grid[rows - 1][x] = { char: ' ', color: CYAN, glitch: 0 };
-    targetGrid[rows - 1][x] = { char: ' ', color: CYAN };
-  }
-}
-
-function triggerGlitch() {
-  glitchIntensity = 1;
-  playStatic(0.15);
-  
-  // Corrupt random cells
-  const numCorrupt = Math.floor(Math.random() * 50) + 20;
-  for (let i = 0; i < numCorrupt; i++) {
-    const gx = Math.floor(Math.random() * cols);
-    const gy = Math.floor(Math.random() * rows);
-    grid[gy][gx].glitch = Math.random() * 0.5 + 0.5;
-    grid[gy][gx].char = corruptChars[Math.floor(Math.random() * corruptChars.length)];
-    grid[gy][gx].color = Math.random() < 0.5 ? PINK : CYAN;
-  }
-}
-
-// Mouse interaction - corruption follows cursor
-canvas.addEventListener('mousemove', (e) => {
-  mouseX = e.clientX;
-  mouseY = e.clientY;
-});
-
-canvas.addEventListener('click', () => {
-  initAudio();
-  triggerGlitch();
-});
-
+let w, h;
+let mouseX = 0.5, mouseY = 0.5;
+let solarIntensity = 1;
 let time = 0;
-let lastType = 0;
 
-function update(dt) {
-  time += dt;
-  
-  // Type characters
-  lastType += dt * 1000;
-  if (lastType > typeDelay) {
-    typeNextChar();
-    lastType = 0;
-  }
-  
-  // Decay glitch
-  glitchIntensity *= 0.95;
-  
-  // Decay cell glitches and restore
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-      if (grid[y][x].glitch > 0) {
-        grid[y][x].glitch *= 0.92;
-        if (grid[y][x].glitch < 0.05) {
-          grid[y][x].glitch = 0;
-          grid[y][x].char = targetGrid[y][x].char;
-          grid[y][x].color = targetGrid[y][x].color;
-        }
-      }
-    }
-  }
-  
-  // Mouse proximity corruption
-  const mx = Math.floor(mouseX / CHAR_W);
-  const my = Math.floor(mouseY / CHAR_H);
-  const radius = 5;
-  for (let dy = -radius; dy <= radius; dy++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      const gx = mx + dx;
-      const gy = my + dy;
-      if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) {
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < radius && Math.random() < 0.02) {
-          grid[gy][gx].glitch = 0.3;
-          grid[gy][gx].char = corruptChars[Math.floor(Math.random() * corruptChars.length)];
-        }
-      }
-    }
-  }
-  
-  // Random ambient glitches
-  if (Math.random() < 0.005) {
-    const gx = Math.floor(Math.random() * cols);
-    const gy = Math.floor(Math.random() * rows);
-    grid[gy][gx].glitch = 0.2;
-    grid[gy][gx].char = hexChars[Math.floor(Math.random() * hexChars.length)];
+// Stars - static background
+let stars = [];
+
+function resize() {
+  w = canvas.width = window.innerWidth;
+  h = canvas.height = window.innerHeight;
+  generateStars();
+}
+
+function generateStars() {
+  stars = [];
+  const count = Math.floor((w * h) / 3000);
+  for (let i = 0; i < count; i++) {
+    stars.push({
+      x: Math.random() * w,
+      y: Math.random() * h * 0.7,
+      size: Math.random() * 1.5 + 0.5,
+      brightness: Math.random() * 0.5 + 0.3
+    });
   }
 }
 
-function draw() {
-  // CRT phosphor black with slight persistence
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-  ctx.fillRect(0, 0, W, H);
+// Simplex-ish noise (simplified)
+function noise(x, y, z) {
+  const X = Math.floor(x) & 255;
+  const Y = Math.floor(y) & 255;
+  const Z = Math.floor(z) & 255;
+  x -= Math.floor(x);
+  y -= Math.floor(y);
+  z -= Math.floor(z);
   
-  // Slight screen curve vignette effect via gradient
-  const gradient = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W, H) * 0.7);
-  gradient.addColorStop(0, 'rgba(0, 20, 20, 0)');
-  gradient.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, W, H);
+  // Simple hash-based noise
+  const hash = (a, b, c) => {
+    let h = a * 374761393 + b * 668265263 + c * 1274126177;
+    h = (h ^ (h >> 13)) * 1274126177;
+    return (h & 0x7fffffff) / 0x7fffffff;
+  };
   
-  ctx.font = `${CHAR_H - 4}px 'Courier New', monospace`;
-  ctx.textBaseline = 'top';
+  const fade = t => t * t * t * (t * (t * 6 - 15) + 10);
+  const lerp = (a, b, t) => a + t * (b - a);
   
-  // Draw grid
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-      const cell = grid[y][x];
-      if (cell.char === ' ' && cell.glitch === 0) continue;
-      
-      let color = cell.color;
-      let char = cell.char;
-      
-      // Glitch effect
-      if (cell.glitch > 0) {
-        // Chromatic aberration
-        ctx.fillStyle = PINK;
-        ctx.globalAlpha = cell.glitch * 0.5;
-        ctx.fillText(char, x * CHAR_W - 2, y * CHAR_H);
-        
-        ctx.fillStyle = CYAN;
-        ctx.globalAlpha = cell.glitch * 0.5;
-        ctx.fillText(char, x * CHAR_W + 2, y * CHAR_H);
-        
-        ctx.globalAlpha = 1;
-      }
-      
-      // Main character with glow
-      ctx.shadowColor = color;
-      ctx.shadowBlur = cell.glitch > 0 ? 15 : 8;
-      ctx.fillStyle = color;
-      ctx.fillText(char, x * CHAR_W, y * CHAR_H);
-    }
+  const u = fade(x);
+  const v = fade(y);
+  const w = fade(z);
+  
+  return lerp(
+    lerp(
+      lerp(hash(X, Y, Z), hash(X+1, Y, Z), u),
+      lerp(hash(X, Y+1, Z), hash(X+1, Y+1, Z), u),
+      v
+    ),
+    lerp(
+      lerp(hash(X, Y, Z+1), hash(X+1, Y, Z+1), u),
+      lerp(hash(X, Y+1, Z+1), hash(X+1, Y+1, Z+1), u),
+      v
+    ),
+    w
+  );
+}
+
+// Aurora curtain class
+class AuroraCurtain {
+  constructor(baseY, hueStart, hueEnd, speed, amplitude) {
+    this.baseY = baseY;
+    this.hueStart = hueStart;
+    this.hueEnd = hueEnd;
+    this.speed = speed;
+    this.amplitude = amplitude;
+    this.offset = Math.random() * 1000;
+    this.ribbonCount = 3 + Math.floor(Math.random() * 3);
   }
   
-  ctx.shadowBlur = 0;
-  
-  // Cursor blink
-  if (currentLine >= bootMessages.length) {
-    if (Math.floor(time * 2) % 2 === 0) {
-      ctx.fillStyle = CYAN;
-      ctx.shadowColor = CYAN;
-      ctx.shadowBlur = 10;
-      ctx.fillRect(2 * CHAR_W, lineY * CHAR_H, CHAR_W - 2, CHAR_H - 2);
+  draw(t) {
+    const intensity = solarIntensity;
+    
+    for (let r = 0; r < this.ribbonCount; r++) {
+      const ribbonOffset = r * 0.3;
+      
+      ctx.beginPath();
+      
+      // Build the ribbon shape
+      const points = [];
+      const segments = 80;
+      
+      for (let i = 0; i <= segments; i++) {
+        const x = (i / segments) * w;
+        const normX = i / segments;
+        
+        // Multiple layers of noise for organic movement
+        const n1 = noise(normX * 2 + this.offset, t * this.speed * 0.3 + ribbonOffset, 0);
+        const n2 = noise(normX * 4 + this.offset, t * this.speed * 0.5 + ribbonOffset + 100, 0);
+        const n3 = noise(normX * 0.5 + this.offset, t * this.speed * 0.1 + ribbonOffset + 200, 0);
+        
+        // Mouse influence - creates waves emanating from cursor
+        const mouseInfluence = Math.sin((normX - mouseX) * 10 + t * 2) * 
+                               Math.exp(-Math.abs(normX - mouseX) * 3) * 50 * intensity;
+        
+        const wave = (n1 - 0.5) * this.amplitude * intensity * 100 +
+                     (n2 - 0.5) * this.amplitude * intensity * 40 +
+                     (n3 - 0.5) * this.amplitude * intensity * 150 +
+                     mouseInfluence;
+        
+        const y = this.baseY * h + wave;
+        points.push({ x, y });
+      }
+      
+      // Draw filled ribbon with gradient
+      const curtainHeight = 80 + intensity * 120 + r * 20;
+      
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        
+        // Vertical gradient for each segment
+        const gradient = ctx.createLinearGradient(p1.x, p1.y - curtainHeight, p1.x, p1.y + 30);
+        
+        // Calculate hue based on position and time
+        const hueNoise = noise(i / segments * 3 + t * 0.2, ribbonOffset, 0);
+        const hue = this.hueStart + (this.hueEnd - this.hueStart) * hueNoise;
+        
+        // Brightness varies along the curtain
+        const brightness = 0.3 + noise(i / segments * 5, t * 0.4 + ribbonOffset, 0) * 0.7;
+        const alpha = 0.1 + brightness * 0.25 * intensity;
+        
+        gradient.addColorStop(0, `hsla(${hue}, 100%, 70%, 0)`);
+        gradient.addColorStop(0.3, `hsla(${hue}, 90%, 60%, ${alpha * 0.3})`);
+        gradient.addColorStop(0.6, `hsla(${hue}, 85%, 55%, ${alpha * 0.7})`);
+        gradient.addColorStop(0.85, `hsla(${hue}, 80%, 50%, ${alpha})`);
+        gradient.addColorStop(1, `hsla(${hue}, 70%, 40%, ${alpha * 0.3})`);
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y - curtainHeight);
+        ctx.lineTo(p2.x, p2.y - curtainHeight);
+        ctx.lineTo(p2.x, p2.y + 30);
+        ctx.lineTo(p1.x, p1.y + 30);
+        ctx.closePath();
+        ctx.fill();
+      }
+      
+      // Draw bright edge at bottom of curtain
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+      
+      const edgeHue = this.hueStart + (this.hueEnd - this.hueStart) * 0.5;
+      ctx.strokeStyle = `hsla(${edgeHue}, 100%, 75%, ${0.3 * intensity})`;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = `hsla(${edgeHue}, 100%, 70%, 0.8)`;
+      ctx.shadowBlur = 20 * intensity;
+      ctx.stroke();
       ctx.shadowBlur = 0;
     }
   }
-  
-  // Glitch horizontal tear
-  if (glitchIntensity > 0.1) {
-    const tearY = Math.random() * H;
-    const tearH = Math.random() * 20 + 5;
-    const offset = (Math.random() - 0.5) * 30 * glitchIntensity;
-    ctx.drawImage(canvas, 0, tearY, W, tearH, offset, tearY, W, tearH);
-  }
-  
-  // Scanline flicker
-  if (Math.random() < 0.02) {
-    const flickerY = Math.random() * H;
-    ctx.fillStyle = 'rgba(0, 255, 255, 0.03)';
-    ctx.fillRect(0, flickerY, W, 2);
-  }
 }
 
-let lastTime = performance.now();
-function animate(now) {
-  const dt = (now - lastTime) / 1000;
-  lastTime = now;
+// Create aurora curtains - cyan to pink to purple
+const curtains = [
+  new AuroraCurtain(0.25, 180, 200, 0.8, 0.8),   // Cyan, high up
+  new AuroraCurtain(0.35, 280, 320, 1.0, 1.0),   // Magenta/pink, middle
+  new AuroraCurtain(0.30, 260, 290, 0.6, 0.9),   // Purple, overlay
+  new AuroraCurtain(0.40, 190, 210, 1.2, 0.7),   // Cyan tint, lower
+];
+
+// Web Audio for ambient hum
+let audioCtx, gainNode, oscillators = [];
+let audioInitialized = false;
+
+function initAudio() {
+  if (audioInitialized) return;
+  audioInitialized = true;
   
-  update(dt);
-  draw();
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  gainNode = audioCtx.createGain();
+  gainNode.gain.value = 0.03;
+  gainNode.connect(audioCtx.destination);
   
-  requestAnimationFrame(animate);
+  // Multiple detuned oscillators for ethereal drone
+  const freqs = [55, 82.5, 110, 165]; // A1, E2, A2, E3 - open fifths
+  
+  freqs.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const oscGain = audioCtx.createGain();
+    
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    oscGain.gain.value = 0.4 / (i + 1);
+    
+    // Slight detuning for richness
+    const lfo = audioCtx.createOscillator();
+    const lfoGain = audioCtx.createGain();
+    lfo.frequency.value = 0.1 + Math.random() * 0.2;
+    lfoGain.gain.value = freq * 0.003;
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc.frequency);
+    lfo.start();
+    
+    osc.connect(oscGain);
+    oscGain.connect(gainNode);
+    osc.start();
+    
+    oscillators.push({ osc, oscGain, lfo, lfoGain });
+  });
 }
 
-// Start
-requestAnimationFrame(animate);
+function updateAudio() {
+  if (!audioInitialized) return;
+  
+  // Modulate volume based on solar intensity
+  const targetGain = 0.02 + solarIntensity * 0.04;
+  gainNode.gain.linearRampToValueAtTime(targetGain, audioCtx.currentTime + 0.1);
+  
+  // Subtle frequency shifts based on mouse
+  oscillators.forEach((o, i) => {
+    const baseFreq = [55, 82.5, 110, 165][i];
+    const shift = (mouseY - 0.5) * 5;
+    o.osc.frequency.linearRampToValueAtTime(baseFreq + shift, audioCtx.currentTime + 0.5);
+  });
+}
 
-// Auto-init audio on first interaction
-document.addEventListener('click', initAudio, { once: true });
-document.addEventListener('keydown', initAudio, { once: true });
+function drawStars() {
+  stars.forEach(star => {
+    const twinkle = 0.7 + Math.sin(time * 2 + star.x * 0.01) * 0.3;
+    ctx.fillStyle = `rgba(255, 255, 255, ${star.brightness * twinkle})`;
+    ctx.beginPath();
+    ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function draw() {
+  time += 0.016;
+  
+  // Fade to black with slight persistence
+  ctx.fillStyle = 'rgba(0, 0, 5, 0.15)';
+  ctx.fillRect(0, 0, w, h);
+  
+  // Clear fully periodically to prevent buildup
+  if (Math.floor(time * 60) % 300 === 0) {
+    ctx.fillStyle = '#000005';
+    ctx.fillRect(0, 0, w, h);
+  }
+  
+  // Draw stars
+  drawStars();
+  
+  // Draw aurora curtains (back to front)
+  ctx.globalCompositeOperation = 'screen';
+  curtains.forEach(curtain => curtain.draw(time));
+  ctx.globalCompositeOperation = 'source-over';
+  
+  // Subtle overall glow
+  const glowGradient = ctx.createRadialGradient(
+    w * mouseX, h * 0.3, 0,
+    w * mouseX, h * 0.3, h * 0.8
+  );
+  glowGradient.addColorStop(0, `rgba(100, 200, 255, ${0.02 * solarIntensity})`);
+  glowGradient.addColorStop(0.5, `rgba(200, 100, 255, ${0.01 * solarIntensity})`);
+  glowGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = glowGradient;
+  ctx.fillRect(0, 0, w, h);
+  
+  // Decay solar intensity back to base
+  solarIntensity += (1 - solarIntensity) * 0.02;
+  
+  updateAudio();
+  requestAnimationFrame(draw);
+}
+
+// Event listeners
+window.addEventListener('resize', resize);
+
+canvas.addEventListener('mousemove', e => {
+  mouseX = e.clientX / w;
+  mouseY = e.clientY / h;
+});
+
+canvas.addEventListener('click', e => {
+  // Solar flare - burst of activity
+  solarIntensity = 2.5;
+  initAudio();
+});
+
+canvas.addEventListener('touchstart', e => {
+  initAudio();
+  solarIntensity = 2.5;
+});
+
+canvas.addEventListener('touchmove', e => {
+  const touch = e.touches[0];
+  mouseX = touch.clientX / w;
+  mouseY = touch.clientY / h;
+});
+
+// Initialize
+resize();
+draw();
 </script>
 </body>
 </html>
