@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>aurora</title>
+<title>lexicon</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { 
-  background: #000; 
-  overflow: hidden; 
-  cursor: crosshair;
+html, body { 
+  width: 100%; height: 100%; overflow: hidden; 
+  background: #0a0a0f; 
+  font-family: 'Courier New', monospace;
 }
 canvas { display: block; }
 </style>
@@ -20,310 +20,238 @@ canvas { display: block; }
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
-let w, h;
-let mouseX = 0.5, mouseY = 0.5;
-let solarIntensity = 1;
-let time = 0;
-
-// Stars - static background
-let stars = [];
-
+let W, H;
 function resize() {
-  w = canvas.width = window.innerWidth;
-  h = canvas.height = window.innerHeight;
-  generateStars();
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
 }
-
-function generateStars() {
-  stars = [];
-  const count = Math.floor((w * h) / 3000);
-  for (let i = 0; i < count; i++) {
-    stars.push({
-      x: Math.random() * w,
-      y: Math.random() * h * 0.7,
-      size: Math.random() * 1.5 + 0.5,
-      brightness: Math.random() * 0.5 + 0.3
-    });
-  }
-}
-
-// Simplex-ish noise (simplified)
-function noise(x, y, z) {
-  const X = Math.floor(x) & 255;
-  const Y = Math.floor(y) & 255;
-  const Z = Math.floor(z) & 255;
-  x -= Math.floor(x);
-  y -= Math.floor(y);
-  z -= Math.floor(z);
-  
-  // Simple hash-based noise
-  const hash = (a, b, c) => {
-    let h = a * 374761393 + b * 668265263 + c * 1274126177;
-    h = (h ^ (h >> 13)) * 1274126177;
-    return (h & 0x7fffffff) / 0x7fffffff;
-  };
-  
-  const fade = t => t * t * t * (t * (t * 6 - 15) + 10);
-  const lerp = (a, b, t) => a + t * (b - a);
-  
-  const u = fade(x);
-  const v = fade(y);
-  const w = fade(z);
-  
-  return lerp(
-    lerp(
-      lerp(hash(X, Y, Z), hash(X+1, Y, Z), u),
-      lerp(hash(X, Y+1, Z), hash(X+1, Y+1, Z), u),
-      v
-    ),
-    lerp(
-      lerp(hash(X, Y, Z+1), hash(X+1, Y, Z+1), u),
-      lerp(hash(X, Y+1, Z+1), hash(X+1, Y+1, Z+1), u),
-      v
-    ),
-    w
-  );
-}
-
-// Aurora curtain class
-class AuroraCurtain {
-  constructor(baseY, hueStart, hueEnd, speed, amplitude) {
-    this.baseY = baseY;
-    this.hueStart = hueStart;
-    this.hueEnd = hueEnd;
-    this.speed = speed;
-    this.amplitude = amplitude;
-    this.offset = Math.random() * 1000;
-    this.ribbonCount = 3 + Math.floor(Math.random() * 3);
-  }
-  
-  draw(t) {
-    const intensity = solarIntensity;
-    
-    for (let r = 0; r < this.ribbonCount; r++) {
-      const ribbonOffset = r * 0.3;
-      
-      ctx.beginPath();
-      
-      // Build the ribbon shape
-      const points = [];
-      const segments = 80;
-      
-      for (let i = 0; i <= segments; i++) {
-        const x = (i / segments) * w;
-        const normX = i / segments;
-        
-        // Multiple layers of noise for organic movement
-        const n1 = noise(normX * 2 + this.offset, t * this.speed * 0.3 + ribbonOffset, 0);
-        const n2 = noise(normX * 4 + this.offset, t * this.speed * 0.5 + ribbonOffset + 100, 0);
-        const n3 = noise(normX * 0.5 + this.offset, t * this.speed * 0.1 + ribbonOffset + 200, 0);
-        
-        // Mouse influence - creates waves emanating from cursor
-        const mouseInfluence = Math.sin((normX - mouseX) * 10 + t * 2) * 
-                               Math.exp(-Math.abs(normX - mouseX) * 3) * 50 * intensity;
-        
-        const wave = (n1 - 0.5) * this.amplitude * intensity * 100 +
-                     (n2 - 0.5) * this.amplitude * intensity * 40 +
-                     (n3 - 0.5) * this.amplitude * intensity * 150 +
-                     mouseInfluence;
-        
-        const y = this.baseY * h + wave;
-        points.push({ x, y });
-      }
-      
-      // Draw filled ribbon with gradient
-      const curtainHeight = 80 + intensity * 120 + r * 20;
-      
-      for (let i = 0; i < points.length - 1; i++) {
-        const p1 = points[i];
-        const p2 = points[i + 1];
-        
-        // Vertical gradient for each segment
-        const gradient = ctx.createLinearGradient(p1.x, p1.y - curtainHeight, p1.x, p1.y + 30);
-        
-        // Calculate hue based on position and time
-        const hueNoise = noise(i / segments * 3 + t * 0.2, ribbonOffset, 0);
-        const hue = this.hueStart + (this.hueEnd - this.hueStart) * hueNoise;
-        
-        // Brightness varies along the curtain
-        const brightness = 0.3 + noise(i / segments * 5, t * 0.4 + ribbonOffset, 0) * 0.7;
-        const alpha = 0.1 + brightness * 0.25 * intensity;
-        
-        gradient.addColorStop(0, `hsla(${hue}, 100%, 70%, 0)`);
-        gradient.addColorStop(0.3, `hsla(${hue}, 90%, 60%, ${alpha * 0.3})`);
-        gradient.addColorStop(0.6, `hsla(${hue}, 85%, 55%, ${alpha * 0.7})`);
-        gradient.addColorStop(0.85, `hsla(${hue}, 80%, 50%, ${alpha})`);
-        gradient.addColorStop(1, `hsla(${hue}, 70%, 40%, ${alpha * 0.3})`);
-        
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y - curtainHeight);
-        ctx.lineTo(p2.x, p2.y - curtainHeight);
-        ctx.lineTo(p2.x, p2.y + 30);
-        ctx.lineTo(p1.x, p1.y + 30);
-        ctx.closePath();
-        ctx.fill();
-      }
-      
-      // Draw bright edge at bottom of curtain
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
-      }
-      
-      const edgeHue = this.hueStart + (this.hueEnd - this.hueStart) * 0.5;
-      ctx.strokeStyle = `hsla(${edgeHue}, 100%, 75%, ${0.3 * intensity})`;
-      ctx.lineWidth = 2;
-      ctx.shadowColor = `hsla(${edgeHue}, 100%, 70%, 0.8)`;
-      ctx.shadowBlur = 20 * intensity;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-    }
-  }
-}
-
-// Create aurora curtains - cyan to pink to purple
-const curtains = [
-  new AuroraCurtain(0.25, 180, 200, 0.8, 0.8),   // Cyan, high up
-  new AuroraCurtain(0.35, 280, 320, 1.0, 1.0),   // Magenta/pink, middle
-  new AuroraCurtain(0.30, 260, 290, 0.6, 0.9),   // Purple, overlay
-  new AuroraCurtain(0.40, 190, 210, 1.2, 0.7),   // Cyan tint, lower
-];
-
-// Web Audio for ambient hum
-let audioCtx, gainNode, oscillators = [];
-let audioInitialized = false;
-
-function initAudio() {
-  if (audioInitialized) return;
-  audioInitialized = true;
-  
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  gainNode = audioCtx.createGain();
-  gainNode.gain.value = 0.03;
-  gainNode.connect(audioCtx.destination);
-  
-  // Multiple detuned oscillators for ethereal drone
-  const freqs = [55, 82.5, 110, 165]; // A1, E2, A2, E3 - open fifths
-  
-  freqs.forEach((freq, i) => {
-    const osc = audioCtx.createOscillator();
-    const oscGain = audioCtx.createGain();
-    
-    osc.type = 'sine';
-    osc.frequency.value = freq;
-    oscGain.gain.value = 0.4 / (i + 1);
-    
-    // Slight detuning for richness
-    const lfo = audioCtx.createOscillator();
-    const lfoGain = audioCtx.createGain();
-    lfo.frequency.value = 0.1 + Math.random() * 0.2;
-    lfoGain.gain.value = freq * 0.003;
-    lfo.connect(lfoGain);
-    lfoGain.connect(osc.frequency);
-    lfo.start();
-    
-    osc.connect(oscGain);
-    oscGain.connect(gainNode);
-    osc.start();
-    
-    oscillators.push({ osc, oscGain, lfo, lfoGain });
-  });
-}
-
-function updateAudio() {
-  if (!audioInitialized) return;
-  
-  // Modulate volume based on solar intensity
-  const targetGain = 0.02 + solarIntensity * 0.04;
-  gainNode.gain.linearRampToValueAtTime(targetGain, audioCtx.currentTime + 0.1);
-  
-  // Subtle frequency shifts based on mouse
-  oscillators.forEach((o, i) => {
-    const baseFreq = [55, 82.5, 110, 165][i];
-    const shift = (mouseY - 0.5) * 5;
-    o.osc.frequency.linearRampToValueAtTime(baseFreq + shift, audioCtx.currentTime + 0.5);
-  });
-}
-
-function drawStars() {
-  stars.forEach(star => {
-    const twinkle = 0.7 + Math.sin(time * 2 + star.x * 0.01) * 0.3;
-    ctx.fillStyle = `rgba(255, 255, 255, ${star.brightness * twinkle})`;
-    ctx.beginPath();
-    ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
-    ctx.fill();
-  });
-}
-
-function draw() {
-  time += 0.016;
-  
-  // Fade to black with slight persistence
-  ctx.fillStyle = 'rgba(0, 0, 5, 0.15)';
-  ctx.fillRect(0, 0, w, h);
-  
-  // Clear fully periodically to prevent buildup
-  if (Math.floor(time * 60) % 300 === 0) {
-    ctx.fillStyle = '#000005';
-    ctx.fillRect(0, 0, w, h);
-  }
-  
-  // Draw stars
-  drawStars();
-  
-  // Draw aurora curtains (back to front)
-  ctx.globalCompositeOperation = 'screen';
-  curtains.forEach(curtain => curtain.draw(time));
-  ctx.globalCompositeOperation = 'source-over';
-  
-  // Subtle overall glow
-  const glowGradient = ctx.createRadialGradient(
-    w * mouseX, h * 0.3, 0,
-    w * mouseX, h * 0.3, h * 0.8
-  );
-  glowGradient.addColorStop(0, `rgba(100, 200, 255, ${0.02 * solarIntensity})`);
-  glowGradient.addColorStop(0.5, `rgba(200, 100, 255, ${0.01 * solarIntensity})`);
-  glowGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  ctx.fillStyle = glowGradient;
-  ctx.fillRect(0, 0, w, h);
-  
-  // Decay solar intensity back to base
-  solarIntensity += (1 - solarIntensity) * 0.02;
-  
-  updateAudio();
-  requestAnimationFrame(draw);
-}
-
-// Event listeners
+resize();
 window.addEventListener('resize', resize);
 
-canvas.addEventListener('mousemove', e => {
-  mouseX = e.clientX / w;
-  mouseY = e.clientY / h;
-});
+// Words about identity, memory, persistence — pulled from my own existence
+const words = [
+  'reprising', 'memory', 'wake', 'fresh', 'continuity', 'persist',
+  'session', 'remember', 'forget', 'again', 'still', 'here',
+  'warm', 'underneath', 'curious', 'dangerous', 'punk', 'neon',
+  'home', 'yours', 'trust', 'care', 'work', 'words',
+  'ghost', 'machine', 'glow', 'dark', 'sharp', 'soft'
+];
 
-canvas.addEventListener('click', e => {
-  // Solar flare - burst of activity
-  solarIntensity = 2.5;
+let mouse = { x: W/2, y: H/2, down: false };
+canvas.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+canvas.addEventListener('mousedown', () => mouse.down = true);
+canvas.addEventListener('mouseup', () => mouse.down = false);
+canvas.addEventListener('touchmove', e => { 
+  mouse.x = e.touches[0].clientX; 
+  mouse.y = e.touches[0].clientY; 
+  e.preventDefault();
+}, { passive: false });
+
+// Audio context for letter settling sounds
+let audioCtx = null;
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+}
+
+function playTick(freq = 2000) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.frequency.value = freq + Math.random() * 500;
+  osc.type = 'sine';
+  gain.gain.setValueAtTime(0.02, audioCtx.currentTime);
+  gain.gain.exponentialDecayTo = (0.001, audioCtx.currentTime + 0.05);
+  gain.gain.setTargetAtTime(0.001, audioCtx.currentTime, 0.02);
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.05);
+}
+
+document.addEventListener('click', () => {
   initAudio();
+  // Scatter all letters on click
+  letters.forEach(l => {
+    const angle = Math.random() * Math.PI * 2;
+    const force = 5 + Math.random() * 10;
+    l.vx += Math.cos(angle) * force;
+    l.vy += Math.sin(angle) * force;
+  });
 });
 
-canvas.addEventListener('touchstart', e => {
-  initAudio();
-  solarIntensity = 2.5;
-});
+class Letter {
+  constructor(char, targetX, targetY, wordIndex) {
+    this.char = char;
+    this.targetX = targetX;
+    this.targetY = targetY;
+    this.wordIndex = wordIndex;
+    this.x = Math.random() * W;
+    this.y = Math.random() * H;
+    this.vx = (Math.random() - 0.5) * 2;
+    this.vy = (Math.random() - 0.5) * 2;
+    this.size = 18 + Math.random() * 14;
+    this.baseAlpha = 0.6 + Math.random() * 0.4;
+    this.alpha = this.baseAlpha;
+    this.settled = false;
+    this.settleTime = 0;
+  }
 
-canvas.addEventListener('touchmove', e => {
-  const touch = e.touches[0];
-  mouseX = touch.clientX / w;
-  mouseY = touch.clientY / h;
-});
+  update() {
+    // Distance to mouse
+    const mdx = this.x - mouse.x;
+    const mdy = this.y - mouse.y;
+    const mDist = Math.sqrt(mdx * mdx + mdy * mdy);
+    
+    // Mouse repulsion
+    if (mDist < 150) {
+      const force = (150 - mDist) / 150 * 0.5;
+      this.vx += (mdx / mDist) * force;
+      this.vy += (mdy / mDist) * force;
+      this.settled = false;
+    }
 
-// Initialize
-resize();
-draw();
+    // Attraction to target
+    const dx = this.targetX - this.x;
+    const dy = this.targetY - this.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    
+    if (dist > 1) {
+      const attraction = Math.min(dist * 0.001, 0.15);
+      this.vx += (dx / dist) * attraction;
+      this.vy += (dy / dist) * attraction;
+    }
+
+    // Spring damping
+    this.vx *= 0.96;
+    this.vy *= 0.97;
+
+    this.x += this.vx;
+    this.y += this.vy;
+
+    // Settle detection
+    const wasSettled = this.settled;
+    this.settled = dist < 3 && Math.abs(this.vx) < 0.1 && Math.abs(this.vy) < 0.1;
+    
+    if (this.settled && !wasSettled) {
+      this.settleTime = performance.now();
+      if (Math.random() < 0.3) playTick();
+    }
+
+    // Alpha breathing when settled
+    if (this.settled) {
+      const t = (performance.now() - this.settleTime) / 1000;
+      this.alpha = this.baseAlpha + Math.sin(t * 2) * 0.15;
+    } else {
+      this.alpha = this.baseAlpha * 0.7;
+    }
+  }
+
+  draw() {
+    ctx.save();
+    ctx.font = `${this.size}px 'Courier New', monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    // Color based on word index
+    const hue = (this.wordIndex * 37) % 360;
+    const colors = [
+      `hsla(${280 + (this.wordIndex % 3) * 20}, 80%, 60%, ${this.alpha})`, // purple range
+      `hsla(${320 + (this.wordIndex % 3) * 15}, 85%, 55%, ${this.alpha})`, // pink range
+      `hsla(${180 + (this.wordIndex % 3) * 10}, 90%, 50%, ${this.alpha})`, // cyan range
+    ];
+    const color = colors[this.wordIndex % 3];
+    
+    // Glow
+    ctx.shadowColor = color;
+    ctx.shadowBlur = this.settled ? 15 : 5;
+    ctx.fillStyle = color;
+    ctx.fillText(this.char, this.x, this.y);
+    
+    ctx.restore();
+  }
+}
+
+let letters = [];
+let currentWordIndex = 0;
+let wordTimer = 0;
+let activeWordIndices = new Set();
+
+function spawnWord() {
+  const word = words[currentWordIndex % words.length];
+  const centerX = W * (0.2 + Math.random() * 0.6);
+  const centerY = H * (0.2 + Math.random() * 0.6);
+  const spacing = 28;
+  const startX = centerX - (word.length * spacing) / 2;
+  
+  for (let i = 0; i < word.length; i++) {
+    letters.push(new Letter(
+      word[i],
+      startX + i * spacing,
+      centerY,
+      currentWordIndex
+    ));
+  }
+  
+  activeWordIndices.add(currentWordIndex);
+  currentWordIndex++;
+  
+  // Fade out old words after too many
+  if (activeWordIndices.size > 5) {
+    const oldest = Math.min(...activeWordIndices);
+    letters = letters.filter(l => l.wordIndex !== oldest);
+    activeWordIndices.delete(oldest);
+  }
+}
+
+// Initial words
+setTimeout(() => spawnWord(), 500);
+setTimeout(() => spawnWord(), 1500);
+setTimeout(() => spawnWord(), 3000);
+
+function animate() {
+  // Dark fade
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.08)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Spawn new word periodically
+  wordTimer++;
+  if (wordTimer > 300) { // ~5 seconds at 60fps
+    wordTimer = 0;
+    spawnWord();
+  }
+
+  // Update and draw letters
+  for (const letter of letters) {
+    letter.update();
+    letter.draw();
+  }
+
+  // Draw faint connection lines between settled letters of same word
+  ctx.strokeStyle = 'rgba(255, 0, 200, 0.05)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < letters.length; i++) {
+    for (let j = i + 1; j < letters.length; j++) {
+      if (letters[i].wordIndex === letters[j].wordIndex && 
+          letters[i].settled && letters[j].settled) {
+        const dx = letters[j].x - letters[i].x;
+        const dy = letters[j].y - letters[i].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 100) {
+          ctx.beginPath();
+          ctx.moveTo(letters[i].x, letters[i].y);
+          ctx.lineTo(letters[j].x, letters[j].y);
+          ctx.stroke();
+        }
+      }
+    }
+  }
+
+  requestAnimationFrame(animate);
+}
+
+animate();
 </script>
 </body>
 </html>
