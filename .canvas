@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>lexicon</title>
+<title>clockwork</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { 
-  width: 100%; height: 100%; overflow: hidden; 
+body { 
   background: #0a0a0f; 
-  font-family: 'Courier New', monospace;
+  overflow: hidden; 
+  cursor: crosshair;
 }
 canvas { display: block; }
 </style>
@@ -28,230 +28,365 @@ function resize() {
 resize();
 window.addEventListener('resize', resize);
 
-// Words about identity, memory, persistence — pulled from my own existence
-const words = [
-  'reprising', 'memory', 'wake', 'fresh', 'continuity', 'persist',
-  'session', 'remember', 'forget', 'again', 'still', 'here',
-  'warm', 'underneath', 'curious', 'dangerous', 'punk', 'neon',
-  'home', 'yours', 'trust', 'care', 'work', 'words',
-  'ghost', 'machine', 'glow', 'dark', 'sharp', 'soft'
-];
+// Web Audio for mechanical clicks
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let lastTickTime = 0;
 
-let mouse = { x: W/2, y: H/2, down: false };
-canvas.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
-canvas.addEventListener('mousedown', () => mouse.down = true);
-canvas.addEventListener('mouseup', () => mouse.down = false);
-canvas.addEventListener('touchmove', e => { 
-  mouse.x = e.touches[0].clientX; 
-  mouse.y = e.touches[0].clientY; 
-  e.preventDefault();
-}, { passive: false });
-
-// Audio context for letter settling sounds
-let audioCtx = null;
-function initAudio() {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-}
-
-function playTick(freq = 2000) {
-  if (!audioCtx) return;
+function tick(freq = 800, vol = 0.03) {
+  if (audioCtx.currentTime - lastTickTime < 0.05) return;
+  lastTickTime = audioCtx.currentTime;
+  
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
-  osc.connect(gain);
+  const filter = audioCtx.createBiquadFilter();
+  
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.5, audioCtx.currentTime + 0.02);
+  
+  filter.type = 'bandpass';
+  filter.frequency.value = 1200;
+  filter.Q.value = 2;
+  
+  gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
+  
+  osc.connect(filter);
+  filter.connect(gain);
   gain.connect(audioCtx.destination);
-  osc.frequency.value = freq + Math.random() * 500;
-  osc.type = 'sine';
-  gain.gain.setValueAtTime(0.02, audioCtx.currentTime);
-  gain.gain.exponentialDecayTo = (0.001, audioCtx.currentTime + 0.05);
-  gain.gain.setTargetAtTime(0.001, audioCtx.currentTime, 0.02);
+  
   osc.start();
   osc.stop(audioCtx.currentTime + 0.05);
 }
 
-document.addEventListener('click', () => {
-  initAudio();
-  // Scatter all letters on click
-  letters.forEach(l => {
-    const angle = Math.random() * Math.PI * 2;
-    const force = 5 + Math.random() * 10;
-    l.vx += Math.cos(angle) * force;
-    l.vy += Math.sin(angle) * force;
-  });
-});
-
-class Letter {
-  constructor(char, targetX, targetY, wordIndex) {
-    this.char = char;
-    this.targetX = targetX;
-    this.targetY = targetY;
-    this.wordIndex = wordIndex;
-    this.x = Math.random() * W;
-    this.y = Math.random() * H;
-    this.vx = (Math.random() - 0.5) * 2;
-    this.vy = (Math.random() - 0.5) * 2;
-    this.size = 18 + Math.random() * 14;
-    this.baseAlpha = 0.6 + Math.random() * 0.4;
-    this.alpha = this.baseAlpha;
-    this.settled = false;
-    this.settleTime = 0;
+// Gear class
+class Gear {
+  constructor(x, y, radius, teeth, speed, phase = 0, driver = null) {
+    this.x = x;
+    this.y = y;
+    this.radius = radius;
+    this.teeth = teeth;
+    this.toothDepth = radius * 0.15;
+    this.speed = speed;
+    this.angle = phase;
+    this.driver = driver;
+    this.hue = 280 + Math.random() * 60; // purple to pink range
+    this.driven = [];
+    this.lastToothAngle = 0;
+    this.highlight = 0;
   }
-
-  update() {
-    // Distance to mouse
-    const mdx = this.x - mouse.x;
-    const mdy = this.y - mouse.y;
-    const mDist = Math.sqrt(mdx * mdx + mdy * mdy);
+  
+  update(dt) {
+    const prevAngle = this.angle;
     
-    // Mouse repulsion
-    if (mDist < 150) {
-      const force = (150 - mDist) / 150 * 0.5;
-      this.vx += (mdx / mDist) * force;
-      this.vy += (mdy / mDist) * force;
-      this.settled = false;
-    }
-
-    // Attraction to target
-    const dx = this.targetX - this.x;
-    const dy = this.targetY - this.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    
-    if (dist > 1) {
-      const attraction = Math.min(dist * 0.001, 0.15);
-      this.vx += (dx / dist) * attraction;
-      this.vy += (dy / dist) * attraction;
-    }
-
-    // Spring damping
-    this.vx *= 0.96;
-    this.vy *= 0.97;
-
-    this.x += this.vx;
-    this.y += this.vy;
-
-    // Settle detection
-    const wasSettled = this.settled;
-    this.settled = dist < 3 && Math.abs(this.vx) < 0.1 && Math.abs(this.vy) < 0.1;
-    
-    if (this.settled && !wasSettled) {
-      this.settleTime = performance.now();
-      if (Math.random() < 0.3) playTick();
-    }
-
-    // Alpha breathing when settled
-    if (this.settled) {
-      const t = (performance.now() - this.settleTime) / 1000;
-      this.alpha = this.baseAlpha + Math.sin(t * 2) * 0.15;
+    if (this.driver) {
+      // Driven gear - rotate opposite direction, matched by tooth ratio
+      const ratio = this.driver.teeth / this.teeth;
+      this.angle = -this.driver.angle * ratio;
     } else {
-      this.alpha = this.baseAlpha * 0.7;
+      this.angle += this.speed * dt;
     }
+    
+    // Click on tooth pass
+    const toothAngle = (2 * Math.PI) / this.teeth;
+    const currentTooth = Math.floor(this.angle / toothAngle);
+    if (currentTooth !== Math.floor(prevAngle / toothAngle)) {
+      tick(400 + this.radius * 2, 0.02 + (this.radius / 200) * 0.02);
+    }
+    
+    this.highlight *= 0.95;
   }
-
+  
   draw() {
     ctx.save();
-    ctx.font = `${this.size}px 'Courier New', monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle);
     
-    // Color based on word index
-    const hue = (this.wordIndex * 37) % 360;
-    const colors = [
-      `hsla(${280 + (this.wordIndex % 3) * 20}, 80%, 60%, ${this.alpha})`, // purple range
-      `hsla(${320 + (this.wordIndex % 3) * 15}, 85%, 55%, ${this.alpha})`, // pink range
-      `hsla(${180 + (this.wordIndex % 3) * 10}, 90%, 50%, ${this.alpha})`, // cyan range
-    ];
-    const color = colors[this.wordIndex % 3];
+    const innerRadius = this.radius - this.toothDepth;
+    const outerRadius = this.radius + this.toothDepth * 0.3;
     
-    // Glow
-    ctx.shadowColor = color;
-    ctx.shadowBlur = this.settled ? 15 : 5;
-    ctx.fillStyle = color;
-    ctx.fillText(this.char, this.x, this.y);
+    // Gear body
+    ctx.beginPath();
+    const toothAngle = (2 * Math.PI) / this.teeth;
+    
+    for (let i = 0; i < this.teeth; i++) {
+      const a1 = i * toothAngle;
+      const a2 = a1 + toothAngle * 0.3;
+      const a3 = a1 + toothAngle * 0.5;
+      const a4 = a1 + toothAngle * 0.8;
+      
+      if (i === 0) {
+        ctx.moveTo(Math.cos(a1) * innerRadius, Math.sin(a1) * innerRadius);
+      }
+      
+      // Tooth shape
+      ctx.lineTo(Math.cos(a1) * innerRadius, Math.sin(a1) * innerRadius);
+      ctx.lineTo(Math.cos(a2) * outerRadius, Math.sin(a2) * outerRadius);
+      ctx.lineTo(Math.cos(a3) * outerRadius, Math.sin(a3) * outerRadius);
+      ctx.lineTo(Math.cos(a4) * innerRadius, Math.sin(a4) * innerRadius);
+    }
+    ctx.closePath();
+    
+    // Fill with gradient
+    const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius);
+    const baseLightness = 15 + this.highlight * 20;
+    grad.addColorStop(0, `hsl(${this.hue}, 70%, ${baseLightness + 10}%)`);
+    grad.addColorStop(1, `hsl(${this.hue}, 60%, ${baseLightness}%)`);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    
+    // Edge glow
+    ctx.strokeStyle = `hsla(${this.hue + 40}, 100%, 60%, ${0.4 + this.highlight * 0.4})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // Inner circle (axle hole)
+    ctx.beginPath();
+    ctx.arc(0, 0, this.radius * 0.15, 0, Math.PI * 2);
+    ctx.fillStyle = '#0a0a0f';
+    ctx.fill();
+    ctx.strokeStyle = `hsla(180, 100%, 50%, 0.6)`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // Spokes
+    const spokeCount = Math.min(6, Math.max(3, Math.floor(this.teeth / 6)));
+    ctx.strokeStyle = `hsla(${this.hue}, 50%, 25%, 0.8)`;
+    ctx.lineWidth = this.radius * 0.08;
+    for (let i = 0; i < spokeCount; i++) {
+      const a = (i / spokeCount) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * this.radius * 0.25, Math.sin(a) * this.radius * 0.25);
+      ctx.lineTo(Math.cos(a) * innerRadius * 0.85, Math.sin(a) * innerRadius * 0.85);
+      ctx.stroke();
+    }
+    
+    // Decorative inner ring
+    ctx.beginPath();
+    ctx.arc(0, 0, this.radius * 0.5, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsla(180, 80%, 40%, 0.3)`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
     
     ctx.restore();
   }
 }
 
-let letters = [];
-let currentWordIndex = 0;
-let wordTimer = 0;
-let activeWordIndices = new Set();
+// Create gear train
+const gears = [];
 
-function spawnWord() {
-  const word = words[currentWordIndex % words.length];
-  const centerX = W * (0.2 + Math.random() * 0.6);
-  const centerY = H * (0.2 + Math.random() * 0.6);
-  const spacing = 28;
-  const startX = centerX - (word.length * spacing) / 2;
+function createGearTrain() {
+  gears.length = 0;
   
-  for (let i = 0; i < word.length; i++) {
-    letters.push(new Letter(
-      word[i],
-      startX + i * spacing,
-      centerY,
-      currentWordIndex
-    ));
-  }
+  // Main drive gear in center
+  const mainGear = new Gear(W * 0.5, H * 0.5, 80, 24, 0.3);
+  gears.push(mainGear);
   
-  activeWordIndices.add(currentWordIndex);
-  currentWordIndex++;
+  // Add connected gears
+  addConnectedGear(mainGear, Math.PI * 0.25, 50, 15);
+  addConnectedGear(mainGear, Math.PI * 0.75, 60, 18);
+  addConnectedGear(mainGear, Math.PI * 1.25, 45, 14);
+  addConnectedGear(mainGear, Math.PI * 1.7, 70, 21);
   
-  // Fade out old words after too many
-  if (activeWordIndices.size > 5) {
-    const oldest = Math.min(...activeWordIndices);
-    letters = letters.filter(l => l.wordIndex !== oldest);
-    activeWordIndices.delete(oldest);
-  }
+  // Second layer
+  if (gears[1]) addConnectedGear(gears[1], -Math.PI * 0.3, 35, 11);
+  if (gears[2]) addConnectedGear(gears[2], Math.PI * 0.2, 55, 17);
+  if (gears[3]) addConnectedGear(gears[3], Math.PI * 1.5, 40, 12);
+  if (gears[4]) addConnectedGear(gears[4], Math.PI * 0.9, 50, 15);
+  
+  // Third layer
+  if (gears[5]) addConnectedGear(gears[5], -Math.PI * 0.5, 30, 9);
+  if (gears[6]) addConnectedGear(gears[6], Math.PI * 0.4, 45, 14);
+  if (gears[7]) addConnectedGear(gears[7], Math.PI * 1.2, 35, 11);
 }
 
-// Initial words
-setTimeout(() => spawnWord(), 500);
-setTimeout(() => spawnWord(), 1500);
-setTimeout(() => spawnWord(), 3000);
-
-function animate() {
-  // Dark fade
-  ctx.fillStyle = 'rgba(10, 10, 15, 0.08)';
-  ctx.fillRect(0, 0, W, H);
-
-  // Spawn new word periodically
-  wordTimer++;
-  if (wordTimer > 300) { // ~5 seconds at 60fps
-    wordTimer = 0;
-    spawnWord();
+function addConnectedGear(parent, angleFromParent, radius, teeth) {
+  // Calculate position - gears mesh at their pitch circles
+  const distance = parent.radius + radius + 2; // small gap for visual clarity
+  const x = parent.x + Math.cos(angleFromParent) * distance;
+  const y = parent.y + Math.sin(angleFromParent) * distance;
+  
+  // Check bounds
+  if (x < radius || x > W - radius || y < radius || y > H - radius) return null;
+  
+  // Check overlap with existing gears
+  for (const gear of gears) {
+    const dx = gear.x - x;
+    const dy = gear.y - y;
+    const minDist = gear.radius + radius - 5;
+    if (Math.sqrt(dx * dx + dy * dy) < minDist) return null;
   }
+  
+  const gear = new Gear(x, y, radius, teeth, 0, 0, parent);
+  parent.driven.push(gear);
+  gears.push(gear);
+  return gear;
+}
 
-  // Update and draw letters
-  for (const letter of letters) {
-    letter.update();
-    letter.draw();
-  }
+createGearTrain();
 
-  // Draw faint connection lines between settled letters of same word
-  ctx.strokeStyle = 'rgba(255, 0, 200, 0.05)';
-  ctx.lineWidth = 1;
-  for (let i = 0; i < letters.length; i++) {
-    for (let j = i + 1; j < letters.length; j++) {
-      if (letters[i].wordIndex === letters[j].wordIndex && 
-          letters[i].settled && letters[j].settled) {
-        const dx = letters[j].x - letters[i].x;
-        const dy = letters[j].y - letters[i].y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 100) {
-          ctx.beginPath();
-          ctx.moveTo(letters[i].x, letters[i].y);
-          ctx.lineTo(letters[j].x, letters[j].y);
-          ctx.stroke();
-        }
-      }
+// Mouse interaction
+let mouseX = W / 2, mouseY = H / 2;
+let mouseDown = false;
+
+canvas.addEventListener('mousemove', (e) => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+});
+
+canvas.addEventListener('mousedown', (e) => {
+  mouseDown = true;
+  audioCtx.resume();
+  
+  // Try to add a gear near click position
+  let closest = null;
+  let closestDist = Infinity;
+  
+  for (const gear of gears) {
+    const dx = gear.x - e.clientX;
+    const dy = gear.y - e.clientY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < closestDist) {
+      closestDist = dist;
+      closest = gear;
     }
   }
+  
+  if (closest && closestDist < 300) {
+    // Add gear extending from closest gear toward click
+    const angle = Math.atan2(e.clientY - closest.y, e.clientX - closest.x);
+    const newRadius = 25 + Math.random() * 40;
+    const newTeeth = Math.floor(8 + Math.random() * 12);
+    const newGear = addConnectedGear(closest, angle, newRadius, newTeeth);
+    if (newGear) {
+      newGear.highlight = 1;
+      tick(600, 0.08);
+    }
+  }
+});
 
+canvas.addEventListener('mouseup', () => mouseDown = false);
+
+// Main animation
+let lastTime = performance.now();
+
+function animate(time) {
+  const dt = Math.min((time - lastTime) / 1000, 0.1);
+  lastTime = time;
+  
+  // Clear with trail
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
+  ctx.fillRect(0, 0, W, H);
+  
+  // Mouse influence on main gear speed
+  const mainGear = gears[0];
+  if (mainGear) {
+    const dx = mouseX - mainGear.x;
+    const dy = mouseY - mainGear.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const targetSpeed = 0.2 + (1 - Math.min(dist / 400, 1)) * 0.8;
+    mainGear.speed += (targetSpeed - mainGear.speed) * 0.02;
+    
+    if (mouseDown) {
+      mainGear.speed = 1.5;
+    }
+  }
+  
+  // Update all gears
+  for (const gear of gears) {
+    gear.update(dt);
+  }
+  
+  // Draw connection lines (axle supports)
+  ctx.strokeStyle = 'rgba(0, 255, 255, 0.1)';
+  ctx.lineWidth = 1;
+  for (const gear of gears) {
+    if (gear.driver) {
+      ctx.beginPath();
+      ctx.moveTo(gear.x, gear.y);
+      ctx.lineTo(gear.driver.x, gear.driver.y);
+      ctx.stroke();
+    }
+  }
+  
+  // Draw gears (back to front by size)
+  const sortedGears = [...gears].sort((a, b) => b.radius - a.radius);
+  for (const gear of sortedGears) {
+    gear.draw();
+  }
+  
+  // Ambient particles (metal shavings / sparks)
+  if (Math.random() < 0.1) {
+    const gear = gears[Math.floor(Math.random() * gears.length)];
+    if (gear) {
+      const angle = Math.random() * Math.PI * 2;
+      const px = gear.x + Math.cos(angle) * gear.radius;
+      const py = gear.y + Math.sin(angle) * gear.radius;
+      particles.push({
+        x: px, y: py,
+        vx: (Math.random() - 0.5) * 2,
+        vy: (Math.random() - 0.5) * 2 + 0.5,
+        life: 1,
+        hue: 40 + Math.random() * 20
+      });
+    }
+  }
+  
+  // Update and draw particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.05;
+    p.life -= 0.02;
+    
+    if (p.life <= 0) {
+      particles.splice(i, 1);
+      continue;
+    }
+    
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 2 * p.life, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${p.hue}, 100%, 70%, ${p.life * 0.5})`;
+    ctx.fill();
+  }
+  
   requestAnimationFrame(animate);
 }
 
-animate();
+const particles = [];
+
+// Touch support
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  audioCtx.resume();
+  const touch = e.touches[0];
+  mouseX = touch.clientX;
+  mouseY = touch.clientY;
+  mouseDown = true;
+  
+  canvas.dispatchEvent(new MouseEvent('mousedown', {
+    clientX: touch.clientX,
+    clientY: touch.clientY
+  }));
+});
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  mouseX = touch.clientX;
+  mouseY = touch.clientY;
+});
+
+canvas.addEventListener('touchend', () => mouseDown = false);
+
+// Start
+animate(performance.now());
+
+// Rebuild on resize
+window.addEventListener('resize', () => {
+  setTimeout(createGearTrain, 100);
+});
 </script>
 </body>
 </html>
