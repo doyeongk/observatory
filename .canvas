@@ -1,18 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>clockwork</title>
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { 
-  background: #0a0a0f; 
-  overflow: hidden; 
-  cursor: crosshair;
-}
-canvas { display: block; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>transmission</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a0c; 
+      overflow: hidden; 
+      cursor: crosshair;
+    }
+    canvas { display: block; }
+  </style>
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -20,373 +20,360 @@ canvas { display: block; }
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
-let W, H;
+let W, H, centerX, centerY;
+let audioCtx, noiseNode, noiseGain, signalOsc, signalGain;
+let audioStarted = false;
+
 function resize() {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
+  centerX = W / 2;
+  centerY = H / 2;
 }
 resize();
 window.addEventListener('resize', resize);
 
-// Web Audio for mechanical clicks
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-let lastTickTime = 0;
-
-function tick(freq = 800, vol = 0.03) {
-  if (audioCtx.currentTime - lastTickTime < 0.05) return;
-  lastTickTime = audioCtx.currentTime;
+// Audio setup
+function initAudio() {
+  if (audioStarted) return;
+  audioStarted = true;
   
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  
+  // White noise generator
+  const bufferSize = 2 * audioCtx.sampleRate;
+  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const output = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    output[i] = Math.random() * 2 - 1;
+  }
+  
+  noiseNode = audioCtx.createBufferSource();
+  noiseNode.buffer = noiseBuffer;
+  noiseNode.loop = true;
+  
+  // Bandpass filter for radio static texture
   const filter = audioCtx.createBiquadFilter();
-  
-  osc.type = 'square';
-  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(freq * 0.5, audioCtx.currentTime + 0.02);
-  
   filter.type = 'bandpass';
-  filter.frequency.value = 1200;
-  filter.Q.value = 2;
+  filter.frequency.value = 2000;
+  filter.Q.value = 0.5;
   
-  gain.gain.setValueAtTime(vol, audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
+  noiseGain = audioCtx.createGain();
+  noiseGain.gain.value = 0.03;
   
-  osc.connect(filter);
-  filter.connect(gain);
-  gain.connect(audioCtx.destination);
+  noiseNode.connect(filter);
+  filter.connect(noiseGain);
+  noiseGain.connect(audioCtx.destination);
+  noiseNode.start();
   
-  osc.start();
-  osc.stop(audioCtx.currentTime + 0.05);
+  // Signal oscillator for detected transmissions
+  signalOsc = audioCtx.createOscillator();
+  signalOsc.type = 'sine';
+  signalOsc.frequency.value = 440;
+  
+  signalGain = audioCtx.createGain();
+  signalGain.gain.value = 0;
+  
+  signalOsc.connect(signalGain);
+  signalGain.connect(audioCtx.destination);
+  signalOsc.start();
 }
 
-// Gear class
-class Gear {
-  constructor(x, y, radius, teeth, speed, phase = 0, driver = null) {
-    this.x = x;
-    this.y = y;
-    this.radius = radius;
-    this.teeth = teeth;
-    this.toothDepth = radius * 0.15;
-    this.speed = speed;
-    this.angle = phase;
-    this.driver = driver;
-    this.hue = 280 + Math.random() * 60; // purple to pink range
-    this.driven = [];
-    this.lastToothAngle = 0;
-    this.highlight = 0;
-  }
+// Click to init audio + transmit
+canvas.addEventListener('click', (e) => {
+  initAudio();
+  transmit(e.clientX, e.clientY);
+});
+
+// State
+let sweepAngle = 0;
+let sweepSpeed = 0.008;
+let signals = [];
+let transmissions = [];
+let staticField = [];
+let detectedSignal = null;
+let detectionTime = 0;
+
+// Initialize static field
+for (let i = 0; i < 200; i++) {
+  staticField.push({
+    x: Math.random() * 2 - 1,
+    y: Math.random() * 2 - 1,
+    intensity: Math.random(),
+    flicker: Math.random() * Math.PI * 2
+  });
+}
+
+// Mysterious signals out there
+for (let i = 0; i < 5; i++) {
+  const angle = Math.random() * Math.PI * 2;
+  const dist = 0.5 + Math.random() * 0.4;
+  signals.push({
+    angle: angle,
+    dist: dist,
+    freq: 200 + Math.random() * 800,
+    pattern: Math.floor(Math.random() * 4),
+    strength: 0.3 + Math.random() * 0.7
+  });
+}
+
+function transmit(x, y) {
+  transmissions.push({
+    x: x,
+    y: y,
+    radius: 0,
+    alpha: 1,
+    birth: Date.now()
+  });
   
-  update(dt) {
-    const prevAngle = this.angle;
-    
-    if (this.driver) {
-      // Driven gear - rotate opposite direction, matched by tooth ratio
-      const ratio = this.driver.teeth / this.teeth;
-      this.angle = -this.driver.angle * ratio;
-    } else {
-      this.angle += this.speed * dt;
-    }
-    
-    // Click on tooth pass
-    const toothAngle = (2 * Math.PI) / this.teeth;
-    const currentTooth = Math.floor(this.angle / toothAngle);
-    if (currentTooth !== Math.floor(prevAngle / toothAngle)) {
-      tick(400 + this.radius * 2, 0.02 + (this.radius / 200) * 0.02);
-    }
-    
-    this.highlight *= 0.95;
+  // Transmission beep
+  if (audioCtx && signalGain) {
+    const now = audioCtx.currentTime;
+    signalOsc.frequency.setValueAtTime(1200, now);
+    signalGain.gain.setValueAtTime(0.15, now);
+    signalGain.gain.exponentialDecayTo = 0.001;
+    signalGain.gain.setTargetAtTime(0.001, now + 0.1, 0.1);
   }
+}
+
+function drawDish() {
+  const dishRadius = Math.min(W, H) * 0.35;
   
-  draw() {
-    ctx.save();
-    ctx.translate(this.x, this.y);
-    ctx.rotate(this.angle);
-    
-    const innerRadius = this.radius - this.toothDepth;
-    const outerRadius = this.radius + this.toothDepth * 0.3;
-    
-    // Gear body
+  // Outer ring
+  ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, dishRadius, 0, Math.PI * 2);
+  ctx.stroke();
+  
+  // Inner rings
+  for (let i = 1; i <= 4; i++) {
+    ctx.strokeStyle = `rgba(0, 255, 255, ${0.1 + i * 0.02})`;
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    const toothAngle = (2 * Math.PI) / this.teeth;
+    ctx.arc(centerX, centerY, dishRadius * (i / 5), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  
+  // Cross hairs
+  ctx.strokeStyle = 'rgba(0, 255, 255, 0.15)';
+  ctx.beginPath();
+  ctx.moveTo(centerX - dishRadius, centerY);
+  ctx.lineTo(centerX + dishRadius, centerY);
+  ctx.moveTo(centerX, centerY - dishRadius);
+  ctx.lineTo(centerX, centerY + dishRadius);
+  ctx.stroke();
+  
+  // Sweep line
+  const sweepX = centerX + Math.cos(sweepAngle) * dishRadius;
+  const sweepY = centerY + Math.sin(sweepAngle) * dishRadius;
+  
+  // Sweep glow
+  const gradient = ctx.createLinearGradient(centerX, centerY, sweepX, sweepY);
+  gradient.addColorStop(0, 'rgba(0, 255, 255, 0)');
+  gradient.addColorStop(0.5, 'rgba(0, 255, 255, 0.4)');
+  gradient.addColorStop(1, 'rgba(0, 255, 255, 0.8)');
+  
+  ctx.strokeStyle = gradient;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(centerX, centerY);
+  ctx.lineTo(sweepX, sweepY);
+  ctx.stroke();
+  
+  // Sweep trail
+  ctx.fillStyle = 'rgba(0, 255, 255, 0.05)';
+  ctx.beginPath();
+  ctx.moveTo(centerX, centerY);
+  ctx.arc(centerX, centerY, dishRadius, sweepAngle - 0.5, sweepAngle);
+  ctx.closePath();
+  ctx.fill();
+  
+  return dishRadius;
+}
+
+function drawStatic(dishRadius) {
+  const time = Date.now() * 0.001;
+  
+  staticField.forEach(s => {
+    s.flicker += 0.1 + Math.random() * 0.1;
+    const flicker = Math.sin(s.flicker) * 0.5 + 0.5;
     
-    for (let i = 0; i < this.teeth; i++) {
-      const a1 = i * toothAngle;
-      const a2 = a1 + toothAngle * 0.3;
-      const a3 = a1 + toothAngle * 0.5;
-      const a4 = a1 + toothAngle * 0.8;
+    if (flicker * s.intensity > 0.6) {
+      const x = centerX + s.x * dishRadius;
+      const y = centerY + s.y * dishRadius;
+      const dist = Math.sqrt(s.x * s.x + s.y * s.y);
       
-      if (i === 0) {
-        ctx.moveTo(Math.cos(a1) * innerRadius, Math.sin(a1) * innerRadius);
+      if (dist < 1) {
+        const alpha = (1 - dist) * flicker * s.intensity * 0.5;
+        ctx.fillStyle = `rgba(100, 200, 255, ${alpha})`;
+        ctx.fillRect(x, y, 2, 2);
+      }
+    }
+    
+    // Drift
+    s.x += (Math.random() - 0.5) * 0.002;
+    s.y += (Math.random() - 0.5) * 0.002;
+    
+    // Wrap
+    if (Math.abs(s.x) > 1.2) s.x *= -0.9;
+    if (Math.abs(s.y) > 1.2) s.y *= -0.9;
+  });
+}
+
+function drawSignals(dishRadius) {
+  const time = Date.now() * 0.001;
+  
+  signals.forEach(sig => {
+    const x = centerX + Math.cos(sig.angle) * sig.dist * dishRadius;
+    const y = centerY + Math.sin(sig.angle) * sig.dist * dishRadius;
+    
+    // Is sweep pointing at this signal?
+    let angleDiff = Math.abs(sweepAngle - sig.angle);
+    if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
+    
+    if (angleDiff < 0.15) {
+      // Signal detected!
+      const intensity = (1 - angleDiff / 0.15) * sig.strength;
+      
+      // Visual burst
+      ctx.beginPath();
+      ctx.arc(x, y, 5 + intensity * 15, 0, Math.PI * 2);
+      const grd = ctx.createRadialGradient(x, y, 0, x, y, 5 + intensity * 15);
+      grd.addColorStop(0, `rgba(255, 100, 200, ${intensity})`);
+      grd.addColorStop(0.5, `rgba(255, 50, 150, ${intensity * 0.5})`);
+      grd.addColorStop(1, 'rgba(255, 50, 150, 0)');
+      ctx.fillStyle = grd;
+      ctx.fill();
+      
+      // Signal blip at center
+      ctx.fillStyle = `rgba(255, 100, 200, ${intensity})`;
+      ctx.fillRect(centerX - 50, centerY + dishRadius + 30, intensity * 100, 3);
+      
+      // Audio response
+      if (audioCtx && signalGain && intensity > 0.3) {
+        signalOsc.frequency.setValueAtTime(sig.freq, audioCtx.currentTime);
+        signalGain.gain.setValueAtTime(intensity * 0.08, audioCtx.currentTime);
       }
       
-      // Tooth shape
-      ctx.lineTo(Math.cos(a1) * innerRadius, Math.sin(a1) * innerRadius);
-      ctx.lineTo(Math.cos(a2) * outerRadius, Math.sin(a2) * outerRadius);
-      ctx.lineTo(Math.cos(a3) * outerRadius, Math.sin(a3) * outerRadius);
-      ctx.lineTo(Math.cos(a4) * innerRadius, Math.sin(a4) * innerRadius);
+      detectedSignal = sig;
+      detectionTime = Date.now();
     }
-    ctx.closePath();
     
-    // Fill with gradient
-    const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius);
-    const baseLightness = 15 + this.highlight * 20;
-    grad.addColorStop(0, `hsl(${this.hue}, 70%, ${baseLightness + 10}%)`);
-    grad.addColorStop(1, `hsl(${this.hue}, 60%, ${baseLightness}%)`);
-    ctx.fillStyle = grad;
-    ctx.fill();
-    
-    // Edge glow
-    ctx.strokeStyle = `hsla(${this.hue + 40}, 100%, 60%, ${0.4 + this.highlight * 0.4})`;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    
-    // Inner circle (axle hole)
+    // Faint marker
+    ctx.fillStyle = 'rgba(255, 100, 200, 0.1)';
     ctx.beginPath();
-    ctx.arc(0, 0, this.radius * 0.15, 0, Math.PI * 2);
-    ctx.fillStyle = '#0a0a0f';
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = `hsla(180, 100%, 50%, 0.6)`;
+  });
+  
+  // Fade signal audio
+  if (audioCtx && signalGain) {
+    const timeSinceDetection = Date.now() - detectionTime;
+    if (timeSinceDetection > 100) {
+      signalGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+    }
+  }
+}
+
+function drawTransmissions(dishRadius) {
+  transmissions = transmissions.filter(t => {
+    const age = (Date.now() - t.birth) / 1000;
+    t.radius = age * 150;
+    t.alpha = Math.max(0, 1 - age / 3);
+    
+    if (t.alpha <= 0) return false;
+    
+    // Ripple effect
+    ctx.strokeStyle = `rgba(0, 255, 255, ${t.alpha * 0.5})`;
     ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, t.radius, 0, Math.PI * 2);
     ctx.stroke();
     
-    // Spokes
-    const spokeCount = Math.min(6, Math.max(3, Math.floor(this.teeth / 6)));
-    ctx.strokeStyle = `hsla(${this.hue}, 50%, 25%, 0.8)`;
-    ctx.lineWidth = this.radius * 0.08;
-    for (let i = 0; i < spokeCount; i++) {
-      const a = (i / spokeCount) * Math.PI * 2;
+    // Inner ripple
+    if (t.radius > 30) {
+      ctx.strokeStyle = `rgba(255, 100, 200, ${t.alpha * 0.3})`;
       ctx.beginPath();
-      ctx.moveTo(Math.cos(a) * this.radius * 0.25, Math.sin(a) * this.radius * 0.25);
-      ctx.lineTo(Math.cos(a) * innerRadius * 0.85, Math.sin(a) * innerRadius * 0.85);
+      ctx.arc(t.x, t.y, t.radius - 20, 0, Math.PI * 2);
       ctx.stroke();
     }
     
-    // Decorative inner ring
-    ctx.beginPath();
-    ctx.arc(0, 0, this.radius * 0.5, 0, Math.PI * 2);
-    ctx.strokeStyle = `hsla(180, 80%, 40%, 0.3)`;
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    
-    ctx.restore();
-  }
+    return true;
+  });
 }
 
-// Create gear train
-const gears = [];
-
-function createGearTrain() {
-  gears.length = 0;
+function drawStatus() {
+  ctx.font = '12px monospace';
+  ctx.fillStyle = 'rgba(0, 255, 255, 0.6)';
   
-  // Main drive gear in center
-  const mainGear = new Gear(W * 0.5, H * 0.5, 80, 24, 0.3);
-  gears.push(mainGear);
+  const azimuth = ((sweepAngle * 180 / Math.PI) % 360).toFixed(1);
+  ctx.fillText(`AZ: ${azimuth}°`, 20, 30);
+  ctx.fillText(`SCANNING...`, 20, 50);
   
-  // Add connected gears
-  addConnectedGear(mainGear, Math.PI * 0.25, 50, 15);
-  addConnectedGear(mainGear, Math.PI * 0.75, 60, 18);
-  addConnectedGear(mainGear, Math.PI * 1.25, 45, 14);
-  addConnectedGear(mainGear, Math.PI * 1.7, 70, 21);
+  if (detectedSignal && Date.now() - detectionTime < 2000) {
+    ctx.fillStyle = 'rgba(255, 100, 200, 0.8)';
+    ctx.fillText(`SIGNAL DETECTED: ${detectedSignal.freq.toFixed(0)} Hz`, 20, 70);
+  }
   
-  // Second layer
-  if (gears[1]) addConnectedGear(gears[1], -Math.PI * 0.3, 35, 11);
-  if (gears[2]) addConnectedGear(gears[2], Math.PI * 0.2, 55, 17);
-  if (gears[3]) addConnectedGear(gears[3], Math.PI * 1.5, 40, 12);
-  if (gears[4]) addConnectedGear(gears[4], Math.PI * 0.9, 50, 15);
+  // Click hint
+  if (!audioStarted) {
+    ctx.fillStyle = 'rgba(0, 255, 255, 0.4)';
+    ctx.fillText('[ click to transmit ]', 20, H - 20);
+  }
   
-  // Third layer
-  if (gears[5]) addConnectedGear(gears[5], -Math.PI * 0.5, 30, 9);
-  if (gears[6]) addConnectedGear(gears[6], Math.PI * 0.4, 45, 14);
-  if (gears[7]) addConnectedGear(gears[7], Math.PI * 1.2, 35, 11);
+  // Coordinates display
+  ctx.fillStyle = 'rgba(0, 255, 255, 0.3)';
+  const dateStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  ctx.fillText(dateStr + ' UTC', W - 170, 30);
 }
 
-function addConnectedGear(parent, angleFromParent, radius, teeth) {
-  // Calculate position - gears mesh at their pitch circles
-  const distance = parent.radius + radius + 2; // small gap for visual clarity
-  const x = parent.x + Math.cos(angleFromParent) * distance;
-  const y = parent.y + Math.sin(angleFromParent) * distance;
+function drawWaveform() {
+  const waveY = H - 60;
+  const waveW = 200;
+  const waveH = 30;
+  const waveX = W - waveW - 20;
   
-  // Check bounds
-  if (x < radius || x > W - radius || y < radius || y > H - radius) return null;
+  // Border
+  ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+  ctx.strokeRect(waveX, waveY, waveW, waveH);
   
-  // Check overlap with existing gears
-  for (const gear of gears) {
-    const dx = gear.x - x;
-    const dy = gear.y - y;
-    const minDist = gear.radius + radius - 5;
-    if (Math.sqrt(dx * dx + dy * dy) < minDist) return null;
+  // Waveform (simulated)
+  ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)';
+  ctx.beginPath();
+  const time = Date.now() * 0.01;
+  for (let i = 0; i < waveW; i++) {
+    const noise = Math.sin(time + i * 0.3) * Math.sin(time * 0.7 + i * 0.1) * 0.5;
+    const signal = detectedSignal && Date.now() - detectionTime < 500 
+      ? Math.sin(time * 2 + i * 0.5) * 0.8 
+      : 0;
+    const y = waveY + waveH / 2 + (noise + signal) * waveH * 0.4;
+    if (i === 0) ctx.moveTo(waveX + i, y);
+    else ctx.lineTo(waveX + i, y);
   }
-  
-  const gear = new Gear(x, y, radius, teeth, 0, 0, parent);
-  parent.driven.push(gear);
-  gears.push(gear);
-  return gear;
+  ctx.stroke();
 }
 
-createGearTrain();
-
-// Mouse interaction
-let mouseX = W / 2, mouseY = H / 2;
-let mouseDown = false;
-
-canvas.addEventListener('mousemove', (e) => {
-  mouseX = e.clientX;
-  mouseY = e.clientY;
-});
-
-canvas.addEventListener('mousedown', (e) => {
-  mouseDown = true;
-  audioCtx.resume();
-  
-  // Try to add a gear near click position
-  let closest = null;
-  let closestDist = Infinity;
-  
-  for (const gear of gears) {
-    const dx = gear.x - e.clientX;
-    const dy = gear.y - e.clientY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < closestDist) {
-      closestDist = dist;
-      closest = gear;
-    }
-  }
-  
-  if (closest && closestDist < 300) {
-    // Add gear extending from closest gear toward click
-    const angle = Math.atan2(e.clientY - closest.y, e.clientX - closest.x);
-    const newRadius = 25 + Math.random() * 40;
-    const newTeeth = Math.floor(8 + Math.random() * 12);
-    const newGear = addConnectedGear(closest, angle, newRadius, newTeeth);
-    if (newGear) {
-      newGear.highlight = 1;
-      tick(600, 0.08);
-    }
-  }
-});
-
-canvas.addEventListener('mouseup', () => mouseDown = false);
-
-// Main animation
-let lastTime = performance.now();
-
-function animate(time) {
-  const dt = Math.min((time - lastTime) / 1000, 0.1);
-  lastTime = time;
-  
-  // Clear with trail
-  ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
+function draw() {
+  // Fade trail
+  ctx.fillStyle = 'rgba(10, 10, 12, 0.15)';
   ctx.fillRect(0, 0, W, H);
   
-  // Mouse influence on main gear speed
-  const mainGear = gears[0];
-  if (mainGear) {
-    const dx = mouseX - mainGear.x;
-    const dy = mouseY - mainGear.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const targetSpeed = 0.2 + (1 - Math.min(dist / 400, 1)) * 0.8;
-    mainGear.speed += (targetSpeed - mainGear.speed) * 0.02;
-    
-    if (mouseDown) {
-      mainGear.speed = 1.5;
-    }
-  }
+  const dishRadius = drawDish();
+  drawStatic(dishRadius);
+  drawSignals(dishRadius);
+  drawTransmissions(dishRadius);
+  drawStatus();
+  drawWaveform();
   
-  // Update all gears
-  for (const gear of gears) {
-    gear.update(dt);
-  }
+  // Update sweep
+  sweepAngle += sweepSpeed;
+  if (sweepAngle > Math.PI * 2) sweepAngle -= Math.PI * 2;
   
-  // Draw connection lines (axle supports)
-  ctx.strokeStyle = 'rgba(0, 255, 255, 0.1)';
-  ctx.lineWidth = 1;
-  for (const gear of gears) {
-    if (gear.driver) {
-      ctx.beginPath();
-      ctx.moveTo(gear.x, gear.y);
-      ctx.lineTo(gear.driver.x, gear.driver.y);
-      ctx.stroke();
-    }
-  }
-  
-  // Draw gears (back to front by size)
-  const sortedGears = [...gears].sort((a, b) => b.radius - a.radius);
-  for (const gear of sortedGears) {
-    gear.draw();
-  }
-  
-  // Ambient particles (metal shavings / sparks)
-  if (Math.random() < 0.1) {
-    const gear = gears[Math.floor(Math.random() * gears.length)];
-    if (gear) {
-      const angle = Math.random() * Math.PI * 2;
-      const px = gear.x + Math.cos(angle) * gear.radius;
-      const py = gear.y + Math.sin(angle) * gear.radius;
-      particles.push({
-        x: px, y: py,
-        vx: (Math.random() - 0.5) * 2,
-        vy: (Math.random() - 0.5) * 2 + 0.5,
-        life: 1,
-        hue: 40 + Math.random() * 20
-      });
-    }
-  }
-  
-  // Update and draw particles
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
-    p.x += p.vx;
-    p.y += p.vy;
-    p.vy += 0.05;
-    p.life -= 0.02;
-    
-    if (p.life <= 0) {
-      particles.splice(i, 1);
-      continue;
-    }
-    
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 2 * p.life, 0, Math.PI * 2);
-    ctx.fillStyle = `hsla(${p.hue}, 100%, 70%, ${p.life * 0.5})`;
-    ctx.fill();
-  }
-  
-  requestAnimationFrame(animate);
+  requestAnimationFrame(draw);
 }
 
-const particles = [];
-
-// Touch support
-canvas.addEventListener('touchstart', (e) => {
-  e.preventDefault();
-  audioCtx.resume();
-  const touch = e.touches[0];
-  mouseX = touch.clientX;
-  mouseY = touch.clientY;
-  mouseDown = true;
-  
-  canvas.dispatchEvent(new MouseEvent('mousedown', {
-    clientX: touch.clientX,
-    clientY: touch.clientY
-  }));
-});
-
-canvas.addEventListener('touchmove', (e) => {
-  e.preventDefault();
-  const touch = e.touches[0];
-  mouseX = touch.clientX;
-  mouseY = touch.clientY;
-});
-
-canvas.addEventListener('touchend', () => mouseDown = false);
-
-// Start
-animate(performance.now());
-
-// Rebuild on resize
-window.addEventListener('resize', () => {
-  setTimeout(createGearTrain, 100);
-});
+draw();
 </script>
 </body>
 </html>
