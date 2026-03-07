@@ -1,18 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>transmission</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-      background: #0a0a0c; 
-      overflow: hidden; 
-      cursor: crosshair;
-    }
-    canvas { display: block; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>weave</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { 
+  background: #0a0a0c; 
+  overflow: hidden; 
+  cursor: crosshair;
+}
+canvas { display: block; }
+</style>
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -20,360 +20,393 @@
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
-let W, H, centerX, centerY;
-let audioCtx, noiseNode, noiseGain, signalOsc, signalGain;
-let audioStarted = false;
+let W, H, cx, cy;
+let mouse = { x: 0, y: 0, active: false };
+let lastMouse = { x: 0, y: 0 };
+let mouseVel = { x: 0, y: 0 };
+
+const nodes = [];
+const strands = [];
+const dewdrops = [];
+
+let buildPhase = 0;
+let buildTimer = 0;
+let radialCount = 0;
+let spiralAngle = 0;
+let spiralRadius = 0;
+
+const config = {
+  radials: 24,
+  spiralGap: 18,
+  dampening: 0.96,
+  stiffness: 0.08,
+  mouseRadius: 120,
+  mouseForce: 0.4
+};
 
 function resize() {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
-  centerX = W / 2;
-  centerY = H / 2;
+  cx = W / 2;
+  cy = H / 2;
 }
-resize();
-window.addEventListener('resize', resize);
 
-// Audio setup
-function initAudio() {
-  if (audioStarted) return;
-  audioStarted = true;
-  
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  
-  // White noise generator
-  const bufferSize = 2 * audioCtx.sampleRate;
-  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const output = noiseBuffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    output[i] = Math.random() * 2 - 1;
+class Node {
+  constructor(x, y, anchored = false) {
+    this.x = x;
+    this.y = y;
+    this.ox = x;
+    this.oy = y;
+    this.vx = 0;
+    this.vy = 0;
+    this.anchored = anchored;
   }
   
-  noiseNode = audioCtx.createBufferSource();
-  noiseNode.buffer = noiseBuffer;
-  noiseNode.loop = true;
-  
-  // Bandpass filter for radio static texture
-  const filter = audioCtx.createBiquadFilter();
-  filter.type = 'bandpass';
-  filter.frequency.value = 2000;
-  filter.Q.value = 0.5;
-  
-  noiseGain = audioCtx.createGain();
-  noiseGain.gain.value = 0.03;
-  
-  noiseNode.connect(filter);
-  filter.connect(noiseGain);
-  noiseGain.connect(audioCtx.destination);
-  noiseNode.start();
-  
-  // Signal oscillator for detected transmissions
-  signalOsc = audioCtx.createOscillator();
-  signalOsc.type = 'sine';
-  signalOsc.frequency.value = 440;
-  
-  signalGain = audioCtx.createGain();
-  signalGain.gain.value = 0;
-  
-  signalOsc.connect(signalGain);
-  signalGain.connect(audioCtx.destination);
-  signalOsc.start();
-}
-
-// Click to init audio + transmit
-canvas.addEventListener('click', (e) => {
-  initAudio();
-  transmit(e.clientX, e.clientY);
-});
-
-// State
-let sweepAngle = 0;
-let sweepSpeed = 0.008;
-let signals = [];
-let transmissions = [];
-let staticField = [];
-let detectedSignal = null;
-let detectionTime = 0;
-
-// Initialize static field
-for (let i = 0; i < 200; i++) {
-  staticField.push({
-    x: Math.random() * 2 - 1,
-    y: Math.random() * 2 - 1,
-    intensity: Math.random(),
-    flicker: Math.random() * Math.PI * 2
-  });
-}
-
-// Mysterious signals out there
-for (let i = 0; i < 5; i++) {
-  const angle = Math.random() * Math.PI * 2;
-  const dist = 0.5 + Math.random() * 0.4;
-  signals.push({
-    angle: angle,
-    dist: dist,
-    freq: 200 + Math.random() * 800,
-    pattern: Math.floor(Math.random() * 4),
-    strength: 0.3 + Math.random() * 0.7
-  });
-}
-
-function transmit(x, y) {
-  transmissions.push({
-    x: x,
-    y: y,
-    radius: 0,
-    alpha: 1,
-    birth: Date.now()
-  });
-  
-  // Transmission beep
-  if (audioCtx && signalGain) {
-    const now = audioCtx.currentTime;
-    signalOsc.frequency.setValueAtTime(1200, now);
-    signalGain.gain.setValueAtTime(0.15, now);
-    signalGain.gain.exponentialDecayTo = 0.001;
-    signalGain.gain.setTargetAtTime(0.001, now + 0.1, 0.1);
-  }
-}
-
-function drawDish() {
-  const dishRadius = Math.min(W, H) * 0.35;
-  
-  // Outer ring
-  ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, dishRadius, 0, Math.PI * 2);
-  ctx.stroke();
-  
-  // Inner rings
-  for (let i = 1; i <= 4; i++) {
-    ctx.strokeStyle = `rgba(0, 255, 255, ${0.1 + i * 0.02})`;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, dishRadius * (i / 5), 0, Math.PI * 2);
-    ctx.stroke();
-  }
-  
-  // Cross hairs
-  ctx.strokeStyle = 'rgba(0, 255, 255, 0.15)';
-  ctx.beginPath();
-  ctx.moveTo(centerX - dishRadius, centerY);
-  ctx.lineTo(centerX + dishRadius, centerY);
-  ctx.moveTo(centerX, centerY - dishRadius);
-  ctx.lineTo(centerX, centerY + dishRadius);
-  ctx.stroke();
-  
-  // Sweep line
-  const sweepX = centerX + Math.cos(sweepAngle) * dishRadius;
-  const sweepY = centerY + Math.sin(sweepAngle) * dishRadius;
-  
-  // Sweep glow
-  const gradient = ctx.createLinearGradient(centerX, centerY, sweepX, sweepY);
-  gradient.addColorStop(0, 'rgba(0, 255, 255, 0)');
-  gradient.addColorStop(0.5, 'rgba(0, 255, 255, 0.4)');
-  gradient.addColorStop(1, 'rgba(0, 255, 255, 0.8)');
-  
-  ctx.strokeStyle = gradient;
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(centerX, centerY);
-  ctx.lineTo(sweepX, sweepY);
-  ctx.stroke();
-  
-  // Sweep trail
-  ctx.fillStyle = 'rgba(0, 255, 255, 0.05)';
-  ctx.beginPath();
-  ctx.moveTo(centerX, centerY);
-  ctx.arc(centerX, centerY, dishRadius, sweepAngle - 0.5, sweepAngle);
-  ctx.closePath();
-  ctx.fill();
-  
-  return dishRadius;
-}
-
-function drawStatic(dishRadius) {
-  const time = Date.now() * 0.001;
-  
-  staticField.forEach(s => {
-    s.flicker += 0.1 + Math.random() * 0.1;
-    const flicker = Math.sin(s.flicker) * 0.5 + 0.5;
+  update() {
+    if (this.anchored) return;
     
-    if (flicker * s.intensity > 0.6) {
-      const x = centerX + s.x * dishRadius;
-      const y = centerY + s.y * dishRadius;
-      const dist = Math.sqrt(s.x * s.x + s.y * s.y);
-      
-      if (dist < 1) {
-        const alpha = (1 - dist) * flicker * s.intensity * 0.5;
-        ctx.fillStyle = `rgba(100, 200, 255, ${alpha})`;
-        ctx.fillRect(x, y, 2, 2);
+    // Return force to original position
+    const dx = this.ox - this.x;
+    const dy = this.oy - this.y;
+    this.vx += dx * config.stiffness;
+    this.vy += dy * config.stiffness;
+    
+    // Mouse disturbance
+    if (mouse.active) {
+      const mx = this.x - mouse.x;
+      const my = this.y - mouse.y;
+      const dist = Math.sqrt(mx * mx + my * my);
+      if (dist < config.mouseRadius && dist > 0) {
+        const force = (1 - dist / config.mouseRadius) * config.mouseForce;
+        this.vx += mouseVel.x * force * 0.5;
+        this.vy += mouseVel.y * force * 0.5;
+        this.vx += mx / dist * force * 2;
+        this.vy += my / dist * force * 2;
       }
     }
     
-    // Drift
-    s.x += (Math.random() - 0.5) * 0.002;
-    s.y += (Math.random() - 0.5) * 0.002;
-    
-    // Wrap
-    if (Math.abs(s.x) > 1.2) s.x *= -0.9;
-    if (Math.abs(s.y) > 1.2) s.y *= -0.9;
-  });
-}
-
-function drawSignals(dishRadius) {
-  const time = Date.now() * 0.001;
-  
-  signals.forEach(sig => {
-    const x = centerX + Math.cos(sig.angle) * sig.dist * dishRadius;
-    const y = centerY + Math.sin(sig.angle) * sig.dist * dishRadius;
-    
-    // Is sweep pointing at this signal?
-    let angleDiff = Math.abs(sweepAngle - sig.angle);
-    if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
-    
-    if (angleDiff < 0.15) {
-      // Signal detected!
-      const intensity = (1 - angleDiff / 0.15) * sig.strength;
-      
-      // Visual burst
-      ctx.beginPath();
-      ctx.arc(x, y, 5 + intensity * 15, 0, Math.PI * 2);
-      const grd = ctx.createRadialGradient(x, y, 0, x, y, 5 + intensity * 15);
-      grd.addColorStop(0, `rgba(255, 100, 200, ${intensity})`);
-      grd.addColorStop(0.5, `rgba(255, 50, 150, ${intensity * 0.5})`);
-      grd.addColorStop(1, 'rgba(255, 50, 150, 0)');
-      ctx.fillStyle = grd;
-      ctx.fill();
-      
-      // Signal blip at center
-      ctx.fillStyle = `rgba(255, 100, 200, ${intensity})`;
-      ctx.fillRect(centerX - 50, centerY + dishRadius + 30, intensity * 100, 3);
-      
-      // Audio response
-      if (audioCtx && signalGain && intensity > 0.3) {
-        signalOsc.frequency.setValueAtTime(sig.freq, audioCtx.currentTime);
-        signalGain.gain.setValueAtTime(intensity * 0.08, audioCtx.currentTime);
-      }
-      
-      detectedSignal = sig;
-      detectionTime = Date.now();
-    }
-    
-    // Faint marker
-    ctx.fillStyle = 'rgba(255, 100, 200, 0.1)';
-    ctx.beginPath();
-    ctx.arc(x, y, 3, 0, Math.PI * 2);
-    ctx.fill();
-  });
-  
-  // Fade signal audio
-  if (audioCtx && signalGain) {
-    const timeSinceDetection = Date.now() - detectionTime;
-    if (timeSinceDetection > 100) {
-      signalGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
-    }
+    this.vx *= config.dampening;
+    this.vy *= config.dampening;
+    this.x += this.vx;
+    this.y += this.vy;
   }
 }
 
-function drawTransmissions(dishRadius) {
-  transmissions = transmissions.filter(t => {
-    const age = (Date.now() - t.birth) / 1000;
-    t.radius = age * 150;
-    t.alpha = Math.max(0, 1 - age / 3);
+class Strand {
+  constructor(n1, n2, sticky = false) {
+    this.n1 = n1;
+    this.n2 = n2;
+    this.sticky = sticky;
+    this.age = 0;
+    this.maxAge = 60;
+  }
+  
+  update() {
+    if (this.age < this.maxAge) this.age++;
+  }
+  
+  draw() {
+    const alpha = Math.min(1, this.age / this.maxAge);
+    const dx = this.n2.x - this.n1.x;
+    const dy = this.n2.y - this.n1.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const tension = Math.min(1, dist / 200);
     
-    if (t.alpha <= 0) return false;
-    
-    // Ripple effect
-    ctx.strokeStyle = `rgba(0, 255, 255, ${t.alpha * 0.5})`;
-    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(t.x, t.y, t.radius, 0, Math.PI * 2);
+    ctx.moveTo(this.n1.x, this.n1.y);
+    
+    // Slight curve for organic feel
+    const midX = (this.n1.x + this.n2.x) / 2;
+    const midY = (this.n1.y + this.n2.y) / 2 + Math.sin(Date.now() * 0.002 + this.n1.x) * 2;
+    ctx.quadraticCurveTo(midX, midY, this.n2.x, this.n2.y);
+    
+    if (this.sticky) {
+      // Spiral strands - stickier, more visible
+      ctx.strokeStyle = `rgba(255, 100, 200, ${alpha * 0.7 * (1 - tension * 0.3)})`;
+      ctx.lineWidth = 1.5 - tension * 0.5;
+    } else {
+      // Radial strands - structural
+      ctx.strokeStyle = `rgba(100, 220, 255, ${alpha * 0.6 * (1 - tension * 0.3)})`;
+      ctx.lineWidth = 1 - tension * 0.3;
+    }
     ctx.stroke();
     
-    // Inner ripple
-    if (t.radius > 30) {
-      ctx.strokeStyle = `rgba(255, 100, 200, ${t.alpha * 0.3})`;
-      ctx.beginPath();
-      ctx.arc(t.x, t.y, t.radius - 20, 0, Math.PI * 2);
+    // Glow effect
+    if (tension > 0.3) {
+      ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * tension * 0.3})`;
+      ctx.lineWidth = 0.5;
       ctx.stroke();
     }
+  }
+}
+
+class Dewdrop {
+  constructor(strand) {
+    this.strand = strand;
+    this.t = Math.random();
+    this.size = 2 + Math.random() * 3;
+    this.shimmer = Math.random() * Math.PI * 2;
+  }
+  
+  update() {
+    this.shimmer += 0.05;
+    // Gravity effect - drop slides down slightly
+    const dy = this.strand.n2.y - this.strand.n1.y;
+    if (dy > 0) {
+      this.t = Math.min(0.95, this.t + 0.0003);
+    }
+  }
+  
+  draw() {
+    const x = this.strand.n1.x + (this.strand.n2.x - this.strand.n1.x) * this.t;
+    const y = this.strand.n1.y + (this.strand.n2.y - this.strand.n1.y) * this.t;
     
-    return true;
-  });
+    // Movement from strand tension
+    const offsetY = (this.strand.n1.vy + this.strand.n2.vy) * 0.5 * 2;
+    
+    const shimmerSize = this.size + Math.sin(this.shimmer) * 0.5;
+    
+    // Gradient for refraction effect
+    const grad = ctx.createRadialGradient(
+      x - shimmerSize * 0.3, y - shimmerSize * 0.3 + offsetY, 0,
+      x, y + offsetY, shimmerSize
+    );
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+    grad.addColorStop(0.3, 'rgba(150, 230, 255, 0.6)');
+    grad.addColorStop(0.7, 'rgba(200, 100, 220, 0.4)');
+    grad.addColorStop(1, 'rgba(100, 200, 255, 0.1)');
+    
+    ctx.beginPath();
+    ctx.arc(x, y + offsetY, shimmerSize, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+  }
 }
 
-function drawStatus() {
-  ctx.font = '12px monospace';
-  ctx.fillStyle = 'rgba(0, 255, 255, 0.6)';
+function createAnchorNodes() {
+  // Create anchor points around the edge
+  const margin = 50;
+  const anchors = [];
   
-  const azimuth = ((sweepAngle * 180 / Math.PI) % 360).toFixed(1);
-  ctx.fillText(`AZ: ${azimuth}°`, 20, 30);
-  ctx.fillText(`SCANNING...`, 20, 50);
-  
-  if (detectedSignal && Date.now() - detectionTime < 2000) {
-    ctx.fillStyle = 'rgba(255, 100, 200, 0.8)';
-    ctx.fillText(`SIGNAL DETECTED: ${detectedSignal.freq.toFixed(0)} Hz`, 20, 70);
+  for (let i = 0; i < config.radials; i++) {
+    const angle = (i / config.radials) * Math.PI * 2 - Math.PI / 2;
+    const radius = Math.min(W, H) * 0.45;
+    const x = cx + Math.cos(angle) * radius;
+    const y = cy + Math.sin(angle) * radius;
+    const node = new Node(x, y, true);
+    nodes.push(node);
+    anchors.push(node);
   }
   
-  // Click hint
-  if (!audioStarted) {
-    ctx.fillStyle = 'rgba(0, 255, 255, 0.4)';
-    ctx.fillText('[ click to transmit ]', 20, H - 20);
-  }
+  // Center node
+  const center = new Node(cx, cy, false);
+  nodes.push(center);
   
-  // Coordinates display
-  ctx.fillStyle = 'rgba(0, 255, 255, 0.3)';
-  const dateStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
-  ctx.fillText(dateStr + ' UTC', W - 170, 30);
+  return { anchors, center };
 }
 
-function drawWaveform() {
-  const waveY = H - 60;
-  const waveW = 200;
-  const waveH = 30;
-  const waveX = W - waveW - 20;
-  
-  // Border
-  ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
-  ctx.strokeRect(waveX, waveY, waveW, waveH);
-  
-  // Waveform (simulated)
-  ctx.strokeStyle = 'rgba(0, 255, 255, 0.6)';
-  ctx.beginPath();
-  const time = Date.now() * 0.01;
-  for (let i = 0; i < waveW; i++) {
-    const noise = Math.sin(time + i * 0.3) * Math.sin(time * 0.7 + i * 0.1) * 0.5;
-    const signal = detectedSignal && Date.now() - detectionTime < 500 
-      ? Math.sin(time * 2 + i * 0.5) * 0.8 
-      : 0;
-    const y = waveY + waveH / 2 + (noise + signal) * waveH * 0.4;
-    if (i === 0) ctx.moveTo(waveX + i, y);
-    else ctx.lineTo(waveX + i, y);
+function buildRadial(anchors, center) {
+  if (radialCount >= config.radials) {
+    buildPhase = 1;
+    spiralRadius = 30;
+    return;
   }
-  ctx.stroke();
+  
+  const anchor = anchors[radialCount];
+  
+  // Create nodes along radial
+  const steps = 12;
+  let prevNode = center;
+  
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const x = cx + (anchor.x - cx) * t;
+    const y = cy + (anchor.y - cy) * t;
+    const node = new Node(x, y, i === steps);
+    nodes.push(node);
+    strands.push(new Strand(prevNode, node, false));
+    prevNode = node;
+  }
+  
+  radialCount++;
+}
+
+function buildSpiral() {
+  const maxRadius = Math.min(W, H) * 0.42;
+  
+  if (spiralRadius > maxRadius) {
+    buildPhase = 2;
+    return;
+  }
+  
+  // Find nodes at current radius on each radial
+  const ringNodes = [];
+  
+  for (let i = 0; i < config.radials; i++) {
+    const angle = (i / config.radials) * Math.PI * 2 - Math.PI / 2 + spiralAngle * 0.02;
+    const x = cx + Math.cos(angle) * spiralRadius;
+    const y = cy + Math.sin(angle) * spiralRadius;
+    
+    // Find or create node near this position
+    let closest = null;
+    let closestDist = Infinity;
+    
+    for (const node of nodes) {
+      if (node.anchored) continue;
+      const dx = node.x - x;
+      const dy = node.y - y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < closestDist && dist < 30) {
+        closestDist = dist;
+        closest = node;
+      }
+    }
+    
+    if (!closest) {
+      closest = new Node(x, y, false);
+      nodes.push(closest);
+    }
+    
+    ringNodes.push(closest);
+  }
+  
+  // Connect ring nodes
+  for (let i = 0; i < ringNodes.length; i++) {
+    const n1 = ringNodes[i];
+    const n2 = ringNodes[(i + 1) % ringNodes.length];
+    
+    // Check if strand already exists
+    const exists = strands.some(s => 
+      (s.n1 === n1 && s.n2 === n2) || (s.n1 === n2 && s.n2 === n1)
+    );
+    
+    if (!exists) {
+      const strand = new Strand(n1, n2, true);
+      strands.push(strand);
+      
+      // Add dewdrops to some sticky strands
+      if (Math.random() < 0.3) {
+        dewdrops.push(new Dewdrop(strand));
+      }
+    }
+  }
+  
+  spiralRadius += config.spiralGap * (0.8 + Math.random() * 0.4);
+  spiralAngle += 0.3;
+}
+
+function init() {
+  resize();
+  const { anchors, center } = createAnchorNodes();
+  
+  // Store for building
+  window.webAnchors = anchors;
+  window.webCenter = center;
+}
+
+function update() {
+  buildTimer++;
+  
+  // Build the web over time
+  if (buildPhase === 0 && buildTimer % 8 === 0) {
+    buildRadial(window.webAnchors, window.webCenter);
+  } else if (buildPhase === 1 && buildTimer % 6 === 0) {
+    buildSpiral();
+  }
+  
+  // Update all nodes
+  for (const node of nodes) {
+    node.update();
+  }
+  
+  // Update strands
+  for (const strand of strands) {
+    strand.update();
+  }
+  
+  // Update dewdrops
+  for (const drop of dewdrops) {
+    drop.update();
+  }
+  
+  // Track mouse velocity
+  mouseVel.x = mouse.x - lastMouse.x;
+  mouseVel.y = mouse.y - lastMouse.y;
+  lastMouse.x = mouse.x;
+  lastMouse.y = mouse.y;
 }
 
 function draw() {
-  // Fade trail
   ctx.fillStyle = 'rgba(10, 10, 12, 0.15)';
   ctx.fillRect(0, 0, W, H);
   
-  const dishRadius = drawDish();
-  drawStatic(dishRadius);
-  drawSignals(dishRadius);
-  drawTransmissions(dishRadius);
-  drawStatus();
-  drawWaveform();
+  // Draw strands
+  for (const strand of strands) {
+    strand.draw();
+  }
   
-  // Update sweep
-  sweepAngle += sweepSpeed;
-  if (sweepAngle > Math.PI * 2) sweepAngle -= Math.PI * 2;
+  // Draw dewdrops on top
+  for (const drop of dewdrops) {
+    drop.draw();
+  }
   
-  requestAnimationFrame(draw);
+  // Subtle center glow
+  const centerGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 100);
+  centerGrad.addColorStop(0, 'rgba(180, 100, 200, 0.1)');
+  centerGrad.addColorStop(1, 'rgba(180, 100, 200, 0)');
+  ctx.fillStyle = centerGrad;
+  ctx.fillRect(cx - 100, cy - 100, 200, 200);
 }
 
-draw();
+function animate() {
+  update();
+  draw();
+  requestAnimationFrame(animate);
+}
+
+// Event listeners
+window.addEventListener('resize', resize);
+
+canvas.addEventListener('mousemove', (e) => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+  mouse.active = true;
+});
+
+canvas.addEventListener('mouseleave', () => {
+  mouse.active = false;
+});
+
+canvas.addEventListener('click', (e) => {
+  // Click adds a strong disturbance - like a fly hitting the web
+  const clickForce = 15;
+  for (const node of nodes) {
+    if (node.anchored) continue;
+    const dx = node.x - e.clientX;
+    const dy = node.y - e.clientY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 200 && dist > 0) {
+      const force = (1 - dist / 200) * clickForce;
+      node.vx += dx / dist * force;
+      node.vy += dy / dist * force;
+    }
+  }
+});
+
+// Touch support
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  mouse.x = e.touches[0].clientX;
+  mouse.y = e.touches[0].clientY;
+  mouse.active = true;
+});
+
+canvas.addEventListener('touchend', () => {
+  mouse.active = false;
+});
+
+init();
+animate();
 </script>
 </body>
 </html>
