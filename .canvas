@@ -1,517 +1,281 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>supernova</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; overflow: hidden; cursor: crosshair; }
-    canvas { display: block; }
-    #hint {
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      color: rgba(255,100,180,0.4);
-      font-family: monospace;
-      font-size: 12px;
-      pointer-events: none;
-      transition: opacity 2s;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>turing</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { 
+  background: #0a0a0f; 
+  overflow: hidden; 
+  width: 100vw; 
+  height: 100vh;
+}
+canvas { 
+  display: block; 
+  width: 100vw; 
+  height: 100vh;
+  image-rendering: pixelated;
+}
+</style>
 </head>
 <body>
-  <canvas id="c"></canvas>
-  <div id="hint">click to collapse</div>
-  <script>
-const canvas = document.getElementById('c');
+<canvas id="canvas"></canvas>
+<script>
+const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-let W, H, cx, cy;
+
+// Lower resolution for performance (reaction-diffusion is compute-heavy)
+const scale = 4;
+let width, height;
+let gridA, gridB, nextA, nextB;
+
+// Gray-Scott model parameters
+const dA = 1.0;      // Diffusion rate A
+const dB = 0.5;      // Diffusion rate B
+const feed = 0.055;  // Feed rate
+const kill = 0.062;  // Kill rate
+
+let mouseX = -1000, mouseY = -1000;
+let mouseDown = false;
 
 function resize() {
-  W = canvas.width = window.innerWidth;
-  H = canvas.height = window.innerHeight;
-  cx = W / 2;
-  cy = H / 2;
-}
-resize();
-window.addEventListener('resize', resize);
-
-// Audio context
-let audioCtx = null;
-function initAudio() {
-  if (audioCtx) return;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  canvas.width = Math.floor(window.innerWidth / scale);
+  canvas.height = Math.floor(window.innerHeight / scale);
+  width = canvas.width;
+  height = canvas.height;
+  initGrid();
 }
 
-function playRumble(duration, intensity) {
-  if (!audioCtx) return;
-  const bufferSize = audioCtx.sampleRate * duration;
-  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    const t = i / bufferSize;
-    const env = Math.sin(t * Math.PI) * intensity;
-    data[i] = (Math.random() * 2 - 1) * env * 0.3;
-  }
-  const source = audioCtx.createBufferSource();
-  source.buffer = buffer;
-  const filter = audioCtx.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.frequency.value = 150;
-  const gain = audioCtx.createGain();
-  gain.gain.value = 0.5;
-  source.connect(filter);
-  filter.connect(gain);
-  gain.connect(audioCtx.destination);
-  source.start();
+function initGrid() {
+  gridA = new Float32Array(width * height);
+  gridB = new Float32Array(width * height);
+  nextA = new Float32Array(width * height);
+  nextB = new Float32Array(width * height);
+  
+  // Fill with chemical A
+  gridA.fill(1);
+  gridB.fill(0);
+  
+  // Seed some initial B spots
+  seedPattern();
 }
 
-function playBoom() {
-  if (!audioCtx) return;
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(80, audioCtx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(20, audioCtx.currentTime + 1.5);
-  gain.gain.setValueAtTime(0.6, audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2);
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  osc.start();
-  osc.stop(audioCtx.currentTime + 2);
-  
-  // noise burst
-  const bufferSize = audioCtx.sampleRate * 0.5;
-  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    const t = i / bufferSize;
-    data[i] = (Math.random() * 2 - 1) * Math.exp(-t * 8) * 0.4;
-  }
-  const noise = audioCtx.createBufferSource();
-  noise.buffer = buffer;
-  const noiseGain = audioCtx.createGain();
-  noiseGain.gain.value = 0.7;
-  noise.connect(noiseGain);
-  noiseGain.connect(audioCtx.destination);
-  noise.start();
-}
-
-// Star state
-const STATES = { STABLE: 0, UNSTABLE: 1, COLLAPSE: 2, EXPLODE: 3, DEBRIS: 4, REFORM: 5 };
-let state = STATES.STABLE;
-let stateTime = 0;
-let starRadius = 60;
-let pulsePhase = 0;
-let instability = 0;
-let mouseX = cx, mouseY = cy;
-
-// Debris particles
-let debris = [];
-let shockwave = { radius: 0, active: false, alpha: 0 };
-let protoStars = [];
-
-class Debris {
-  constructor(x, y, vx, vy, size, hue) {
-    this.x = x;
-    this.y = y;
-    this.vx = vx;
-    this.vy = vy;
-    this.size = size;
-    this.hue = hue;
-    this.life = 1;
-    this.decay = 0.002 + Math.random() * 0.003;
-    this.rotation = Math.random() * Math.PI * 2;
-    this.rotSpeed = (Math.random() - 0.5) * 0.1;
-  }
-  
-  update() {
-    this.x += this.vx;
-    this.y += this.vy;
-    this.vx *= 0.995;
-    this.vy *= 0.995;
-    this.rotation += this.rotSpeed;
-    this.life -= this.decay;
-  }
-  
-  draw() {
-    ctx.save();
-    ctx.translate(this.x, this.y);
-    ctx.rotate(this.rotation);
-    ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, ${this.life * 0.8})`;
-    ctx.shadowColor = `hsla(${this.hue}, 100%, 60%, ${this.life})`;
-    ctx.shadowBlur = this.size * 2;
-    ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
-    ctx.restore();
-  }
-}
-
-class ProtoStar {
-  constructor(x, y) {
-    this.x = x;
-    this.y = y;
-    this.radius = 0;
-    this.targetRadius = 5 + Math.random() * 15;
-    this.hue = 280 + Math.random() * 60; // purple to pink
-    this.pulse = Math.random() * Math.PI * 2;
-    this.life = 1;
-  }
-  
-  update() {
-    this.radius += (this.targetRadius - this.radius) * 0.02;
-    this.pulse += 0.05;
-  }
-  
-  draw() {
-    const r = this.radius + Math.sin(this.pulse) * this.radius * 0.1;
-    const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, r * 2);
-    gradient.addColorStop(0, `hsla(${this.hue}, 100%, 90%, 0.9)`);
-    gradient.addColorStop(0.3, `hsla(${this.hue}, 100%, 70%, 0.6)`);
-    gradient.addColorStop(0.7, `hsla(${this.hue + 30}, 100%, 50%, 0.2)`);
-    gradient.addColorStop(1, 'transparent');
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, r * 2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
-// Background stars
-const bgStars = [];
-for (let i = 0; i < 200; i++) {
-  bgStars.push({
-    x: Math.random() * 2000 - 500,
-    y: Math.random() * 2000 - 500,
-    size: Math.random() * 1.5 + 0.5,
-    twinkle: Math.random() * Math.PI * 2
-  });
-}
-
-function drawBackground() {
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, W, H);
-  
-  // Stars
-  for (const star of bgStars) {
-    star.twinkle += 0.02;
-    const alpha = 0.3 + Math.sin(star.twinkle) * 0.2;
-    ctx.fillStyle = `rgba(200, 180, 255, ${alpha})`;
-    ctx.beginPath();
-    ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
-function drawStar() {
-  const pulseAmount = state === STATES.UNSTABLE ? instability * 20 : 5;
-  const currentRadius = starRadius + Math.sin(pulsePhase) * pulseAmount;
-  
-  // Core glow layers
-  const layers = [
-    { radius: currentRadius * 3, color: 'rgba(255, 50, 150, 0.05)' },
-    { radius: currentRadius * 2, color: 'rgba(255, 100, 200, 0.1)' },
-    { radius: currentRadius * 1.5, color: 'rgba(255, 150, 220, 0.2)' },
-    { radius: currentRadius, color: 'rgba(255, 200, 240, 0.5)' },
-    { radius: currentRadius * 0.7, color: 'rgba(255, 255, 255, 0.8)' },
-  ];
-  
-  // Instability color shift
-  const hueShift = state === STATES.UNSTABLE ? Math.sin(pulsePhase * 3) * 30 : 0;
-  
-  for (const layer of layers) {
-    const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, layer.radius);
-    gradient.addColorStop(0, layer.color);
-    gradient.addColorStop(1, 'transparent');
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(cx, cy, layer.radius, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  
-  // Corona flares
-  if (state <= STATES.UNSTABLE) {
-    ctx.save();
-    ctx.translate(cx, cy);
-    const flareCount = 8;
-    for (let i = 0; i < flareCount; i++) {
-      const angle = (i / flareCount) * Math.PI * 2 + pulsePhase * 0.2;
-      const length = currentRadius * (1.5 + Math.sin(pulsePhase + i) * 0.5 * (1 + instability));
-      
-      ctx.save();
-      ctx.rotate(angle);
-      const gradient = ctx.createLinearGradient(0, 0, length, 0);
-      gradient.addColorStop(0, `hsla(${320 + hueShift}, 100%, 80%, 0.6)`);
-      gradient.addColorStop(1, 'transparent');
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.moveTo(currentRadius * 0.8, 0);
-      ctx.lineTo(length, -3 - instability * 5);
-      ctx.lineTo(length, 3 + instability * 5);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-    }
-    ctx.restore();
-  }
-}
-
-function drawCollapse() {
-  const progress = Math.min(stateTime / 60, 1);
-  const collapseRadius = starRadius * (1 - progress * 0.9);
-  
-  // Imploding glow
-  const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, collapseRadius * 2);
-  gradient.addColorStop(0, `rgba(255, 255, 255, ${0.9 + progress * 0.1})`);
-  gradient.addColorStop(0.5, `rgba(200, 100, 255, ${0.5 - progress * 0.3})`);
-  gradient.addColorStop(1, 'transparent');
-  ctx.fillStyle = gradient;
-  ctx.beginPath();
-  ctx.arc(cx, cy, collapseRadius * 2, 0, Math.PI * 2);
-  ctx.fill();
-  
-  // Inward streaks
-  for (let i = 0; i < 20; i++) {
-    const angle = (i / 20) * Math.PI * 2 + stateTime * 0.1;
-    const innerR = collapseRadius;
-    const outerR = starRadius * 2 * (1 - progress * 0.5);
+function seedPattern() {
+  // Create several random seed points
+  for (let i = 0; i < 12; i++) {
+    const cx = Math.floor(Math.random() * width);
+    const cy = Math.floor(Math.random() * height);
+    const r = 3 + Math.floor(Math.random() * 5);
     
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(angle);
-    ctx.strokeStyle = `rgba(0, 255, 255, ${0.3 * (1 - progress)})`;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(innerR, 0);
-    ctx.lineTo(outerR, 0);
-    ctx.stroke();
-    ctx.restore();
-  }
-  
-  if (progress >= 1) {
-    state = STATES.EXPLODE;
-    stateTime = 0;
-    triggerExplosion();
-  }
-}
-
-function triggerExplosion() {
-  playBoom();
-  shockwave = { radius: 0, active: true, alpha: 1 };
-  
-  // Create debris
-  const debrisCount = 150;
-  for (let i = 0; i < debrisCount; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = 3 + Math.random() * 8;
-    const hue = Math.random() < 0.5 ? 320 + Math.random() * 40 : 180 + Math.random() * 30;
-    debris.push(new Debris(
-      cx, cy,
-      Math.cos(angle) * speed,
-      Math.sin(angle) * speed,
-      3 + Math.random() * 8,
-      hue
-    ));
-  }
-}
-
-function drawExplosion() {
-  const progress = Math.min(stateTime / 30, 1);
-  
-  // Central flash
-  if (progress < 0.3) {
-    const flashAlpha = 1 - progress / 0.3;
-    const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, 200 * progress * 3);
-    gradient.addColorStop(0, `rgba(255, 255, 255, ${flashAlpha})`);
-    gradient.addColorStop(0.5, `rgba(255, 200, 255, ${flashAlpha * 0.5})`);
-    gradient.addColorStop(1, 'transparent');
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 200 * progress * 3, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  
-  if (progress >= 1) {
-    state = STATES.DEBRIS;
-    stateTime = 0;
-  }
-}
-
-function drawShockwave() {
-  if (!shockwave.active) return;
-  
-  shockwave.radius += 8;
-  shockwave.alpha *= 0.985;
-  
-  if (shockwave.alpha < 0.01) {
-    shockwave.active = false;
-    return;
-  }
-  
-  // Double ring
-  ctx.strokeStyle = `rgba(0, 255, 255, ${shockwave.alpha})`;
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(cx, cy, shockwave.radius, 0, Math.PI * 2);
-  ctx.stroke();
-  
-  ctx.strokeStyle = `rgba(255, 100, 200, ${shockwave.alpha * 0.7})`;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(cx, cy, shockwave.radius - 15, 0, Math.PI * 2);
-  ctx.stroke();
-  
-  // Spawn proto-stars at shockwave edge occasionally
-  if (state === STATES.DEBRIS && Math.random() < 0.03 && protoStars.length < 12) {
-    const angle = Math.random() * Math.PI * 2;
-    const dist = shockwave.radius + (Math.random() - 0.5) * 50;
-    protoStars.push(new ProtoStar(
-      cx + Math.cos(angle) * dist,
-      cy + Math.sin(angle) * dist
-    ));
-  }
-}
-
-function drawDebris() {
-  debris = debris.filter(d => d.life > 0);
-  for (const d of debris) {
-    d.update();
-    d.draw();
-  }
-  
-  // After debris fades, reform
-  if (stateTime > 300 && debris.length < 20) {
-    state = STATES.REFORM;
-    stateTime = 0;
-  }
-}
-
-function drawProtoStars() {
-  for (const ps of protoStars) {
-    ps.update();
-    ps.draw();
-  }
-}
-
-function drawReform() {
-  const progress = Math.min(stateTime / 180, 1);
-  
-  // New star forming at center
-  const newRadius = starRadius * progress * 0.7;
-  const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, newRadius * 2);
-  gradient.addColorStop(0, `rgba(200, 150, 255, ${progress * 0.8})`);
-  gradient.addColorStop(0.5, `rgba(150, 100, 200, ${progress * 0.4})`);
-  gradient.addColorStop(1, 'transparent');
-  ctx.fillStyle = gradient;
-  ctx.beginPath();
-  ctx.arc(cx, cy, newRadius * 2, 0, Math.PI * 2);
-  ctx.fill();
-  
-  if (progress >= 1) {
-    state = STATES.STABLE;
-    stateTime = 0;
-    instability = 0;
-    protoStars = [];
-    document.getElementById('hint').style.opacity = '1';
-  }
-}
-
-function update() {
-  stateTime++;
-  pulsePhase += 0.05;
-  
-  // Mouse proximity affects instability when stable
-  if (state === STATES.STABLE) {
-    const dx = mouseX - cx;
-    const dy = mouseY - cy;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const maxDist = Math.min(W, H) / 2;
-    const targetInstability = Math.max(0, 1 - dist / maxDist) * 0.5;
-    instability += (targetInstability - instability) * 0.02;
-    
-    if (instability > 0.3) {
-      state = STATES.UNSTABLE;
-      playRumble(2, instability);
-    }
-  }
-  
-  // Unstable star grows more chaotic
-  if (state === STATES.UNSTABLE) {
-    const dx = mouseX - cx;
-    const dy = mouseY - cy;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const maxDist = Math.min(W, H) / 2;
-    instability += (1 - dist / maxDist) * 0.01;
-    instability = Math.min(instability, 1.5);
-    
-    if (dist > maxDist * 0.8) {
-      instability -= 0.01;
-      if (instability < 0.1) {
-        state = STATES.STABLE;
-        instability = 0;
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx*dx + dy*dy <= r*r) {
+          const x = (cx + dx + width) % width;
+          const y = (cy + dy + height) % height;
+          const idx = y * width + x;
+          gridB[idx] = 1;
+        }
       }
     }
   }
 }
 
-function draw() {
-  drawBackground();
+function seedAt(x, y) {
+  const gx = Math.floor(x / scale);
+  const gy = Math.floor(y / scale);
+  const r = 4;
   
-  switch (state) {
-    case STATES.STABLE:
-    case STATES.UNSTABLE:
-      drawStar();
-      break;
-    case STATES.COLLAPSE:
-      drawCollapse();
-      break;
-    case STATES.EXPLODE:
-      drawExplosion();
-      drawShockwave();
-      drawDebris();
-      break;
-    case STATES.DEBRIS:
-      drawShockwave();
-      drawDebris();
-      drawProtoStars();
-      break;
-    case STATES.REFORM:
-      drawProtoStars();
-      drawReform();
-      break;
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (dx*dx + dy*dy <= r*r) {
+        const px = (gx + dx + width) % width;
+        const py = (gy + dy + height) % height;
+        const idx = py * width + px;
+        gridB[idx] = 1;
+      }
+    }
   }
 }
 
-function loop() {
-  update();
-  draw();
-  requestAnimationFrame(loop);
+function laplacian(grid, x, y) {
+  const idx = y * width + x;
+  const left = y * width + ((x - 1 + width) % width);
+  const right = y * width + ((x + 1) % width);
+  const up = ((y - 1 + height) % height) * width + x;
+  const down = ((y + 1) % height) * width + x;
+  
+  // 5-point stencil
+  return grid[left] + grid[right] + grid[up] + grid[down] - 4 * grid[idx];
 }
+
+function simulate() {
+  // Mouse influence on parameters
+  const mx = Math.floor(mouseX / scale);
+  const my = Math.floor(mouseY / scale);
+  
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      const a = gridA[idx];
+      const b = gridB[idx];
+      
+      const lapA = laplacian(gridA, x, y);
+      const lapB = laplacian(gridB, x, y);
+      
+      // Distance to mouse for local parameter variation
+      const dx = x - mx;
+      const dy = y - my;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      
+      // Mouse proximity slightly alters kill rate (creates pattern variation)
+      const killMod = dist < 30 ? kill + 0.003 * (1 - dist/30) : kill;
+      
+      const reaction = a * b * b;
+      
+      nextA[idx] = a + (dA * lapA - reaction + feed * (1 - a));
+      nextB[idx] = b + (dB * lapB + reaction - (killMod + feed) * b);
+      
+      // Clamp values
+      nextA[idx] = Math.max(0, Math.min(1, nextA[idx]));
+      nextB[idx] = Math.max(0, Math.min(1, nextB[idx]));
+    }
+  }
+  
+  // Swap buffers
+  [gridA, nextA] = [nextA, gridA];
+  [gridB, nextB] = [nextB, gridB];
+}
+
+function render() {
+  const imageData = ctx.createImageData(width, height);
+  const data = imageData.data;
+  
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      const pixelIdx = idx * 4;
+      
+      const a = gridA[idx];
+      const b = gridB[idx];
+      
+      // Color mapping: B concentration drives the pattern
+      // Low B = background, High B = pattern
+      const t = b;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      
+      // Background: deep purple/black
+      // Pattern: pink to cyan gradient based on local variation
+      const variation = Math.abs(laplacian(gridB, x, y)) * 2;
+      
+      // Base colors
+      let r, g, bl;
+      
+      if (t < 0.3) {
+        // Background - deep void with subtle purple
+        r = Math.floor(10 + t * 30);
+        g = Math.floor(8 + t * 15);
+        bl = Math.floor(20 + t * 40);
+      } else {
+        // Pattern emerges - pink to cyan based on concentration
+        const patternT = (t - 0.3) / 0.7;
+        
+        // Pink: 255, 50, 150
+        // Cyan: 0, 255, 255
+        // Purple edge: 150, 50, 200
+        
+        if (variation > 0.1) {
+          // Edges glow cyan
+          r = Math.floor(30 + 80 * (1 - patternT));
+          g = Math.floor(180 + 75 * patternT);
+          bl = Math.floor(200 + 55 * patternT);
+        } else {
+          // Core is pink/magenta
+          r = Math.floor(180 + 75 * patternT);
+          g = Math.floor(30 + 50 * patternT);
+          bl = Math.floor(120 + 80 * patternT);
+        }
+      }
+      
+      data[pixelIdx] = r;
+      data[pixelIdx + 1] = g;
+      data[pixelIdx + 2] = bl;
+      data[pixelIdx + 3] = 255;
+    }
+  }
+  
+  ctx.putImageData(imageData, 0, 0);
+}
+
+let frameCount = 0;
+
+function animate() {
+  // Run multiple simulation steps per frame for faster evolution
+  for (let i = 0; i < 8; i++) {
+    simulate();
+  }
+  
+  render();
+  
+  // Continuous seeding when mouse is held
+  if (mouseDown) {
+    seedAt(mouseX, mouseY);
+  }
+  
+  frameCount++;
+  requestAnimationFrame(animate);
+}
+
+// Event listeners
+window.addEventListener('resize', resize);
 
 canvas.addEventListener('mousemove', (e) => {
   mouseX = e.clientX;
   mouseY = e.clientY;
 });
 
-canvas.addEventListener('click', () => {
-  initAudio();
-  if (state === STATES.STABLE || state === STATES.UNSTABLE) {
-    state = STATES.COLLAPSE;
-    stateTime = 0;
-    document.getElementById('hint').style.opacity = '0';
-    playRumble(1, 1);
-  }
+canvas.addEventListener('mousedown', (e) => {
+  mouseDown = true;
+  seedAt(e.clientX, e.clientY);
 });
 
-// Hide hint after a while
-setTimeout(() => {
-  if (state === STATES.STABLE) {
-    document.getElementById('hint').style.opacity = '0.2';
-  }
-}, 5000);
+canvas.addEventListener('mouseup', () => {
+  mouseDown = false;
+});
 
-loop();
-  </script>
+canvas.addEventListener('mouseleave', () => {
+  mouseX = -1000;
+  mouseY = -1000;
+  mouseDown = false;
+});
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  mouseX = touch.clientX;
+  mouseY = touch.clientY;
+  mouseDown = true;
+  seedAt(mouseX, mouseY);
+});
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  mouseX = touch.clientX;
+  mouseY = touch.clientY;
+});
+
+canvas.addEventListener('touchend', () => {
+  mouseDown = false;
+  mouseX = -1000;
+  mouseY = -1000;
+});
+
+// Initialize
+resize();
+animate();
+</script>
 </body>
 </html>
