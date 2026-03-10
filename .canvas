@@ -1,280 +1,308 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>turing</title>
+<title>pyre</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { 
-  background: #0a0a0f; 
+  background: #000; 
   overflow: hidden; 
-  width: 100vw; 
-  height: 100vh;
+  cursor: crosshair;
 }
-canvas { 
-  display: block; 
-  width: 100vw; 
-  height: 100vh;
-  image-rendering: pixelated;
-}
+canvas { display: block; }
 </style>
 </head>
 <body>
-<canvas id="canvas"></canvas>
+<canvas id="c"></canvas>
 <script>
-const canvas = document.getElementById('canvas');
+const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
-// Lower resolution for performance (reaction-diffusion is compute-heavy)
-const scale = 4;
-let width, height;
-let gridA, gridB, nextA, nextB;
-
-// Gray-Scott model parameters
-const dA = 1.0;      // Diffusion rate A
-const dB = 0.5;      // Diffusion rate B
-const feed = 0.055;  // Feed rate
-const kill = 0.062;  // Kill rate
-
-let mouseX = -1000, mouseY = -1000;
-let mouseDown = false;
-
+let W, H;
 function resize() {
-  canvas.width = Math.floor(window.innerWidth / scale);
-  canvas.height = Math.floor(window.innerHeight / scale);
-  width = canvas.width;
-  height = canvas.height;
-  initGrid();
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
 }
-
-function initGrid() {
-  gridA = new Float32Array(width * height);
-  gridB = new Float32Array(width * height);
-  nextA = new Float32Array(width * height);
-  nextB = new Float32Array(width * height);
-  
-  // Fill with chemical A
-  gridA.fill(1);
-  gridB.fill(0);
-  
-  // Seed some initial B spots
-  seedPattern();
-}
-
-function seedPattern() {
-  // Create several random seed points
-  for (let i = 0; i < 12; i++) {
-    const cx = Math.floor(Math.random() * width);
-    const cy = Math.floor(Math.random() * height);
-    const r = 3 + Math.floor(Math.random() * 5);
-    
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        if (dx*dx + dy*dy <= r*r) {
-          const x = (cx + dx + width) % width;
-          const y = (cy + dy + height) % height;
-          const idx = y * width + x;
-          gridB[idx] = 1;
-        }
-      }
-    }
-  }
-}
-
-function seedAt(x, y) {
-  const gx = Math.floor(x / scale);
-  const gy = Math.floor(y / scale);
-  const r = 4;
-  
-  for (let dy = -r; dy <= r; dy++) {
-    for (let dx = -r; dx <= r; dx++) {
-      if (dx*dx + dy*dy <= r*r) {
-        const px = (gx + dx + width) % width;
-        const py = (gy + dy + height) % height;
-        const idx = py * width + px;
-        gridB[idx] = 1;
-      }
-    }
-  }
-}
-
-function laplacian(grid, x, y) {
-  const idx = y * width + x;
-  const left = y * width + ((x - 1 + width) % width);
-  const right = y * width + ((x + 1) % width);
-  const up = ((y - 1 + height) % height) * width + x;
-  const down = ((y + 1) % height) * width + x;
-  
-  // 5-point stencil
-  return grid[left] + grid[right] + grid[up] + grid[down] - 4 * grid[idx];
-}
-
-function simulate() {
-  // Mouse influence on parameters
-  const mx = Math.floor(mouseX / scale);
-  const my = Math.floor(mouseY / scale);
-  
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const idx = y * width + x;
-      const a = gridA[idx];
-      const b = gridB[idx];
-      
-      const lapA = laplacian(gridA, x, y);
-      const lapB = laplacian(gridB, x, y);
-      
-      // Distance to mouse for local parameter variation
-      const dx = x - mx;
-      const dy = y - my;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      
-      // Mouse proximity slightly alters kill rate (creates pattern variation)
-      const killMod = dist < 30 ? kill + 0.003 * (1 - dist/30) : kill;
-      
-      const reaction = a * b * b;
-      
-      nextA[idx] = a + (dA * lapA - reaction + feed * (1 - a));
-      nextB[idx] = b + (dB * lapB + reaction - (killMod + feed) * b);
-      
-      // Clamp values
-      nextA[idx] = Math.max(0, Math.min(1, nextA[idx]));
-      nextB[idx] = Math.max(0, Math.min(1, nextB[idx]));
-    }
-  }
-  
-  // Swap buffers
-  [gridA, nextA] = [nextA, gridA];
-  [gridB, nextB] = [nextB, gridB];
-}
-
-function render() {
-  const imageData = ctx.createImageData(width, height);
-  const data = imageData.data;
-  
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const idx = y * width + x;
-      const pixelIdx = idx * 4;
-      
-      const a = gridA[idx];
-      const b = gridB[idx];
-      
-      // Color mapping: B concentration drives the pattern
-      // Low B = background, High B = pattern
-      const t = b;
-      const t2 = t * t;
-      const t3 = t2 * t;
-      
-      // Background: deep purple/black
-      // Pattern: pink to cyan gradient based on local variation
-      const variation = Math.abs(laplacian(gridB, x, y)) * 2;
-      
-      // Base colors
-      let r, g, bl;
-      
-      if (t < 0.3) {
-        // Background - deep void with subtle purple
-        r = Math.floor(10 + t * 30);
-        g = Math.floor(8 + t * 15);
-        bl = Math.floor(20 + t * 40);
-      } else {
-        // Pattern emerges - pink to cyan based on concentration
-        const patternT = (t - 0.3) / 0.7;
-        
-        // Pink: 255, 50, 150
-        // Cyan: 0, 255, 255
-        // Purple edge: 150, 50, 200
-        
-        if (variation > 0.1) {
-          // Edges glow cyan
-          r = Math.floor(30 + 80 * (1 - patternT));
-          g = Math.floor(180 + 75 * patternT);
-          bl = Math.floor(200 + 55 * patternT);
-        } else {
-          // Core is pink/magenta
-          r = Math.floor(180 + 75 * patternT);
-          g = Math.floor(30 + 50 * patternT);
-          bl = Math.floor(120 + 80 * patternT);
-        }
-      }
-      
-      data[pixelIdx] = r;
-      data[pixelIdx + 1] = g;
-      data[pixelIdx + 2] = bl;
-      data[pixelIdx + 3] = 255;
-    }
-  }
-  
-  ctx.putImageData(imageData, 0, 0);
-}
-
-let frameCount = 0;
-
-function animate() {
-  // Run multiple simulation steps per frame for faster evolution
-  for (let i = 0; i < 8; i++) {
-    simulate();
-  }
-  
-  render();
-  
-  // Continuous seeding when mouse is held
-  if (mouseDown) {
-    seedAt(mouseX, mouseY);
-  }
-  
-  frameCount++;
-  requestAnimationFrame(animate);
-}
-
-// Event listeners
+resize();
 window.addEventListener('resize', resize);
 
-canvas.addEventListener('mousemove', (e) => {
-  mouseX = e.clientX;
-  mouseY = e.clientY;
-});
+// Audio context for crackling
+let audioCtx, noiseNode, gainNode, filterNode;
+let audioStarted = false;
 
-canvas.addEventListener('mousedown', (e) => {
-  mouseDown = true;
-  seedAt(e.clientX, e.clientY);
-});
+function initAudio() {
+  if (audioStarted) return;
+  audioStarted = true;
+  
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  
+  // Create noise buffer
+  const bufferSize = audioCtx.sampleRate * 2;
+  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const output = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    output[i] = Math.random() * 2 - 1;
+  }
+  
+  noiseNode = audioCtx.createBufferSource();
+  noiseNode.buffer = noiseBuffer;
+  noiseNode.loop = true;
+  
+  // Bandpass filter for crackle character
+  filterNode = audioCtx.createBiquadFilter();
+  filterNode.type = 'bandpass';
+  filterNode.frequency.value = 800;
+  filterNode.Q.value = 0.5;
+  
+  // Gain for volume control
+  gainNode = audioCtx.createGain();
+  gainNode.gain.value = 0;
+  
+  // Crackle modulation
+  const crackleMod = audioCtx.createGain();
+  
+  noiseNode.connect(filterNode);
+  filterNode.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+  
+  noiseNode.start();
+}
 
-canvas.addEventListener('mouseup', () => {
-  mouseDown = false;
+// Mouse state
+let mouse = { x: W / 2, y: H / 2 };
+let mouseActive = false;
+
+canvas.addEventListener('mousemove', e => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+  mouseActive = true;
 });
 
 canvas.addEventListener('mouseleave', () => {
-  mouseX = -1000;
-  mouseY = -1000;
-  mouseDown = false;
+  mouseActive = false;
 });
 
-canvas.addEventListener('touchstart', (e) => {
-  e.preventDefault();
+canvas.addEventListener('click', e => {
+  initAudio();
+  // Spawn burst of fire at click point
+  for (let i = 0; i < 50; i++) {
+    spawnParticle(e.clientX, e.clientY, true);
+  }
+});
+
+canvas.addEventListener('touchstart', e => {
+  initAudio();
   const touch = e.touches[0];
-  mouseX = touch.clientX;
-  mouseY = touch.clientY;
-  mouseDown = true;
-  seedAt(mouseX, mouseY);
+  for (let i = 0; i < 50; i++) {
+    spawnParticle(touch.clientX, touch.clientY, true);
+  }
 });
 
-canvas.addEventListener('touchmove', (e) => {
-  e.preventDefault();
-  const touch = e.touches[0];
-  mouseX = touch.clientX;
-  mouseY = touch.clientY;
-});
+// Fire particles
+const particles = [];
+const MAX_PARTICLES = 2000;
 
-canvas.addEventListener('touchend', () => {
-  mouseDown = false;
-  mouseX = -1000;
-  mouseY = -1000;
-});
+class Particle {
+  constructor(x, y, isBurst = false) {
+    this.x = x;
+    this.y = y;
+    this.vx = (Math.random() - 0.5) * (isBurst ? 8 : 2);
+    this.vy = -Math.random() * (isBurst ? 12 : 4) - 2;
+    this.heat = 1.0 + (isBurst ? 0.5 : 0);
+    this.life = 1.0;
+    this.decay = 0.008 + Math.random() * 0.012;
+    this.size = 2 + Math.random() * 6;
+    this.isEmber = Math.random() < 0.1;
+    if (this.isEmber) {
+      this.decay *= 0.5;
+      this.size = 1 + Math.random() * 2;
+    }
+  }
+  
+  update(wind) {
+    // Physics
+    this.vy -= 0.15 * this.heat; // buoyancy
+    this.vx += wind.x * 0.02;
+    this.vy += wind.y * 0.01;
+    
+    // Turbulence
+    this.vx += (Math.random() - 0.5) * 0.5;
+    this.vy += (Math.random() - 0.5) * 0.3;
+    
+    // Damping
+    this.vx *= 0.98;
+    this.vy *= 0.98;
+    
+    this.x += this.vx;
+    this.y += this.vy;
+    
+    // Cool down and die
+    this.heat *= 0.995;
+    this.life -= this.decay;
+    
+    return this.life > 0;
+  }
+  
+  draw() {
+    const alpha = this.life * 0.8;
+    
+    // Color based on heat: cyan core → pink → magenta → purple → smoke
+    let r, g, b;
+    if (this.heat > 0.8) {
+      // Hot core: cyan-white
+      r = 150 + 105 * this.heat;
+      g = 240 + 15 * this.heat;
+      b = 255;
+    } else if (this.heat > 0.5) {
+      // Mid: electric pink
+      const t = (this.heat - 0.5) / 0.3;
+      r = 255;
+      g = 100 * t + 50;
+      b = 200 + 55 * t;
+    } else if (this.heat > 0.2) {
+      // Cooler: magenta/purple
+      const t = (this.heat - 0.2) / 0.3;
+      r = 180 + 75 * t;
+      g = 50 * t;
+      b = 150 + 50 * t;
+    } else {
+      // Smoke: dark purple-gray
+      const t = this.heat / 0.2;
+      r = 80 + 100 * t;
+      g = 40 + 10 * t;
+      b = 100 + 50 * t;
+    }
+    
+    const size = this.size * (0.5 + this.life * 0.5) * (1 + this.heat * 0.5);
+    
+    if (this.isEmber) {
+      // Embers: bright specks
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, size * 0.5, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 200, 255, ${alpha})`;
+      ctx.fill();
+    } else {
+      // Fire: soft glow
+      const gradient = ctx.createRadialGradient(
+        this.x, this.y, 0,
+        this.x, this.y, size
+      );
+      gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${alpha})`);
+      gradient.addColorStop(0.4, `rgba(${r * 0.8}, ${g * 0.6}, ${b * 0.9}, ${alpha * 0.6})`);
+      gradient.addColorStop(1, `rgba(${r * 0.5}, ${g * 0.3}, ${b * 0.7}, 0)`);
+      
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, size, 0, Math.PI * 2);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+    }
+  }
+}
 
-// Initialize
-resize();
+function spawnParticle(x, y, isBurst = false) {
+  if (particles.length < MAX_PARTICLES) {
+    particles.push(new Particle(x, y, isBurst));
+  }
+}
+
+// Fire sources at the bottom
+const fireSources = [];
+function initFireSources() {
+  const numSources = 5;
+  for (let i = 0; i < numSources; i++) {
+    fireSources.push({
+      x: W * (0.2 + 0.6 * i / (numSources - 1)),
+      y: H - 50,
+      intensity: 0.5 + Math.random() * 0.5,
+      phase: Math.random() * Math.PI * 2
+    });
+  }
+}
+initFireSources();
+
+let time = 0;
+
+function animate() {
+  // Fade trail
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+  ctx.fillRect(0, 0, W, H);
+  
+  time += 0.016;
+  
+  // Calculate wind from mouse
+  const wind = { x: 0, y: 0 };
+  if (mouseActive) {
+    const centerX = W / 2;
+    const centerY = H / 2;
+    wind.x = (mouse.x - centerX) / W * 15;
+    wind.y = (mouse.y - centerY) / H * 5;
+  }
+  
+  // Spawn from fire sources
+  fireSources.forEach((src, i) => {
+    // Flickering intensity
+    const flicker = 0.7 + 0.3 * Math.sin(time * 5 + src.phase) * Math.sin(time * 7.3 + i);
+    const spawnRate = Math.floor(src.intensity * flicker * 8);
+    
+    for (let j = 0; j < spawnRate; j++) {
+      const offsetX = (Math.random() - 0.5) * 80;
+      spawnParticle(src.x + offsetX, src.y + Math.random() * 20);
+    }
+  });
+  
+  // Update and draw particles
+  let totalHeat = 0;
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const alive = particles[i].update(wind);
+    if (!alive) {
+      particles.splice(i, 1);
+    } else {
+      particles[i].draw();
+      totalHeat += particles[i].heat;
+    }
+  }
+  
+  // Update audio based on fire intensity
+  if (audioStarted && gainNode) {
+    const targetGain = Math.min(0.15, totalHeat / 500);
+    gainNode.gain.value += (targetGain - gainNode.gain.value) * 0.1;
+    
+    // Modulate filter for crackling variation
+    const crackle = 400 + 800 * Math.abs(Math.sin(time * 20)) * Math.random();
+    filterNode.frequency.value = crackle;
+  }
+  
+  // Draw glow at base
+  fireSources.forEach(src => {
+    const glowGradient = ctx.createRadialGradient(
+      src.x, H, 0,
+      src.x, H, 150
+    );
+    glowGradient.addColorStop(0, 'rgba(255, 100, 200, 0.3)');
+    glowGradient.addColorStop(0.5, 'rgba(200, 50, 150, 0.1)');
+    glowGradient.addColorStop(1, 'rgba(100, 0, 100, 0)');
+    
+    ctx.beginPath();
+    ctx.arc(src.x, H, 150, 0, Math.PI * 2);
+    ctx.fillStyle = glowGradient;
+    ctx.fill();
+  });
+  
+  // Subtle vignette
+  const vignette = ctx.createRadialGradient(
+    W / 2, H / 2, H * 0.3,
+    W / 2, H / 2, H
+  );
+  vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+  vignette.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, W, H);
+  
+  requestAnimationFrame(animate);
+}
+
 animate();
 </script>
 </body>
