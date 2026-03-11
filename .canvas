@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>pyre</title>
+<title>pulsar</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { 
@@ -12,298 +12,425 @@ body {
   cursor: crosshair;
 }
 canvas { display: block; }
+#info {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  color: rgba(0, 255, 255, 0.4);
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: 1px;
+  pointer-events: none;
+}
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
+<canvas id="canvas"></canvas>
+<div id="info">PSR J0437−4715 · click to toggle wavelength</div>
 <script>
-const canvas = document.getElementById('c');
+const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
-let W, H;
+let W, H, cx, cy;
+let audioCtx = null;
+let lastPulseTime = 0;
+
+// Pulsar state
+let rotation = 0;
+let rotationSpeed = 2.5; // radians per second
+let targetSpeed = 2.5;
+let wavelengthMode = 0; // 0 = radio, 1 = x-ray
+let mouseX = 0, mouseY = 0;
+let beamAngle1 = 0;
+let beamAngle2 = Math.PI;
+
+// Particles in the magnetosphere
+const particles = [];
+const PARTICLE_COUNT = 300;
+
+// Field line points
+const fieldLines = [];
+const FIELD_LINE_COUNT = 12;
+
 function resize() {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
-}
-resize();
-window.addEventListener('resize', resize);
-
-// Audio context for crackling
-let audioCtx, noiseNode, gainNode, filterNode;
-let audioStarted = false;
-
-function initAudio() {
-  if (audioStarted) return;
-  audioStarted = true;
-  
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  
-  // Create noise buffer
-  const bufferSize = audioCtx.sampleRate * 2;
-  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const output = noiseBuffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    output[i] = Math.random() * 2 - 1;
-  }
-  
-  noiseNode = audioCtx.createBufferSource();
-  noiseNode.buffer = noiseBuffer;
-  noiseNode.loop = true;
-  
-  // Bandpass filter for crackle character
-  filterNode = audioCtx.createBiquadFilter();
-  filterNode.type = 'bandpass';
-  filterNode.frequency.value = 800;
-  filterNode.Q.value = 0.5;
-  
-  // Gain for volume control
-  gainNode = audioCtx.createGain();
-  gainNode.gain.value = 0;
-  
-  // Crackle modulation
-  const crackleMod = audioCtx.createGain();
-  
-  noiseNode.connect(filterNode);
-  filterNode.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
-  
-  noiseNode.start();
+  cx = W / 2;
+  cy = H / 2;
 }
 
-// Mouse state
-let mouse = { x: W / 2, y: H / 2 };
-let mouseActive = false;
-
-canvas.addEventListener('mousemove', e => {
-  mouse.x = e.clientX;
-  mouse.y = e.clientY;
-  mouseActive = true;
-});
-
-canvas.addEventListener('mouseleave', () => {
-  mouseActive = false;
-});
-
-canvas.addEventListener('click', e => {
-  initAudio();
-  // Spawn burst of fire at click point
-  for (let i = 0; i < 50; i++) {
-    spawnParticle(e.clientX, e.clientY, true);
-  }
-});
-
-canvas.addEventListener('touchstart', e => {
-  initAudio();
-  const touch = e.touches[0];
-  for (let i = 0; i < 50; i++) {
-    spawnParticle(touch.clientX, touch.clientY, true);
-  }
-});
-
-// Fire particles
-const particles = [];
-const MAX_PARTICLES = 2000;
-
-class Particle {
-  constructor(x, y, isBurst = false) {
-    this.x = x;
-    this.y = y;
-    this.vx = (Math.random() - 0.5) * (isBurst ? 8 : 2);
-    this.vy = -Math.random() * (isBurst ? 12 : 4) - 2;
-    this.heat = 1.0 + (isBurst ? 0.5 : 0);
-    this.life = 1.0;
-    this.decay = 0.008 + Math.random() * 0.012;
-    this.size = 2 + Math.random() * 6;
-    this.isEmber = Math.random() < 0.1;
-    if (this.isEmber) {
-      this.decay *= 0.5;
-      this.size = 1 + Math.random() * 2;
-    }
-  }
-  
-  update(wind) {
-    // Physics
-    this.vy -= 0.15 * this.heat; // buoyancy
-    this.vx += wind.x * 0.02;
-    this.vy += wind.y * 0.01;
-    
-    // Turbulence
-    this.vx += (Math.random() - 0.5) * 0.5;
-    this.vy += (Math.random() - 0.5) * 0.3;
-    
-    // Damping
-    this.vx *= 0.98;
-    this.vy *= 0.98;
-    
-    this.x += this.vx;
-    this.y += this.vy;
-    
-    // Cool down and die
-    this.heat *= 0.995;
-    this.life -= this.decay;
-    
-    return this.life > 0;
-  }
-  
-  draw() {
-    const alpha = this.life * 0.8;
-    
-    // Color based on heat: cyan core → pink → magenta → purple → smoke
-    let r, g, b;
-    if (this.heat > 0.8) {
-      // Hot core: cyan-white
-      r = 150 + 105 * this.heat;
-      g = 240 + 15 * this.heat;
-      b = 255;
-    } else if (this.heat > 0.5) {
-      // Mid: electric pink
-      const t = (this.heat - 0.5) / 0.3;
-      r = 255;
-      g = 100 * t + 50;
-      b = 200 + 55 * t;
-    } else if (this.heat > 0.2) {
-      // Cooler: magenta/purple
-      const t = (this.heat - 0.2) / 0.3;
-      r = 180 + 75 * t;
-      g = 50 * t;
-      b = 150 + 50 * t;
-    } else {
-      // Smoke: dark purple-gray
-      const t = this.heat / 0.2;
-      r = 80 + 100 * t;
-      g = 40 + 10 * t;
-      b = 100 + 50 * t;
-    }
-    
-    const size = this.size * (0.5 + this.life * 0.5) * (1 + this.heat * 0.5);
-    
-    if (this.isEmber) {
-      // Embers: bright specks
-      ctx.beginPath();
-      ctx.arc(this.x, this.y, size * 0.5, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255, 200, 255, ${alpha})`;
-      ctx.fill();
-    } else {
-      // Fire: soft glow
-      const gradient = ctx.createRadialGradient(
-        this.x, this.y, 0,
-        this.x, this.y, size
-      );
-      gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${alpha})`);
-      gradient.addColorStop(0.4, `rgba(${r * 0.8}, ${g * 0.6}, ${b * 0.9}, ${alpha * 0.6})`);
-      gradient.addColorStop(1, `rgba(${r * 0.5}, ${g * 0.3}, ${b * 0.7}, 0)`);
-      
-      ctx.beginPath();
-      ctx.arc(this.x, this.y, size, 0, Math.PI * 2);
-      ctx.fillStyle = gradient;
-      ctx.fill();
-    }
+function initParticles() {
+  particles.length = 0;
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    particles.push(createParticle());
   }
 }
 
-function spawnParticle(x, y, isBurst = false) {
-  if (particles.length < MAX_PARTICLES) {
-    particles.push(new Particle(x, y, isBurst));
-  }
+function createParticle() {
+  const angle = Math.random() * Math.PI * 2;
+  const dist = 50 + Math.random() * 200;
+  return {
+    angle: angle,
+    dist: dist,
+    speed: 0.3 + Math.random() * 0.7,
+    size: 1 + Math.random() * 2,
+    brightness: 0.3 + Math.random() * 0.7,
+    zOffset: (Math.random() - 0.5) * 0.5
+  };
 }
 
-// Fire sources at the bottom
-const fireSources = [];
-function initFireSources() {
-  const numSources = 5;
-  for (let i = 0; i < numSources; i++) {
-    fireSources.push({
-      x: W * (0.2 + 0.6 * i / (numSources - 1)),
-      y: H - 50,
-      intensity: 0.5 + Math.random() * 0.5,
-      phase: Math.random() * Math.PI * 2
+function initFieldLines() {
+  fieldLines.length = 0;
+  for (let i = 0; i < FIELD_LINE_COUNT; i++) {
+    const baseAngle = (i / FIELD_LINE_COUNT) * Math.PI * 2;
+    fieldLines.push({
+      baseAngle: baseAngle,
+      points: generateFieldLine(baseAngle)
     });
   }
 }
-initFireSources();
 
-let time = 0;
+function generateFieldLine(baseAngle) {
+  const points = [];
+  const steps = 40;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const r = 30 + Math.pow(t, 0.6) * 180;
+    const theta = baseAngle + t * 0.8 * Math.sin(baseAngle * 2);
+    points.push({ r, theta: theta - baseAngle, t });
+  }
+  return points;
+}
 
-function animate() {
-  // Fade trail
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
-  ctx.fillRect(0, 0, W, H);
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function playPulse() {
+  if (!audioCtx) return;
   
-  time += 0.016;
+  const now = audioCtx.currentTime;
   
-  // Calculate wind from mouse
-  const wind = { x: 0, y: 0 };
-  if (mouseActive) {
-    const centerX = W / 2;
-    const centerY = H / 2;
-    wind.x = (mouse.x - centerX) / W * 15;
-    wind.y = (mouse.y - centerY) / H * 5;
+  // Create the characteristic pulsar click
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  const filter = audioCtx.createBiquadFilter();
+  
+  filter.type = 'bandpass';
+  filter.frequency.value = wavelengthMode === 0 ? 800 : 2000;
+  filter.Q.value = 5;
+  
+  osc.type = 'sawtooth';
+  osc.frequency.value = wavelengthMode === 0 ? 60 : 120;
+  
+  gain.gain.setValueAtTime(0.15, now);
+  gain.gain.exponentialDecayTo ? 
+    gain.gain.exponentialDecayTo(0.001, now + 0.08) :
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+  
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(audioCtx.destination);
+  
+  osc.start(now);
+  osc.stop(now + 0.1);
+  
+  // Add noise burst
+  const bufferSize = audioCtx.sampleRate * 0.05;
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.2));
   }
   
-  // Spawn from fire sources
-  fireSources.forEach((src, i) => {
-    // Flickering intensity
-    const flicker = 0.7 + 0.3 * Math.sin(time * 5 + src.phase) * Math.sin(time * 7.3 + i);
-    const spawnRate = Math.floor(src.intensity * flicker * 8);
-    
-    for (let j = 0; j < spawnRate; j++) {
-      const offsetX = (Math.random() - 0.5) * 80;
-      spawnParticle(src.x + offsetX, src.y + Math.random() * 20);
-    }
-  });
+  const noise = audioCtx.createBufferSource();
+  const noiseGain = audioCtx.createGain();
+  const noiseFilter = audioCtx.createBiquadFilter();
   
-  // Update and draw particles
-  let totalHeat = 0;
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const alive = particles[i].update(wind);
-    if (!alive) {
-      particles.splice(i, 1);
-    } else {
-      particles[i].draw();
-      totalHeat += particles[i].heat;
-    }
-  }
+  noiseFilter.type = 'highpass';
+  noiseFilter.frequency.value = 1000;
   
-  // Update audio based on fire intensity
-  if (audioStarted && gainNode) {
-    const targetGain = Math.min(0.15, totalHeat / 500);
-    gainNode.gain.value += (targetGain - gainNode.gain.value) * 0.1;
-    
-    // Modulate filter for crackling variation
-    const crackle = 400 + 800 * Math.abs(Math.sin(time * 20)) * Math.random();
-    filterNode.frequency.value = crackle;
-  }
+  noise.buffer = buffer;
+  noiseGain.gain.value = 0.08;
   
-  // Draw glow at base
-  fireSources.forEach(src => {
-    const glowGradient = ctx.createRadialGradient(
-      src.x, H, 0,
-      src.x, H, 150
-    );
-    glowGradient.addColorStop(0, 'rgba(255, 100, 200, 0.3)');
-    glowGradient.addColorStop(0.5, 'rgba(200, 50, 150, 0.1)');
-    glowGradient.addColorStop(1, 'rgba(100, 0, 100, 0)');
-    
-    ctx.beginPath();
-    ctx.arc(src.x, H, 150, 0, Math.PI * 2);
-    ctx.fillStyle = glowGradient;
-    ctx.fill();
-  });
+  noise.connect(noiseFilter);
+  noiseFilter.connect(noiseGain);
+  noiseGain.connect(audioCtx.destination);
+  noise.start(now);
+}
+
+function drawStar() {
+  // Neutron star core - tiny but incredibly bright
+  const coreRadius = 8;
   
-  // Subtle vignette
-  const vignette = ctx.createRadialGradient(
-    W / 2, H / 2, H * 0.3,
-    W / 2, H / 2, H
+  // Core glow
+  const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreRadius * 8);
+  gradient.addColorStop(0, wavelengthMode === 0 ? 'rgba(0, 255, 255, 1)' : 'rgba(255, 100, 255, 1)');
+  gradient.addColorStop(0.2, wavelengthMode === 0 ? 'rgba(0, 200, 255, 0.8)' : 'rgba(255, 50, 200, 0.8)');
+  gradient.addColorStop(0.5, wavelengthMode === 0 ? 'rgba(100, 0, 200, 0.3)' : 'rgba(200, 0, 100, 0.3)');
+  gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(cx, cy, coreRadius * 8, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Hard core
+  ctx.fillStyle = wavelengthMode === 0 ? '#00ffff' : '#ff66ff';
+  ctx.beginPath();
+  ctx.arc(cx, cy, coreRadius, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Surface hotspots (magnetic poles)
+  const hotspotOffset = coreRadius * 0.6;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(
+    cx + Math.cos(rotation) * hotspotOffset, 
+    cy + Math.sin(rotation) * hotspotOffset * 0.3, 
+    3, 0, Math.PI * 2
   );
-  vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
-  vignette.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
-  ctx.fillStyle = vignette;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(
+    cx - Math.cos(rotation) * hotspotOffset, 
+    cy - Math.sin(rotation) * hotspotOffset * 0.3, 
+    3, 0, Math.PI * 2
+  );
+  ctx.fill();
+}
+
+function drawBeams() {
+  const beamLength = Math.max(W, H);
+  const beamWidth = 0.15; // radians
+  
+  for (let i = 0; i < 2; i++) {
+    const angle = rotation + (i * Math.PI);
+    
+    // Check if beam is "facing" us (create pulse effect)
+    const facingThreshold = 0.3;
+    const facing = Math.abs(Math.cos(angle)) > Math.cos(facingThreshold);
+    
+    if (facing && Date.now() - lastPulseTime > 100) {
+      lastPulseTime = Date.now();
+      playPulse();
+    }
+    
+    // Beam gradient
+    const gradient = ctx.createRadialGradient(cx, cy, 10, cx, cy, beamLength * 0.8);
+    const baseColor = wavelengthMode === 0 ? [0, 255, 255] : [255, 100, 255];
+    gradient.addColorStop(0, `rgba(${baseColor.join(',')}, 0.9)`);
+    gradient.addColorStop(0.3, `rgba(${baseColor.join(',')}, 0.4)`);
+    gradient.addColorStop(0.6, `rgba(${baseColor[0]}, ${Math.floor(baseColor[1]*0.5)}, ${baseColor[2]}, 0.15)`);
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    
+    // Draw cone beam
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(beamLength * Math.cos(beamWidth), beamLength * Math.sin(beamWidth));
+    ctx.lineTo(beamLength * Math.cos(-beamWidth), beamLength * Math.sin(-beamWidth));
+    ctx.closePath();
+    
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    
+    // Beam edge glow
+    ctx.strokeStyle = `rgba(${baseColor.join(',')}, 0.3)`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    ctx.restore();
+  }
+}
+
+function drawFieldLines() {
+  ctx.lineWidth = 1.5;
+  
+  for (const line of fieldLines) {
+    ctx.beginPath();
+    
+    for (let i = 0; i < line.points.length; i++) {
+      const p = line.points[i];
+      const angle = line.baseAngle + rotation + p.theta;
+      const x = cx + Math.cos(angle) * p.r;
+      const y = cy + Math.sin(angle) * p.r * 0.4; // Flatten for perspective
+      
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    
+    // Mirror the line
+    for (let i = line.points.length - 1; i >= 0; i--) {
+      const p = line.points[i];
+      const angle = line.baseAngle + rotation + Math.PI + p.theta;
+      const x = cx + Math.cos(angle) * p.r;
+      const y = cy + Math.sin(angle) * p.r * 0.4;
+      ctx.lineTo(x, y);
+    }
+    
+    const hue = wavelengthMode === 0 ? 180 : 300;
+    const alpha = 0.15 + Math.sin(line.baseAngle * 3 + rotation) * 0.1;
+    ctx.strokeStyle = `hsla(${hue}, 100%, 60%, ${alpha})`;
+    ctx.stroke();
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    // Particles follow field lines approximately
+    p.angle += p.speed * rotationSpeed * 0.02;
+    
+    // Spiral inward slightly
+    p.dist -= 0.1;
+    if (p.dist < 30) {
+      Object.assign(p, createParticle());
+      p.dist = 150 + Math.random() * 100;
+    }
+    
+    const worldAngle = p.angle + rotation;
+    const x = cx + Math.cos(worldAngle) * p.dist;
+    const y = cy + Math.sin(worldAngle) * p.dist * (0.3 + p.zOffset);
+    
+    // Check if in beam
+    const inBeam = Math.abs(Math.cos(worldAngle - rotation)) > 0.95;
+    
+    const baseHue = wavelengthMode === 0 ? 180 : 300;
+    const hue = inBeam ? (wavelengthMode === 0 ? 60 : 330) : baseHue;
+    const brightness = inBeam ? p.brightness * 2 : p.brightness;
+    
+    ctx.fillStyle = `hsla(${hue}, 100%, ${50 + brightness * 30}%, ${brightness * 0.8})`;
+    ctx.beginPath();
+    ctx.arc(x, y, p.size * (inBeam ? 1.5 : 1), 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawPulseRing() {
+  // Expanding pulse rings when beam faces viewer
+  const pulseAge = (Date.now() - lastPulseTime) / 1000;
+  if (pulseAge < 0.5) {
+    const radius = 50 + pulseAge * 400;
+    const alpha = 0.3 * (1 - pulseAge * 2);
+    
+    ctx.strokeStyle = wavelengthMode === 0 ? 
+      `rgba(0, 255, 255, ${alpha})` : 
+      `rgba(255, 100, 255, ${alpha})`;
+    ctx.lineWidth = 3 - pulseAge * 4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+function drawBackground() {
+  // Distant stars
+  ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
+  
+  // Static starfield (seeded random)
+  const seed = 42;
+  for (let i = 0; i < 200; i++) {
+    const x = ((seed * (i + 1) * 9301 + 49297) % 233280) / 233280 * W;
+    const y = ((seed * (i + 1) * 49297 + 9301) % 233280) / 233280 * H;
+    const size = ((seed * (i + 1) * 1234 + 5678) % 100) / 100;
+    const twinkle = Math.sin(Date.now() * 0.001 + i) * 0.3 + 0.7;
+    
+    ctx.fillStyle = `rgba(255, 255, 255, ${size * 0.5 * twinkle})`;
+    ctx.beginPath();
+    ctx.arc(x, y, size * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawPeriodIndicator() {
+  // Visual period meter
+  const period = (Math.PI * 2) / rotationSpeed;
+  const barWidth = 100;
+  const barHeight = 4;
+  const x = W - barWidth - 20;
+  const y = 20;
+  
+  ctx.fillStyle = 'rgba(100, 100, 100, 0.3)';
+  ctx.fillRect(x, y, barWidth, barHeight);
+  
+  const phase = (rotation % (Math.PI * 2)) / (Math.PI * 2);
+  const pulseX = x + phase * barWidth;
+  
+  ctx.fillStyle = wavelengthMode === 0 ? '#00ffff' : '#ff66ff';
+  ctx.fillRect(pulseX - 2, y - 2, 4, barHeight + 4);
+  
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+  ctx.font = '10px Courier New';
+  ctx.fillText(`P = ${period.toFixed(2)}s`, x, y + 20);
+}
+
+let lastTime = performance.now();
+
+function animate(currentTime) {
+  const dt = (currentTime - lastTime) / 1000;
+  lastTime = currentTime;
+  
+  // Mouse influence on rotation speed
+  const dx = mouseX - cx;
+  const dy = mouseY - cy;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const maxDist = Math.min(W, H) / 2;
+  targetSpeed = 1.5 + (dist / maxDist) * 6;
+  
+  // Smooth speed transition
+  rotationSpeed += (targetSpeed - rotationSpeed) * 0.05;
+  
+  // Update rotation
+  rotation += rotationSpeed * dt;
+  
+  // Draw everything
+  drawBackground();
+  drawFieldLines();
+  drawParticles();
+  drawBeams();
+  drawStar();
+  drawPulseRing();
+  drawPeriodIndicator();
   
   requestAnimationFrame(animate);
 }
 
-animate();
+// Event listeners
+window.addEventListener('resize', resize);
+
+canvas.addEventListener('mousemove', (e) => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+});
+
+canvas.addEventListener('click', () => {
+  initAudio();
+  wavelengthMode = 1 - wavelengthMode;
+  document.getElementById('info').textContent = 
+    wavelengthMode === 0 ? 
+      'PSR J0437−4715 · radio wavelength' : 
+      'PSR J0437−4715 · x-ray wavelength';
+});
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  initAudio();
+  wavelengthMode = 1 - wavelengthMode;
+});
+
+// Initialize
+resize();
+initParticles();
+initFieldLines();
+requestAnimationFrame(animate);
 </script>
 </body>
 </html>
