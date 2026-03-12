@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>caustics</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a1628; 
+      overflow: hidden; 
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    canvas { 
+      display: block;
+      cursor: crosshair;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    let width, height;
+    let time = 0;
+    let mouseX = 0, mouseY = 0;
+    let ripples = [];
+    
+    // Water surface grid
+    const gridSize = 4;
+    let cols, rows;
+    let heightMap, velocityMap;
+    
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      cols = Math.ceil(width / gridSize) + 1;
+      rows = Math.ceil(height / gridSize) + 1;
+      
+      heightMap = new Float32Array(cols * rows);
+      velocityMap = new Float32Array(cols * rows);
+    }
+    
+    function addRipple(x, y, strength = 1) {
+      ripples.push({
+        x: x / gridSize,
+        y: y / gridSize,
+        strength: strength,
+        age: 0
+      });
+    }
+    
+    function updateWater() {
+      // Add ambient waves
+      const waveTime = time * 0.0008;
+      
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const idx = y * cols + x;
+          
+          // Ambient wave pattern - multiple overlapping sine waves
+          let ambient = 0;
+          ambient += Math.sin(x * 0.05 + waveTime * 1.2) * 0.3;
+          ambient += Math.sin(y * 0.07 - waveTime * 0.9) * 0.25;
+          ambient += Math.sin((x + y) * 0.04 + waveTime * 0.7) * 0.2;
+          ambient += Math.sin((x - y) * 0.06 + waveTime * 1.1) * 0.15;
+          
+          // Apply ripples
+          let rippleEffect = 0;
+          for (const ripple of ripples) {
+            const dx = x - ripple.x;
+            const dy = y - ripple.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const waveRadius = ripple.age * 0.3;
+            const ringWidth = 8;
+            
+            if (Math.abs(dist - waveRadius) < ringWidth) {
+              const fade = Math.exp(-ripple.age * 0.02);
+              const ring = Math.cos((dist - waveRadius) / ringWidth * Math.PI) * fade;
+              rippleEffect += ring * ripple.strength * 2;
+            }
+          }
+          
+          heightMap[idx] = ambient + rippleEffect;
+        }
+      }
+      
+      // Age and remove old ripples
+      ripples = ripples.filter(r => {
+        r.age++;
+        return r.age < 300;
+      });
+    }
+    
+    function calculateCaustics(imageData) {
+      const data = imageData.data;
+      const intensity = new Float32Array(width * height);
+      
+      // Light direction (from top-right)
+      const lightAngleX = 0.3;
+      const lightAngleY = 0.3;
+      const refractStrength = 25;
+      
+      // For each point on water surface, trace where light goes
+      for (let gy = 1; gy < rows - 1; gy++) {
+        for (let gx = 1; gx < cols - 1; gx++) {
+          const idx = gy * cols + gx;
+          
+          // Calculate surface normal from height differences
+          const dhdx = (heightMap[idx + 1] - heightMap[idx - 1]) * 0.5;
+          const dhdy = (heightMap[idx + cols] - heightMap[idx - cols]) * 0.5;
+          
+          // Refract light based on surface normal
+          const srcX = gx * gridSize;
+          const srcY = gy * gridSize;
+          
+          // Where light lands after refraction
+          const destX = srcX + dhdx * refractStrength + lightAngleX * 20;
+          const destY = srcY + dhdy * refractStrength + lightAngleY * 20;
+          
+          // Add light contribution to destination
+          const px = Math.floor(destX);
+          const py = Math.floor(destY);
+          
+          if (px >= 0 && px < width && py >= 0 && py < height) {
+            // Light concentration - when normals converge, intensity increases
+            const concentration = 1 + Math.abs(dhdx) + Math.abs(dhdy);
+            intensity[py * width + px] += concentration * 0.5;
+            
+            // Spread to neighbors for smoother look
+            if (px > 0) intensity[py * width + px - 1] += concentration * 0.2;
+            if (px < width - 1) intensity[py * width + px + 1] += concentration * 0.2;
+            if (py > 0) intensity[(py - 1) * width + px] += concentration * 0.2;
+            if (py < height - 1) intensity[(py + 1) * width + px] += concentration * 0.2;
+          }
+        }
+      }
+      
+      // Apply gaussian-ish blur for smoother caustics
+      const blurred = new Float32Array(width * height);
+      const blurRadius = 2;
+      
+      for (let y = blurRadius; y < height - blurRadius; y++) {
+        for (let x = blurRadius; x < width - blurRadius; x++) {
+          let sum = 0;
+          let count = 0;
+          for (let dy = -blurRadius; dy <= blurRadius; dy++) {
+            for (let dx = -blurRadius; dx <= blurRadius; dx++) {
+              sum += intensity[(y + dy) * width + (x + dx)];
+              count++;
+            }
+          }
+          blurred[y * width + x] = sum / count;
+        }
+      }
+      
+      // Render caustics
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = y * width + x;
+          const pixelIdx = idx * 4;
+          
+          // Base pool floor color - sandy/tile blue
+          const baseR = 20;
+          const baseG = 50;
+          const baseB = 80;
+          
+          // Caustic intensity
+          const c = Math.min(blurred[idx] * 0.8, 3);
+          
+          // Color: bright cyan-white caustics on deep blue
+          const causticR = Math.min(255, baseR + c * 80);
+          const causticG = Math.min(255, baseG + c * 120);
+          const causticB = Math.min(255, baseB + c * 100);
+          
+          data[pixelIdx] = causticR;
+          data[pixelIdx + 1] = causticG;
+          data[pixelIdx + 2] = causticB;
+          data[pixelIdx + 3] = 255;
+        }
+      }
+    }
+    
+    function render() {
+      updateWater();
+      
+      const imageData = ctx.createImageData(width, height);
+      calculateCaustics(imageData);
+      ctx.putImageData(imageData, 0, 0);
+      
+      // Subtle vignette
+      const gradient = ctx.createRadialGradient(
+        width / 2, height / 2, height * 0.3,
+        width / 2, height / 2, height * 0.8
+      );
+      gradient.addColorStop(0, 'rgba(0,0,0,0)');
+      gradient.addColorStop(1, 'rgba(0,10,20,0.4)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      time++;
+      requestAnimationFrame(render);
+    }
+    
+    // Mouse interaction - create ripples
+    canvas.addEventListener('mousemove', (e) => {
+      const dx = e.clientX - mouseX;
+      const dy = e.clientY - mouseY;
+      const speed = Math.sqrt(dx * dx + dy * dy);
+      
+      if (speed > 10) {
+        addRipple(e.clientX, e.clientY, Math.min(speed * 0.05, 2));
+      }
+      
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+    });
+    
+    canvas.addEventListener('click', (e) => {
+      addRipple(e.clientX, e.clientY, 3);
+    });
+    
+    // Touch support
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      addRipple(touch.clientX, touch.clientY, 1.5);
+    });
+    
+    canvas.addEventListener('touchstart', (e) => {
+      const touch = e.touches[0];
+      addRipple(touch.clientX, touch.clientY, 3);
+    });
+    
+    window.addEventListener('resize', resize);
+    resize();
+    render();
+  </script>
+</body>
+</html>
