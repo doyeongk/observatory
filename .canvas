@@ -3,428 +3,354 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>caustics</title>
+<title>automaton</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { 
   background: #0a0a0f; 
   overflow: hidden; 
-  cursor: crosshair;
+  font-family: monospace;
 }
 canvas { display: block; }
+#info {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  color: #00ffff;
+  font-size: 14px;
+  opacity: 0.7;
+  text-shadow: 0 0 10px #00ffff;
+  pointer-events: none;
+  z-index: 10;
+}
+#rule-display {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  color: #ff66b2;
+  font-size: 24px;
+  font-weight: bold;
+  text-shadow: 0 0 20px #ff66b2;
+  pointer-events: none;
+  z-index: 10;
+}
 </style>
 </head>
 <body>
 <canvas id="canvas"></canvas>
+<div id="info">click: mutate · space: new rule · ←→: browse rules</div>
+<div id="rule-display">RULE <span id="rule-num">110</span></div>
+
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
+const ruleNumEl = document.getElementById('rule-num');
 
-let width, height;
+let W, H, cellSize, cols, rows;
+let currentRule = 110;
+let ruleSet = [];
+let grid = [];
+let generation = 0;
+let scrollOffset = 0;
 let mouseX = 0, mouseY = 0;
-let time = 0;
+let audioCtx = null;
+let lastSoundTime = 0;
 
-// Water surface simulation grid
-const GRID_SIZE = 128;
-let waterHeight = [];
-let waterVelocity = [];
-
-// Initialize water arrays
-function initWater() {
-  waterHeight = new Array(GRID_SIZE * GRID_SIZE).fill(0);
-  waterVelocity = new Array(GRID_SIZE * GRID_SIZE).fill(0);
-}
+// Interesting rules to cycle through
+const interestingRules = [30, 45, 54, 60, 73, 90, 105, 110, 150, 182, 225];
 
 function resize() {
-  width = canvas.width = window.innerWidth;
-  height = canvas.height = window.innerHeight;
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  cellSize = Math.max(2, Math.floor(Math.min(W, H) / 200));
+  cols = Math.floor(W / cellSize);
+  rows = Math.floor(H / cellSize) + 50; // buffer for scrolling
+  initGrid();
 }
 
-// Add a ripple at a point
-function addRipple(x, y, strength = 1) {
-  const gx = Math.floor((x / width) * GRID_SIZE);
-  const gy = Math.floor((y / height) * GRID_SIZE);
-  const radius = 3;
+function initGrid() {
+  grid = [];
+  for (let y = 0; y < rows; y++) {
+    grid[y] = new Array(cols).fill(0);
+  }
+  // Start with single cell in center
+  grid[0][Math.floor(cols / 2)] = 1;
+  // Add some random seeds for visual interest
+  for (let i = 0; i < 5; i++) {
+    grid[0][Math.floor(Math.random() * cols)] = 1;
+  }
+  generation = 0;
+  scrollOffset = 0;
+  computeRuleSet(currentRule);
+}
+
+function computeRuleSet(ruleNumber) {
+  ruleSet = [];
+  for (let i = 0; i < 8; i++) {
+    ruleSet[i] = (ruleNumber >> i) & 1;
+  }
+  ruleNumEl.textContent = ruleNumber;
+}
+
+function applyRule(left, center, right) {
+  const index = (left << 2) | (center << 1) | right;
+  return ruleSet[index];
+}
+
+function nextGeneration() {
+  if (generation >= rows - 1) {
+    // Scroll everything up
+    for (let y = 0; y < rows - 1; y++) {
+      grid[y] = grid[y + 1].slice();
+    }
+    grid[rows - 1] = new Array(cols).fill(0);
+    scrollOffset++;
+  } else {
+    generation++;
+  }
   
-  for (let dy = -radius; dy <= radius; dy++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      const px = gx + dx;
-      const py = gy + dy;
-      if (px >= 0 && px < GRID_SIZE && py >= 0 && py < GRID_SIZE) {
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < radius) {
-          const idx = py * GRID_SIZE + px;
-          waterHeight[idx] += strength * (1 - dist / radius) * 0.5;
+  const y = Math.min(generation, rows - 1);
+  const prevY = y - 1;
+  
+  if (prevY >= 0) {
+    for (let x = 0; x < cols; x++) {
+      const left = grid[prevY][(x - 1 + cols) % cols];
+      const center = grid[prevY][x];
+      const right = grid[prevY][(x + 1) % cols];
+      grid[y][x] = applyRule(left, center, right);
+    }
+  }
+  
+  // Count alive cells for sound
+  let alive = 0;
+  for (let x = 0; x < cols; x++) {
+    if (grid[y][x]) alive++;
+  }
+  
+  // Occasional click sounds based on pattern density
+  if (audioCtx && Date.now() - lastSoundTime > 50) {
+    const density = alive / cols;
+    if (Math.random() < density * 0.3) {
+      playTick(density);
+      lastSoundTime = Date.now();
+    }
+  }
+}
+
+function playTick(density) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  
+  osc.type = 'sine';
+  osc.frequency.value = 200 + density * 800 + Math.random() * 200;
+  
+  gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
+  gain.gain.exponentialDecayTo?.(0.001, audioCtx.currentTime + 0.1) ||
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+  
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.1);
+}
+
+function getColor(x, y, alive) {
+  if (!alive) return null;
+  
+  // Age-based coloring (newer = cyan, older = pink)
+  const age = (generation + scrollOffset) - (y + scrollOffset);
+  const normalizedAge = Math.min(age / 30, 1);
+  
+  // Distance from mouse affects brightness
+  const dx = (x * cellSize) - mouseX;
+  const dy = (y * cellSize) - mouseY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const mouseFactor = Math.max(0, 1 - dist / 300);
+  
+  const r = Math.floor(100 + normalizedAge * 155 + mouseFactor * 50);
+  const g = Math.floor(255 - normalizedAge * 155);
+  const b = Math.floor(255 - normalizedAge * 77 + mouseFactor * 50);
+  
+  return `rgb(${Math.min(255, r)}, ${Math.min(255, g)}, ${Math.min(255, b)})`;
+}
+
+function draw() {
+  // Slight fade for trail effect
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
+  ctx.fillRect(0, 0, W, H);
+  
+  // Draw cells
+  for (let y = 0; y < Math.min(generation + 1, rows); y++) {
+    for (let x = 0; x < cols; x++) {
+      if (grid[y][x]) {
+        const color = getColor(x, y, true);
+        if (color) {
+          ctx.fillStyle = color;
+          
+          // Glow effect near mouse
+          const dx = (x * cellSize) - mouseX;
+          const dy = (y * cellSize) - mouseY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist < 100) {
+            ctx.shadowColor = '#00ffff';
+            ctx.shadowBlur = 10 * (1 - dist / 100);
+          } else {
+            ctx.shadowBlur = 0;
+          }
+          
+          ctx.fillRect(x * cellSize, y * cellSize, cellSize - 1, cellSize - 1);
         }
       }
     }
   }
+  ctx.shadowBlur = 0;
+  
+  // Draw rule visualization at top
+  drawRuleViz();
 }
 
-// Simulate water physics
-function simulateWater() {
-  const damping = 0.98;
-  const tension = 0.25;
+function drawRuleViz() {
+  const vizSize = 20;
+  const startX = 20;
+  const startY = 20;
   
-  // Calculate new velocities based on neighbors
-  const newVelocity = new Array(GRID_SIZE * GRID_SIZE);
-  
-  for (let y = 1; y < GRID_SIZE - 1; y++) {
-    for (let x = 1; x < GRID_SIZE - 1; x++) {
-      const idx = y * GRID_SIZE + x;
-      const avg = (
-        waterHeight[idx - 1] +
-        waterHeight[idx + 1] +
-        waterHeight[idx - GRID_SIZE] +
-        waterHeight[idx + GRID_SIZE]
-      ) / 4;
-      
-      newVelocity[idx] = (waterVelocity[idx] + (avg - waterHeight[idx]) * tension) * damping;
+  ctx.globalAlpha = 0.5;
+  for (let i = 7; i >= 0; i--) {
+    const pattern = i;
+    const result = ruleSet[i];
+    const x = startX + (7 - i) * (vizSize * 4 + 10);
+    
+    // Draw input pattern
+    for (let j = 2; j >= 0; j--) {
+      const bit = (pattern >> j) & 1;
+      ctx.fillStyle = bit ? '#ff66b2' : '#1a1a2e';
+      ctx.fillRect(x + (2 - j) * vizSize, startY, vizSize - 2, vizSize - 2);
     }
+    
+    // Draw output
+    ctx.fillStyle = result ? '#00ffff' : '#1a1a2e';
+    ctx.fillRect(x + vizSize, startY + vizSize + 5, vizSize - 2, vizSize - 2);
   }
-  
-  // Apply velocities
-  for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
-    if (newVelocity[i] !== undefined) {
-      waterVelocity[i] = newVelocity[i];
-      waterHeight[i] += waterVelocity[i];
-    }
-  }
-}
-
-// Add continuous ambient waves
-function addAmbientWaves() {
-  // Slow undulating base waves
-  for (let y = 0; y < GRID_SIZE; y++) {
-    for (let x = 0; x < GRID_SIZE; x++) {
-      const idx = y * GRID_SIZE + x;
-      const wave1 = Math.sin(x * 0.1 + time * 0.02) * Math.cos(y * 0.08 + time * 0.015) * 0.01;
-      const wave2 = Math.sin((x + y) * 0.05 + time * 0.01) * 0.008;
-      waterHeight[idx] += wave1 + wave2;
-    }
-  }
-}
-
-// Get water surface normal at a point (for refraction)
-function getWaterNormal(gx, gy) {
-  if (gx <= 0 || gx >= GRID_SIZE - 1 || gy <= 0 || gy >= GRID_SIZE - 1) {
-    return { x: 0, y: 0, z: 1 };
-  }
-  
-  const idx = gy * GRID_SIZE + gx;
-  const dhdx = (waterHeight[idx + 1] - waterHeight[idx - 1]) * 0.5;
-  const dhdy = (waterHeight[idx + GRID_SIZE] - waterHeight[idx - GRID_SIZE]) * 0.5;
-  
-  // Normalize
-  const scale = 8; // Amplify the refraction effect
-  const len = Math.sqrt(dhdx * dhdx * scale * scale + dhdy * dhdy * scale * scale + 1);
-  
-  return {
-    x: -dhdx * scale / len,
-    y: -dhdy * scale / len,
-    z: 1 / len
-  };
-}
-
-// Render caustics
-function renderCaustics() {
-  const imageData = ctx.createImageData(width, height);
-  const data = imageData.data;
-  
-  // Light accumulation buffer
-  const lightBuffer = new Float32Array(width * height);
-  
-  // Cast rays through water surface
-  const rayDensity = 2; // Rays per pixel in each dimension
-  const waterDepth = 150; // Distance from water surface to "floor"
-  
-  for (let gy = 0; gy < GRID_SIZE - 1; gy++) {
-    for (let gx = 0; gx < GRID_SIZE - 1; gx++) {
-      // Get surface normal at this grid point
-      const normal = getWaterNormal(gx, gy);
-      
-      // Calculate where the refracted ray hits the floor
-      // Using simplified refraction (Snell's law approximation)
-      const refractStrength = 2.5;
-      const offsetX = normal.x * waterDepth * refractStrength;
-      const offsetY = normal.y * waterDepth * refractStrength;
-      
-      // Screen position of this grid point
-      const screenX = (gx / GRID_SIZE) * width + offsetX;
-      const screenY = (gy / GRID_SIZE) * height + offsetY;
-      
-      // Add light to the buffer at this position
-      const px = Math.floor(screenX);
-      const py = Math.floor(screenY);
-      
-      if (px >= 0 && px < width && py >= 0 && py < height) {
-        const bufferIdx = py * width + px;
-        // More light where rays converge
-        lightBuffer[bufferIdx] += 1;
-        
-        // Spread to neighbors for smoother result
-        if (px > 0) lightBuffer[bufferIdx - 1] += 0.5;
-        if (px < width - 1) lightBuffer[bufferIdx + 1] += 0.5;
-        if (py > 0) lightBuffer[bufferIdx - width] += 0.5;
-        if (py < height - 1) lightBuffer[bufferIdx + width] += 0.5;
-      }
-    }
-  }
-  
-  // Find max for normalization
-  let maxLight = 0;
-  for (let i = 0; i < lightBuffer.length; i++) {
-    if (lightBuffer[i] > maxLight) maxLight = lightBuffer[i];
-  }
-  
-  // Convert light buffer to image
-  const baseIntensity = 0.15;
-  
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const idx = y * width + x;
-      const pixelIdx = idx * 4;
-      
-      // Normalize light value
-      let light = lightBuffer[idx] / (maxLight * 0.3);
-      light = Math.pow(light, 0.7); // Gamma correction for better contrast
-      
-      // Add some base ambient
-      light = baseIntensity + light * (1 - baseIntensity);
-      
-      // Color gradient based on intensity
-      // Dark: deep purple, Mid: cyan, Bright: pink-white
-      let r, g, b;
-      
-      if (light < 0.4) {
-        // Deep purple to dark cyan
-        const t = light / 0.4;
-        r = Math.floor(20 + t * 10);
-        g = Math.floor(10 + t * 40);
-        b = Math.floor(30 + t * 50);
-      } else if (light < 0.7) {
-        // Cyan buildup
-        const t = (light - 0.4) / 0.3;
-        r = Math.floor(30 + t * 60);
-        g = Math.floor(50 + t * 150);
-        b = Math.floor(80 + t * 170);
-      } else {
-        // Bright spots: pink-cyan-white
-        const t = (light - 0.7) / 0.3;
-        r = Math.floor(90 + t * 165);
-        g = Math.floor(200 + t * 55);
-        b = Math.floor(250);
-      }
-      
-      // Add subtle chromatic aberration at bright spots
-      if (light > 0.6) {
-        const aberration = (light - 0.6) * 50;
-        // Shift red channel slightly
-        const shiftX = Math.floor(aberration * 0.3);
-        if (x + shiftX < width) {
-          const shiftIdx = (y * width + x + shiftX) * 4;
-          // Will be applied in post
-        }
-      }
-      
-      data[pixelIdx] = Math.min(255, r);
-      data[pixelIdx + 1] = Math.min(255, g);
-      data[pixelIdx + 2] = Math.min(255, b);
-      data[pixelIdx + 3] = 255;
-    }
-  }
-  
-  ctx.putImageData(imageData, 0, 0);
-  
-  // Add bloom overlay for bright spots
-  ctx.globalCompositeOperation = 'screen';
-  ctx.filter = 'blur(20px)';
-  ctx.globalAlpha = 0.3;
-  ctx.drawImage(canvas, 0, 0);
-  ctx.filter = 'blur(40px)';
-  ctx.globalAlpha = 0.15;
-  ctx.drawImage(canvas, 0, 0);
-  ctx.filter = 'none';
   ctx.globalAlpha = 1;
-  ctx.globalCompositeOperation = 'source-over';
 }
 
-// Render just the water surface ripples (debug/aesthetic overlay)
-function renderWaterSurface() {
-  ctx.globalCompositeOperation = 'overlay';
-  ctx.globalAlpha = 0.1;
+function mutate(x, y) {
+  const gridX = Math.floor(x / cellSize);
+  const gridY = Math.floor(y / cellSize);
   
-  const cellW = width / GRID_SIZE;
-  const cellH = height / GRID_SIZE;
-  
-  for (let y = 0; y < GRID_SIZE; y++) {
-    for (let x = 0; x < GRID_SIZE; x++) {
-      const h = waterHeight[y * GRID_SIZE + x];
-      const brightness = Math.floor(128 + h * 500);
-      if (Math.abs(h) > 0.01) {
-        ctx.fillStyle = `rgb(${brightness}, ${brightness}, ${brightness + 30})`;
-        ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
+  // Flip cells in a small radius
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      const gx = (gridX + dx + cols) % cols;
+      const gy = gridY + dy;
+      if (gy >= 0 && gy < rows && Math.random() < 0.5) {
+        grid[gy][gx] = grid[gy][gx] ? 0 : 1;
       }
     }
   }
   
-  ctx.globalAlpha = 1;
-  ctx.globalCompositeOperation = 'source-over';
-}
-
-// Draw ambient particles floating in the light
-let particles = [];
-
-function initParticles() {
-  particles = [];
-  for (let i = 0; i < 50; i++) {
-    particles.push({
-      x: Math.random() * width,
-      y: Math.random() * height,
-      vx: (Math.random() - 0.5) * 0.3,
-      vy: (Math.random() - 0.5) * 0.3 - 0.1,
-      size: Math.random() * 2 + 1,
-      alpha: Math.random() * 0.5 + 0.2
-    });
+  // Play mutation sound
+  if (audioCtx) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = 150;
+    gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.2);
   }
 }
 
-function updateParticles() {
-  for (const p of particles) {
-    p.x += p.vx;
-    p.y += p.vy;
-    
-    // Gentle drift toward mouse
-    const dx = mouseX - p.x;
-    const dy = mouseY - p.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < 200 && dist > 10) {
-      p.vx += dx / dist * 0.01;
-      p.vy += dy / dist * 0.01;
-    }
-    
-    // Wrap around
-    if (p.x < 0) p.x = width;
-    if (p.x > width) p.x = 0;
-    if (p.y < 0) p.y = height;
-    if (p.y > height) p.y = 0;
-    
-    // Damping
-    p.vx *= 0.99;
-    p.vy *= 0.99;
+function changeRule(delta) {
+  const currentIndex = interestingRules.indexOf(currentRule);
+  let newIndex;
+  
+  if (currentIndex === -1) {
+    newIndex = 0;
+  } else {
+    newIndex = (currentIndex + delta + interestingRules.length) % interestingRules.length;
+  }
+  
+  currentRule = interestingRules[newIndex];
+  computeRuleSet(currentRule);
+  
+  // Don't reset - let the new rule propagate from current state
+  // This creates interesting transitions
+}
+
+function randomRule() {
+  currentRule = Math.floor(Math.random() * 256);
+  initGrid();
+  
+  // Dramatic sound for rule change
+  if (audioCtx) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.3);
+    gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.3);
   }
 }
 
-function renderParticles() {
-  ctx.globalCompositeOperation = 'screen';
-  for (const p of particles) {
-    // Get light intensity at particle position
-    const gx = Math.floor((p.x / width) * GRID_SIZE);
-    const gy = Math.floor((p.y / height) * GRID_SIZE);
-    const waterH = waterHeight[gy * GRID_SIZE + gx] || 0;
-    const brightness = Math.abs(waterH) * 10;
-    
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(200, 255, 255, ${p.alpha * (0.3 + brightness)})`;
-    ctx.fill();
-  }
-  ctx.globalCompositeOperation = 'source-over';
-}
-
-// Mouse interaction
-let lastMouseX = 0, lastMouseY = 0;
+// Event listeners
+window.addEventListener('resize', resize);
 
 canvas.addEventListener('mousemove', (e) => {
   mouseX = e.clientX;
   mouseY = e.clientY;
-  
-  // Add ripples along mouse path
-  const dx = mouseX - lastMouseX;
-  const dy = mouseY - lastMouseY;
-  const speed = Math.sqrt(dx * dx + dy * dy);
-  
-  if (speed > 5) {
-    addRipple(mouseX, mouseY, Math.min(speed * 0.02, 0.5));
-  }
-  
-  lastMouseX = mouseX;
-  lastMouseY = mouseY;
 });
 
 canvas.addEventListener('click', (e) => {
-  // Big splash on click
-  addRipple(e.clientX, e.clientY, 2);
+  // Init audio on first click
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  mutate(e.clientX, e.clientY);
+});
+
+window.addEventListener('keydown', (e) => {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
   
-  // Ring of smaller ripples
-  for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
-    const rx = e.clientX + Math.cos(a) * 50;
-    const ry = e.clientY + Math.sin(a) * 50;
-    setTimeout(() => addRipple(rx, ry, 0.5), 50);
+  if (e.code === 'Space') {
+    e.preventDefault();
+    randomRule();
+  } else if (e.code === 'ArrowLeft') {
+    changeRule(-1);
+  } else if (e.code === 'ArrowRight') {
+    changeRule(1);
   }
 });
-
-// Touch support
-canvas.addEventListener('touchmove', (e) => {
-  e.preventDefault();
-  const touch = e.touches[0];
-  mouseX = touch.clientX;
-  mouseY = touch.clientY;
-  addRipple(mouseX, mouseY, 0.3);
-});
-
-canvas.addEventListener('touchstart', (e) => {
-  const touch = e.touches[0];
-  addRipple(touch.clientX, touch.clientY, 1.5);
-});
-
-// Random drops
-function randomDrop() {
-  if (Math.random() < 0.02) {
-    const x = Math.random() * width;
-    const y = Math.random() * height;
-    addRipple(x, y, 0.3 + Math.random() * 0.3);
-  }
-}
 
 // Animation loop
+let frameCount = 0;
 function animate() {
-  time++;
+  frameCount++;
   
-  // Add ambient wave motion
-  addAmbientWaves();
+  // Advance generation every few frames for readable speed
+  if (frameCount % 3 === 0) {
+    nextGeneration();
+  }
   
-  // Random raindrops
-  randomDrop();
-  
-  // Simulate water physics
-  simulateWater();
-  
-  // Render caustics
-  renderCaustics();
-  
-  // Floating particles
-  updateParticles();
-  renderParticles();
-  
+  draw();
   requestAnimationFrame(animate);
 }
 
-// Initialize
-window.addEventListener('resize', () => {
-  resize();
-  initParticles();
-});
-
+// Start
 resize();
-initWater();
-initParticles();
-
-// Initial ripples
-setTimeout(() => addRipple(width * 0.3, height * 0.4, 1), 100);
-setTimeout(() => addRipple(width * 0.7, height * 0.6, 0.8), 300);
-setTimeout(() => addRipple(width * 0.5, height * 0.5, 1.2), 500);
-
 animate();
 </script>
 </body>
