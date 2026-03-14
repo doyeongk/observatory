@@ -3,354 +3,265 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>automaton</title>
+<title>grove</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { 
-  background: #0a0a0f; 
-  overflow: hidden; 
-  font-family: monospace;
-}
-canvas { display: block; }
-#info {
-  position: fixed;
-  bottom: 20px;
-  left: 20px;
-  color: #00ffff;
-  font-size: 14px;
-  opacity: 0.7;
-  text-shadow: 0 0 10px #00ffff;
-  pointer-events: none;
-  z-index: 10;
-}
-#rule-display {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  color: #ff66b2;
-  font-size: 24px;
-  font-weight: bold;
-  text-shadow: 0 0 20px #ff66b2;
-  pointer-events: none;
-  z-index: 10;
-}
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0f; }
+canvas { display: block; width: 100%; height: 100%; }
 </style>
 </head>
 <body>
-<canvas id="canvas"></canvas>
-<div id="info">click: mutate · space: new rule · ←→: browse rules</div>
-<div id="rule-display">RULE <span id="rule-num">110</span></div>
-
+<canvas id="c"></canvas>
 <script>
-const canvas = document.getElementById('canvas');
+const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
-const ruleNumEl = document.getElementById('rule-num');
 
-let W, H, cellSize, cols, rows;
-let currentRule = 110;
-let ruleSet = [];
-let grid = [];
-let generation = 0;
-let scrollOffset = 0;
-let mouseX = 0, mouseY = 0;
-let audioCtx = null;
-let lastSoundTime = 0;
-
-// Interesting rules to cycle through
-const interestingRules = [30, 45, 54, 60, 73, 90, 105, 110, 150, 182, 225];
+let W, H;
+let trees = [];
+let wind = { x: 0, y: 0, target: 0 };
+let time = 0;
+let audioCtx, windNode, windGain;
 
 function resize() {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
-  cellSize = Math.max(2, Math.floor(Math.min(W, H) / 200));
-  cols = Math.floor(W / cellSize);
-  rows = Math.floor(H / cellSize) + 50; // buffer for scrolling
-  initGrid();
 }
-
-function initGrid() {
-  grid = [];
-  for (let y = 0; y < rows; y++) {
-    grid[y] = new Array(cols).fill(0);
-  }
-  // Start with single cell in center
-  grid[0][Math.floor(cols / 2)] = 1;
-  // Add some random seeds for visual interest
-  for (let i = 0; i < 5; i++) {
-    grid[0][Math.floor(Math.random() * cols)] = 1;
-  }
-  generation = 0;
-  scrollOffset = 0;
-  computeRuleSet(currentRule);
-}
-
-function computeRuleSet(ruleNumber) {
-  ruleSet = [];
-  for (let i = 0; i < 8; i++) {
-    ruleSet[i] = (ruleNumber >> i) & 1;
-  }
-  ruleNumEl.textContent = ruleNumber;
-}
-
-function applyRule(left, center, right) {
-  const index = (left << 2) | (center << 1) | right;
-  return ruleSet[index];
-}
-
-function nextGeneration() {
-  if (generation >= rows - 1) {
-    // Scroll everything up
-    for (let y = 0; y < rows - 1; y++) {
-      grid[y] = grid[y + 1].slice();
-    }
-    grid[rows - 1] = new Array(cols).fill(0);
-    scrollOffset++;
-  } else {
-    generation++;
-  }
-  
-  const y = Math.min(generation, rows - 1);
-  const prevY = y - 1;
-  
-  if (prevY >= 0) {
-    for (let x = 0; x < cols; x++) {
-      const left = grid[prevY][(x - 1 + cols) % cols];
-      const center = grid[prevY][x];
-      const right = grid[prevY][(x + 1) % cols];
-      grid[y][x] = applyRule(left, center, right);
-    }
-  }
-  
-  // Count alive cells for sound
-  let alive = 0;
-  for (let x = 0; x < cols; x++) {
-    if (grid[y][x]) alive++;
-  }
-  
-  // Occasional click sounds based on pattern density
-  if (audioCtx && Date.now() - lastSoundTime > 50) {
-    const density = alive / cols;
-    if (Math.random() < density * 0.3) {
-      playTick(density);
-      lastSoundTime = Date.now();
-    }
-  }
-}
-
-function playTick(density) {
-  if (!audioCtx) return;
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  
-  osc.type = 'sine';
-  osc.frequency.value = 200 + density * 800 + Math.random() * 200;
-  
-  gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
-  gain.gain.exponentialDecayTo?.(0.001, audioCtx.currentTime + 0.1) ||
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
-  
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  
-  osc.start();
-  osc.stop(audioCtx.currentTime + 0.1);
-}
-
-function getColor(x, y, alive) {
-  if (!alive) return null;
-  
-  // Age-based coloring (newer = cyan, older = pink)
-  const age = (generation + scrollOffset) - (y + scrollOffset);
-  const normalizedAge = Math.min(age / 30, 1);
-  
-  // Distance from mouse affects brightness
-  const dx = (x * cellSize) - mouseX;
-  const dy = (y * cellSize) - mouseY;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  const mouseFactor = Math.max(0, 1 - dist / 300);
-  
-  const r = Math.floor(100 + normalizedAge * 155 + mouseFactor * 50);
-  const g = Math.floor(255 - normalizedAge * 155);
-  const b = Math.floor(255 - normalizedAge * 77 + mouseFactor * 50);
-  
-  return `rgb(${Math.min(255, r)}, ${Math.min(255, g)}, ${Math.min(255, b)})`;
-}
-
-function draw() {
-  // Slight fade for trail effect
-  ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
-  ctx.fillRect(0, 0, W, H);
-  
-  // Draw cells
-  for (let y = 0; y < Math.min(generation + 1, rows); y++) {
-    for (let x = 0; x < cols; x++) {
-      if (grid[y][x]) {
-        const color = getColor(x, y, true);
-        if (color) {
-          ctx.fillStyle = color;
-          
-          // Glow effect near mouse
-          const dx = (x * cellSize) - mouseX;
-          const dy = (y * cellSize) - mouseY;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          
-          if (dist < 100) {
-            ctx.shadowColor = '#00ffff';
-            ctx.shadowBlur = 10 * (1 - dist / 100);
-          } else {
-            ctx.shadowBlur = 0;
-          }
-          
-          ctx.fillRect(x * cellSize, y * cellSize, cellSize - 1, cellSize - 1);
-        }
-      }
-    }
-  }
-  ctx.shadowBlur = 0;
-  
-  // Draw rule visualization at top
-  drawRuleViz();
-}
-
-function drawRuleViz() {
-  const vizSize = 20;
-  const startX = 20;
-  const startY = 20;
-  
-  ctx.globalAlpha = 0.5;
-  for (let i = 7; i >= 0; i--) {
-    const pattern = i;
-    const result = ruleSet[i];
-    const x = startX + (7 - i) * (vizSize * 4 + 10);
-    
-    // Draw input pattern
-    for (let j = 2; j >= 0; j--) {
-      const bit = (pattern >> j) & 1;
-      ctx.fillStyle = bit ? '#ff66b2' : '#1a1a2e';
-      ctx.fillRect(x + (2 - j) * vizSize, startY, vizSize - 2, vizSize - 2);
-    }
-    
-    // Draw output
-    ctx.fillStyle = result ? '#00ffff' : '#1a1a2e';
-    ctx.fillRect(x + vizSize, startY + vizSize + 5, vizSize - 2, vizSize - 2);
-  }
-  ctx.globalAlpha = 1;
-}
-
-function mutate(x, y) {
-  const gridX = Math.floor(x / cellSize);
-  const gridY = Math.floor(y / cellSize);
-  
-  // Flip cells in a small radius
-  for (let dy = -2; dy <= 2; dy++) {
-    for (let dx = -2; dx <= 2; dx++) {
-      const gx = (gridX + dx + cols) % cols;
-      const gy = gridY + dy;
-      if (gy >= 0 && gy < rows && Math.random() < 0.5) {
-        grid[gy][gx] = grid[gy][gx] ? 0 : 1;
-      }
-    }
-  }
-  
-  // Play mutation sound
-  if (audioCtx) {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'square';
-    osc.frequency.value = 150;
-    gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.2);
-  }
-}
-
-function changeRule(delta) {
-  const currentIndex = interestingRules.indexOf(currentRule);
-  let newIndex;
-  
-  if (currentIndex === -1) {
-    newIndex = 0;
-  } else {
-    newIndex = (currentIndex + delta + interestingRules.length) % interestingRules.length;
-  }
-  
-  currentRule = interestingRules[newIndex];
-  computeRuleSet(currentRule);
-  
-  // Don't reset - let the new rule propagate from current state
-  // This creates interesting transitions
-}
-
-function randomRule() {
-  currentRule = Math.floor(Math.random() * 256);
-  initGrid();
-  
-  // Dramatic sound for rule change
-  if (audioCtx) {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(400, audioCtx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.3);
-    gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.3);
-  }
-}
-
-// Event listeners
+resize();
 window.addEventListener('resize', resize);
 
+// L-system rules for tree
+const rules = {
+  'F': 'FF',
+  'X': 'F-[[X]+X]+F[+FX]-X'
+};
+
+function generateLSystem(axiom, iterations) {
+  let result = axiom;
+  for (let i = 0; i < iterations; i++) {
+    let next = '';
+    for (const char of result) {
+      next += rules[char] || char;
+    }
+    result = next;
+  }
+  return result;
+}
+
+class Tree {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.age = 0;
+    this.maxAge = 300 + Math.random() * 200;
+    this.grown = false;
+    this.iterations = 4 + Math.floor(Math.random() * 2);
+    this.lsystem = generateLSystem('X', this.iterations);
+    this.angle = 22 + Math.random() * 8;
+    this.segments = [];
+    this.buildSegments();
+    this.hue = 280 + Math.random() * 60; // purple to pink range
+  }
+
+  buildSegments() {
+    const stack = [];
+    let x = this.x;
+    let y = this.y;
+    let dir = -90; // pointing up
+    const len = 3 + Math.random() * 2;
+    let depth = 0;
+
+    for (const char of this.lsystem) {
+      if (char === 'F') {
+        const rad = dir * Math.PI / 180;
+        const nx = x + Math.cos(rad) * len;
+        const ny = y + Math.sin(rad) * len;
+        this.segments.push({
+          x1: x, y1: y, x2: nx, y2: ny,
+          depth: depth,
+          swayOffset: Math.random() * Math.PI * 2,
+          swayAmp: 0.5 + depth * 0.3
+        });
+        x = nx;
+        y = ny;
+      } else if (char === '+') {
+        dir += this.angle;
+        depth++;
+      } else if (char === '-') {
+        dir -= this.angle;
+        depth++;
+      } else if (char === '[') {
+        stack.push({ x, y, dir, depth });
+      } else if (char === ']') {
+        const state = stack.pop();
+        x = state.x;
+        y = state.y;
+        dir = state.dir;
+        depth = state.depth;
+      }
+    }
+  }
+
+  draw() {
+    const growthRatio = Math.min(1, this.age / this.maxAge);
+    const visibleSegments = Math.floor(this.segments.length * growthRatio);
+
+    for (let i = 0; i < visibleSegments; i++) {
+      const seg = this.segments[i];
+      const segGrowth = Math.min(1, (growthRatio * this.segments.length - i));
+      if (segGrowth <= 0) continue;
+
+      // Wind sway
+      const sway = Math.sin(time * 0.002 + seg.swayOffset) * seg.swayAmp * wind.x * 0.5;
+      const swayY = Math.cos(time * 0.003 + seg.swayOffset) * seg.swayAmp * 0.2;
+
+      const x1 = seg.x1 + sway * (seg.depth * 0.1);
+      const y1 = seg.y1 + swayY * (seg.depth * 0.1);
+      const x2 = seg.x1 + (seg.x2 - seg.x1) * segGrowth + sway * (seg.depth * 0.15);
+      const y2 = seg.y1 + (seg.y2 - seg.y1) * segGrowth + swayY * (seg.depth * 0.15);
+
+      // Thickness decreases with depth
+      const thickness = Math.max(0.5, 4 - seg.depth * 0.4);
+      
+      // Color shifts from cyan (trunk) to pink (tips)
+      const depthRatio = seg.depth / 8;
+      const hue = 180 + depthRatio * 140; // cyan to magenta
+      const lightness = 50 + depthRatio * 20;
+      const alpha = 0.6 + (1 - depthRatio) * 0.4;
+
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.strokeStyle = `hsla(${hue}, 80%, ${lightness}%, ${alpha})`;
+      ctx.lineWidth = thickness;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Glow on tips
+      if (seg.depth > 5 && segGrowth > 0.8) {
+        ctx.beginPath();
+        ctx.arc(x2, y2, 2 + Math.sin(time * 0.01 + seg.swayOffset) * 1, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(320, 100%, 70%, ${0.3 + Math.sin(time * 0.005) * 0.2})`;
+        ctx.fill();
+      }
+    }
+
+    this.age++;
+    if (this.age >= this.maxAge) this.grown = true;
+  }
+}
+
+function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  
+  // Wind noise
+  const bufferSize = audioCtx.sampleRate * 2;
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = Math.random() * 2 - 1;
+  }
+  
+  windNode = audioCtx.createBufferSource();
+  windNode.buffer = buffer;
+  windNode.loop = true;
+  
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 200;
+  filter.Q.value = 1;
+  
+  windGain = audioCtx.createGain();
+  windGain.gain.value = 0;
+  
+  windNode.connect(filter);
+  filter.connect(windGain);
+  windGain.connect(audioCtx.destination);
+  windNode.start();
+}
+
+// Mouse interaction
+let mouseX = W / 2;
 canvas.addEventListener('mousemove', (e) => {
   mouseX = e.clientX;
-  mouseY = e.clientY;
+  wind.target = (mouseX - W / 2) / (W / 2) * 3;
 });
 
 canvas.addEventListener('click', (e) => {
-  // Init audio on first click
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  mutate(e.clientX, e.clientY);
-});
-
-window.addEventListener('keydown', (e) => {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
+  if (!audioCtx) initAudio();
   
-  if (e.code === 'Space') {
-    e.preventDefault();
-    randomRule();
-  } else if (e.code === 'ArrowLeft') {
-    changeRule(-1);
-  } else if (e.code === 'ArrowRight') {
-    changeRule(1);
+  // Plant a new tree
+  if (trees.length < 15) {
+    trees.push(new Tree(e.clientX, H - 20 - Math.random() * 30));
+    
+    // Growth sound
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 200 + Math.random() * 100;
+    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    gain.gain.exponentialDecayTo && gain.gain.exponentialDecayTo(0.001, audioCtx.currentTime + 0.5);
+    gain.gain.setTargetAtTime(0.001, audioCtx.currentTime, 0.15);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.5);
   }
 });
 
-// Animation loop
-let frameCount = 0;
+// Start with a few trees
+for (let i = 0; i < 5; i++) {
+  trees.push(new Tree(
+    W * 0.2 + Math.random() * W * 0.6,
+    H - 20 - Math.random() * 30
+  ));
+}
+
+function drawGround() {
+  const gradient = ctx.createLinearGradient(0, H - 50, 0, H);
+  gradient.addColorStop(0, 'rgba(20, 10, 30, 0)');
+  gradient.addColorStop(1, 'rgba(20, 10, 30, 1)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, H - 50, W, 50);
+}
+
+function drawStars() {
+  for (let i = 0; i < 50; i++) {
+    const x = (i * 137.5) % W;
+    const y = (i * 73.7) % (H * 0.6);
+    const twinkle = 0.3 + Math.sin(time * 0.003 + i) * 0.3;
+    ctx.beginPath();
+    ctx.arc(x, y, 0.5 + Math.random() * 0.5, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(200, 220, 255, ${twinkle})`;
+    ctx.fill();
+  }
+}
+
 function animate() {
-  frameCount++;
+  time++;
   
-  // Advance generation every few frames for readable speed
-  if (frameCount % 3 === 0) {
-    nextGeneration();
+  // Smooth wind
+  wind.x += (wind.target - wind.x) * 0.02;
+  
+  // Update wind audio
+  if (windGain) {
+    windGain.gain.setTargetAtTime(Math.abs(wind.x) * 0.03, audioCtx.currentTime, 0.1);
   }
   
-  draw();
+  // Clear with slight trail
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
+  ctx.fillRect(0, 0, W, H);
+  
+  drawStars();
+  drawGround();
+  
+  // Draw all trees
+  for (const tree of trees) {
+    tree.draw();
+  }
+  
   requestAnimationFrame(animate);
 }
 
-// Start
-resize();
 animate();
 </script>
 </body>
