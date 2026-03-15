@@ -3,266 +3,405 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>grove</title>
+<title>labyrinth</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0f; }
-canvas { display: block; width: 100%; height: 100%; }
+body { background: #0a0a0f; overflow: hidden; }
+canvas { display: block; }
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
+<canvas id="canvas"></canvas>
 <script>
-const canvas = document.getElementById('c');
+const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
-let W, H;
-let trees = [];
-let wind = { x: 0, y: 0, target: 0 };
-let time = 0;
-let audioCtx, windNode, windGain;
+let W, H, cols, rows, cellSize, grid, stack, current;
+let phase = 'generate'; // generate, solve, pause, reset
+let solution = [];
+let visited = [];
+let queue = [];
+let parent = {};
+let solveIndex = 0;
+let pauseTimer = 0;
+let mouseX = -1000, mouseY = -1000;
+
+// Audio
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let audioStarted = false;
+
+function playTick(freq = 800, duration = 0.02, vol = 0.03) {
+  if (!audioStarted) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.frequency.value = freq;
+  osc.type = 'square';
+  gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+function playSolve() {
+  if (!audioStarted) return;
+  const notes = [261.63, 329.63, 392.00, 523.25]; // C major arpeggio
+  notes.forEach((freq, i) => {
+    setTimeout(() => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.frequency.value = freq;
+      osc.type = 'triangle';
+      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.3);
+    }, i * 80);
+  });
+}
 
 function resize() {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
+  cellSize = Math.floor(Math.min(W, H) / 40);
+  cols = Math.floor(W / cellSize);
+  rows = Math.floor(H / cellSize);
+  initMaze();
 }
-resize();
-window.addEventListener('resize', resize);
 
-// L-system rules for tree
-const rules = {
-  'F': 'FF',
-  'X': 'F-[[X]+X]+F[+FX]-X'
-};
-
-function generateLSystem(axiom, iterations) {
-  let result = axiom;
-  for (let i = 0; i < iterations; i++) {
-    let next = '';
-    for (const char of result) {
-      next += rules[char] || char;
+function initMaze() {
+  grid = [];
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      grid.push({
+        x, y,
+        walls: [true, true, true, true], // top, right, bottom, left
+        visited: false,
+        inSolution: false,
+        solveVisited: false,
+        glow: 0
+      });
     }
-    result = next;
   }
-  return result;
+  stack = [];
+  current = grid[0];
+  current.visited = true;
+  phase = 'generate';
+  solution = [];
+  visited = [];
+  queue = [];
+  parent = {};
+  solveIndex = 0;
+  pauseTimer = 0;
 }
 
-class Tree {
-  constructor(x, y) {
-    this.x = x;
-    this.y = y;
-    this.age = 0;
-    this.maxAge = 300 + Math.random() * 200;
-    this.grown = false;
-    this.iterations = 4 + Math.floor(Math.random() * 2);
-    this.lsystem = generateLSystem('X', this.iterations);
-    this.angle = 22 + Math.random() * 8;
-    this.segments = [];
-    this.buildSegments();
-    this.hue = 280 + Math.random() * 60; // purple to pink range
+function index(x, y) {
+  if (x < 0 || y < 0 || x >= cols || y >= rows) return -1;
+  return x + y * cols;
+}
+
+function getUnvisitedNeighbors(cell) {
+  const neighbors = [];
+  const { x, y } = cell;
+  const top = grid[index(x, y - 1)];
+  const right = grid[index(x + 1, y)];
+  const bottom = grid[index(x, y + 1)];
+  const left = grid[index(x - 1, y)];
+  if (top && !top.visited) neighbors.push(top);
+  if (right && !right.visited) neighbors.push(right);
+  if (bottom && !bottom.visited) neighbors.push(bottom);
+  if (left && !left.visited) neighbors.push(left);
+  return neighbors;
+}
+
+function removeWalls(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  if (dx === 1) { a.walls[3] = false; b.walls[1] = false; }
+  if (dx === -1) { a.walls[1] = false; b.walls[3] = false; }
+  if (dy === 1) { a.walls[0] = false; b.walls[2] = false; }
+  if (dy === -1) { a.walls[2] = false; b.walls[0] = false; }
+}
+
+function generateStep() {
+  const neighbors = getUnvisitedNeighbors(current);
+  if (neighbors.length > 0) {
+    const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+    stack.push(current);
+    removeWalls(current, next);
+    current = next;
+    current.visited = true;
+    playTick(400 + Math.random() * 200, 0.015, 0.02);
+  } else if (stack.length > 0) {
+    current = stack.pop();
+  } else {
+    phase = 'solve';
+    startSolve();
   }
+}
 
-  buildSegments() {
-    const stack = [];
-    let x = this.x;
-    let y = this.y;
-    let dir = -90; // pointing up
-    const len = 3 + Math.random() * 2;
-    let depth = 0;
+function startSolve() {
+  const start = grid[0];
+  const end = grid[grid.length - 1];
+  queue = [start];
+  parent = {};
+  parent[`${start.x},${start.y}`] = null;
+  start.solveVisited = true;
+}
 
-    for (const char of this.lsystem) {
-      if (char === 'F') {
-        const rad = dir * Math.PI / 180;
-        const nx = x + Math.cos(rad) * len;
-        const ny = y + Math.sin(rad) * len;
-        this.segments.push({
-          x1: x, y1: y, x2: nx, y2: ny,
-          depth: depth,
-          swayOffset: Math.random() * Math.PI * 2,
-          swayAmp: 0.5 + depth * 0.3
-        });
-        x = nx;
-        y = ny;
-      } else if (char === '+') {
-        dir += this.angle;
-        depth++;
-      } else if (char === '-') {
-        dir -= this.angle;
-        depth++;
-      } else if (char === '[') {
-        stack.push({ x, y, dir, depth });
-      } else if (char === ']') {
-        const state = stack.pop();
-        x = state.x;
-        y = state.y;
-        dir = state.dir;
-        depth = state.depth;
+function getPassableNeighbors(cell) {
+  const neighbors = [];
+  const { x, y, walls } = cell;
+  if (!walls[0]) { const n = grid[index(x, y - 1)]; if (n) neighbors.push(n); }
+  if (!walls[1]) { const n = grid[index(x + 1, y)]; if (n) neighbors.push(n); }
+  if (!walls[2]) { const n = grid[index(x, y + 1)]; if (n) neighbors.push(n); }
+  if (!walls[3]) { const n = grid[index(x - 1, y)]; if (n) neighbors.push(n); }
+  return neighbors;
+}
+
+function solveStep() {
+  if (queue.length === 0) return;
+  
+  const current = queue.shift();
+  const end = grid[grid.length - 1];
+  
+  if (current === end) {
+    // Reconstruct path
+    let node = end;
+    while (node) {
+      solution.unshift(node);
+      node.inSolution = true;
+      const key = `${node.x},${node.y}`;
+      const p = parent[key];
+      if (p) {
+        node = grid[index(p.x, p.y)];
+      } else {
+        node = null;
       }
     }
+    phase = 'reveal';
+    solveIndex = 0;
+    playSolve();
+    return;
   }
-
-  draw() {
-    const growthRatio = Math.min(1, this.age / this.maxAge);
-    const visibleSegments = Math.floor(this.segments.length * growthRatio);
-
-    for (let i = 0; i < visibleSegments; i++) {
-      const seg = this.segments[i];
-      const segGrowth = Math.min(1, (growthRatio * this.segments.length - i));
-      if (segGrowth <= 0) continue;
-
-      // Wind sway
-      const sway = Math.sin(time * 0.002 + seg.swayOffset) * seg.swayAmp * wind.x * 0.5;
-      const swayY = Math.cos(time * 0.003 + seg.swayOffset) * seg.swayAmp * 0.2;
-
-      const x1 = seg.x1 + sway * (seg.depth * 0.1);
-      const y1 = seg.y1 + swayY * (seg.depth * 0.1);
-      const x2 = seg.x1 + (seg.x2 - seg.x1) * segGrowth + sway * (seg.depth * 0.15);
-      const y2 = seg.y1 + (seg.y2 - seg.y1) * segGrowth + swayY * (seg.depth * 0.15);
-
-      // Thickness decreases with depth
-      const thickness = Math.max(0.5, 4 - seg.depth * 0.4);
-      
-      // Color shifts from cyan (trunk) to pink (tips)
-      const depthRatio = seg.depth / 8;
-      const hue = 180 + depthRatio * 140; // cyan to magenta
-      const lightness = 50 + depthRatio * 20;
-      const alpha = 0.6 + (1 - depthRatio) * 0.4;
-
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.strokeStyle = `hsla(${hue}, 80%, ${lightness}%, ${alpha})`;
-      ctx.lineWidth = thickness;
-      ctx.lineCap = 'round';
-      ctx.stroke();
-
-      // Glow on tips
-      if (seg.depth > 5 && segGrowth > 0.8) {
-        ctx.beginPath();
-        ctx.arc(x2, y2, 2 + Math.sin(time * 0.01 + seg.swayOffset) * 1, 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(320, 100%, 70%, ${0.3 + Math.sin(time * 0.005) * 0.2})`;
-        ctx.fill();
-      }
+  
+  const neighbors = getPassableNeighbors(current);
+  for (const n of neighbors) {
+    const key = `${n.x},${n.y}`;
+    if (!n.solveVisited) {
+      n.solveVisited = true;
+      parent[key] = { x: current.x, y: current.y };
+      queue.push(n);
     }
+  }
+  
+  playTick(600, 0.01, 0.01);
+}
 
-    this.age++;
-    if (this.age >= this.maxAge) this.grown = true;
+function revealStep() {
+  if (solveIndex < solution.length) {
+    solution[solveIndex].glow = 1;
+    solveIndex++;
+    playTick(800 + solveIndex * 5, 0.03, 0.04);
+  } else {
+    phase = 'pause';
+    pauseTimer = 180; // 3 seconds at 60fps
   }
 }
 
-function initAudio() {
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function drawCell(cell) {
+  const x = cell.x * cellSize;
+  const y = cell.y * cellSize;
+  const walls = cell.walls;
   
-  // Wind noise
-  const bufferSize = audioCtx.sampleRate * 2;
-  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    data[i] = Math.random() * 2 - 1;
+  // Distance to mouse
+  const cx = x + cellSize / 2;
+  const cy = y + cellSize / 2;
+  const dist = Math.hypot(mouseX - cx, mouseY - cy);
+  const proximity = Math.max(0, 1 - dist / (cellSize * 4));
+  
+  // Background glow for solution path
+  if (cell.glow > 0) {
+    const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, cellSize);
+    gradient.addColorStop(0, `rgba(255, 100, 200, ${cell.glow * 0.4})`);
+    gradient.addColorStop(1, `rgba(100, 255, 255, ${cell.glow * 0.1})`);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x, y, cellSize, cellSize);
   }
   
-  windNode = audioCtx.createBufferSource();
-  windNode.buffer = buffer;
-  windNode.loop = true;
-  
-  const filter = audioCtx.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.frequency.value = 200;
-  filter.Q.value = 1;
-  
-  windGain = audioCtx.createGain();
-  windGain.gain.value = 0;
-  
-  windNode.connect(filter);
-  filter.connect(windGain);
-  windGain.connect(audioCtx.destination);
-  windNode.start();
-}
-
-// Mouse interaction
-let mouseX = W / 2;
-canvas.addEventListener('mousemove', (e) => {
-  mouseX = e.clientX;
-  wind.target = (mouseX - W / 2) / (W / 2) * 3;
-});
-
-canvas.addEventListener('click', (e) => {
-  if (!audioCtx) initAudio();
-  
-  // Plant a new tree
-  if (trees.length < 15) {
-    trees.push(new Tree(e.clientX, H - 20 - Math.random() * 30));
-    
-    // Growth sound
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = 200 + Math.random() * 100;
-    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-    gain.gain.exponentialDecayTo && gain.gain.exponentialDecayTo(0.001, audioCtx.currentTime + 0.5);
-    gain.gain.setTargetAtTime(0.001, audioCtx.currentTime, 0.15);
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.5);
-  }
-});
-
-// Start with a few trees
-for (let i = 0; i < 5; i++) {
-  trees.push(new Tree(
-    W * 0.2 + Math.random() * W * 0.6,
-    H - 20 - Math.random() * 30
-  ));
-}
-
-function drawGround() {
-  const gradient = ctx.createLinearGradient(0, H - 50, 0, H);
-  gradient.addColorStop(0, 'rgba(20, 10, 30, 0)');
-  gradient.addColorStop(1, 'rgba(20, 10, 30, 1)');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, H - 50, W, 50);
-}
-
-function drawStars() {
-  for (let i = 0; i < 50; i++) {
-    const x = (i * 137.5) % W;
-    const y = (i * 73.7) % (H * 0.6);
-    const twinkle = 0.3 + Math.sin(time * 0.003 + i) * 0.3;
-    ctx.beginPath();
-    ctx.arc(x, y, 0.5 + Math.random() * 0.5, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(200, 220, 255, ${twinkle})`;
-    ctx.fill();
-  }
-}
-
-function animate() {
-  time++;
-  
-  // Smooth wind
-  wind.x += (wind.target - wind.x) * 0.02;
-  
-  // Update wind audio
-  if (windGain) {
-    windGain.gain.setTargetAtTime(Math.abs(wind.x) * 0.03, audioCtx.currentTime, 0.1);
+  // Mouse proximity highlight
+  if (proximity > 0 && phase !== 'reveal') {
+    ctx.fillStyle = `rgba(100, 255, 255, ${proximity * 0.1})`;
+    ctx.fillRect(x, y, cellSize, cellSize);
   }
   
-  // Clear with slight trail
-  ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
+  // Current generation cell
+  if (phase === 'generate' && cell === current) {
+    ctx.fillStyle = 'rgba(255, 100, 200, 0.6)';
+    ctx.fillRect(x + 2, y + 2, cellSize - 4, cellSize - 4);
+  }
+  
+  // Solve exploration
+  if (phase === 'solve' && cell.solveVisited && !cell.inSolution) {
+    ctx.fillStyle = 'rgba(100, 255, 255, 0.15)';
+    ctx.fillRect(x, y, cellSize, cellSize);
+  }
+  
+  // Walls
+  ctx.strokeStyle = cell.visited ? 
+    (cell.glow > 0 ? `rgba(255, 150, 220, ${0.6 + cell.glow * 0.4})` : 'rgba(180, 100, 200, 0.6)') : 
+    'rgba(60, 40, 80, 0.4)';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  
+  if (walls[0]) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + cellSize, y); ctx.stroke(); }
+  if (walls[1]) { ctx.beginPath(); ctx.moveTo(x + cellSize, y); ctx.lineTo(x + cellSize, y + cellSize); ctx.stroke(); }
+  if (walls[2]) { ctx.beginPath(); ctx.moveTo(x + cellSize, y + cellSize); ctx.lineTo(x, y + cellSize); ctx.stroke(); }
+  if (walls[3]) { ctx.beginPath(); ctx.moveTo(x, y + cellSize); ctx.lineTo(x, y); ctx.stroke(); }
+}
+
+function drawSolutionPath() {
+  if (solution.length < 2) return;
+  
+  ctx.beginPath();
+  ctx.strokeStyle = 'rgba(255, 100, 200, 0.8)';
+  ctx.lineWidth = cellSize * 0.3;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  
+  for (let i = 0; i < Math.min(solveIndex, solution.length); i++) {
+    const cell = solution[i];
+    const x = cell.x * cellSize + cellSize / 2;
+    const y = cell.y * cellSize + cellSize / 2;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  
+  // Cyan glow overlay
+  ctx.strokeStyle = 'rgba(100, 255, 255, 0.3)';
+  ctx.lineWidth = cellSize * 0.5;
+  ctx.stroke();
+}
+
+function drawStartEnd() {
+  // Start marker
+  ctx.fillStyle = 'rgba(100, 255, 255, 0.8)';
+  ctx.beginPath();
+  ctx.arc(cellSize / 2, cellSize / 2, cellSize * 0.25, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // End marker
+  ctx.fillStyle = 'rgba(255, 100, 200, 0.8)';
+  ctx.beginPath();
+  const ex = (cols - 0.5) * cellSize;
+  const ey = (rows - 0.5) * cellSize;
+  ctx.arc(ex, ey, cellSize * 0.25, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function update() {
+  const stepsPerFrame = phase === 'generate' ? 3 : phase === 'solve' ? 5 : 1;
+  
+  for (let i = 0; i < stepsPerFrame; i++) {
+    if (phase === 'generate') generateStep();
+    else if (phase === 'solve') solveStep();
+    else if (phase === 'reveal') revealStep();
+  }
+  
+  if (phase === 'pause') {
+    pauseTimer--;
+    if (pauseTimer <= 0) {
+      initMaze();
+    }
+  }
+  
+  // Decay glows
+  for (const cell of grid) {
+    if (cell.glow > 0 && phase === 'pause') {
+      // Keep glowing during pause
+    }
+  }
+}
+
+function draw() {
+  ctx.fillStyle = '#0a0a0f';
   ctx.fillRect(0, 0, W, H);
   
-  drawStars();
-  drawGround();
-  
-  // Draw all trees
-  for (const tree of trees) {
-    tree.draw();
+  // Subtle grid backdrop
+  ctx.strokeStyle = 'rgba(40, 20, 60, 0.3)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= W; x += cellSize) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, H);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= H; y += cellSize) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(W, y);
+    ctx.stroke();
   }
   
-  requestAnimationFrame(animate);
+  // Draw cells
+  for (const cell of grid) {
+    drawCell(cell);
+  }
+  
+  // Draw solution path
+  if (phase === 'reveal' || phase === 'pause') {
+    drawSolutionPath();
+  }
+  
+  // Start and end markers
+  drawStartEnd();
+  
+  // Phase indicator
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.font = '12px monospace';
+  const phaseText = phase === 'generate' ? 'carving...' : 
+                    phase === 'solve' ? 'searching...' : 
+                    phase === 'reveal' ? 'found' : 'contemplating';
+  ctx.fillText(phaseText, 10, H - 10);
 }
 
-animate();
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// Events
+window.addEventListener('resize', resize);
+canvas.addEventListener('mousemove', (e) => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+});
+canvas.addEventListener('click', () => {
+  if (!audioStarted) {
+    audioCtx.resume();
+    audioStarted = true;
+  }
+  initMaze();
+});
+canvas.addEventListener('touchstart', (e) => {
+  if (!audioStarted) {
+    audioCtx.resume();
+    audioStarted = true;
+  }
+  const touch = e.touches[0];
+  mouseX = touch.clientX;
+  mouseY = touch.clientY;
+  initMaze();
+});
+
+// Init
+resize();
+loop();
 </script>
 </body>
 </html>
