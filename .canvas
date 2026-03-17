@@ -1,317 +1,395 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>strange loop</title>
+<meta charset="utf-8">
+<title>transit</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { 
-  background: #0a0a0f; 
-  overflow: hidden; 
-  font-family: monospace;
-}
+body { background: #000; overflow: hidden; }
 canvas { display: block; }
-#info {
-  position: fixed;
-  bottom: 20px;
-  left: 20px;
-  color: rgba(0, 255, 255, 0.4);
-  font-size: 11px;
-  pointer-events: none;
-  text-transform: lowercase;
-}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="info">click to perturb · drag to rotate</div>
 <script>
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
-let W, H;
+let w, h, cx, cy;
+let mouseX = 0, mouseY = 0;
+let audioCtx, oscillators = [], noiseNode, noiseGain;
+let audioStarted = false;
+let hueShift = 0;
+let targetHue = 0;
+let speed = 1;
+let transitPhase = 0;
+
+const rings = [];
+const stars = [];
+const debris = [];
+
 function resize() {
-  W = canvas.width = window.innerWidth;
-  H = canvas.height = window.innerHeight;
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+    cx = w / 2;
+    cy = h / 2;
 }
-resize();
-window.addEventListener('resize', resize);
 
-// Lorenz system parameters
-const sigma = 10;
-const rho = 28;
-const beta = 8/3;
-const dt = 0.003;
-
-// Multiple particles to show the butterfly effect
-class Particle {
-  constructor(x, y, z, hue) {
-    this.x = x;
-    this.y = y;
-    this.z = z;
-    this.hue = hue;
-    this.trail = [];
-    this.maxTrail = 400;
-  }
-  
-  step() {
-    const dx = sigma * (this.y - this.x);
-    const dy = this.x * (rho - this.z) - this.y;
-    const dz = this.x * this.y - beta * this.z;
-    
-    this.x += dx * dt;
-    this.y += dy * dt;
-    this.z += dz * dt;
-    
-    this.trail.push({ x: this.x, y: this.y, z: this.z });
-    if (this.trail.length > this.maxTrail) {
-      this.trail.shift();
+function initRings() {
+    rings.length = 0;
+    for (let i = 0; i < 60; i++) {
+        rings.push({
+            z: i * 50 + Math.random() * 30,
+            wobblePhase: Math.random() * Math.PI * 2,
+            wobbleAmp: 0.02 + Math.random() * 0.03,
+            segments: 32 + Math.floor(Math.random() * 16),
+            distortion: Math.random() * 0.3
+        });
     }
-  }
 }
 
-// Create particles with tiny differences (butterfly effect)
-let particles = [];
-function initParticles() {
-  particles = [];
-  const baseX = 0.1 + Math.random() * 0.1;
-  const baseY = 0.1 + Math.random() * 0.1;
-  const baseZ = 0.1 + Math.random() * 0.1;
-  
-  // Cyan primary
-  particles.push(new Particle(baseX, baseY, baseZ, 180));
-  // Pink — nearly identical starting point
-  particles.push(new Particle(baseX + 0.0001, baseY, baseZ, 320));
-  // Purple — another tiny variation
-  particles.push(new Particle(baseX, baseY + 0.0001, baseZ, 280));
+function initStars() {
+    stars.length = 0;
+    for (let i = 0; i < 200; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 0.3 + Math.random() * 0.7;
+        stars.push({
+            angle: angle,
+            dist: dist,
+            z: Math.random() * 3000,
+            brightness: 0.3 + Math.random() * 0.7,
+            size: 0.5 + Math.random() * 1.5
+        });
+    }
 }
-initParticles();
 
-// Camera rotation
-let rotX = 0.3;
-let rotY = 0;
-let autoRotate = true;
-let isDragging = false;
-let lastMouse = { x: 0, y: 0 };
+function initDebris() {
+    debris.length = 0;
+    for (let i = 0; i < 30; i++) {
+        debris.push({
+            angle: Math.random() * Math.PI * 2,
+            dist: 0.1 + Math.random() * 0.4,
+            z: Math.random() * 2000,
+            rotSpeed: (Math.random() - 0.5) * 0.1,
+            size: 2 + Math.random() * 4,
+            rotation: Math.random() * Math.PI * 2
+        });
+    }
+}
 
-canvas.addEventListener('mousedown', (e) => {
-  isDragging = true;
-  autoRotate = false;
-  lastMouse = { x: e.clientX, y: e.clientY };
-});
+function startAudio() {
+    if (audioStarted) return;
+    audioStarted = true;
+    
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Deep rumble drone
+    const freqs = [40, 60, 80, 120];
+    freqs.forEach((f, i) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = f;
+        gain.gain.value = 0.03 / (i + 1);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        oscillators.push({ osc, gain, baseFreq: f });
+    });
+    
+    // Whooshing noise
+    const bufferSize = audioCtx.sampleRate * 2;
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+    }
+    
+    noiseNode = audioCtx.createBufferSource();
+    noiseNode.buffer = buffer;
+    noiseNode.loop = true;
+    
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 200;
+    filter.Q.value = 0.5;
+    
+    noiseGain = audioCtx.createGain();
+    noiseGain.gain.value = 0.08;
+    
+    noiseNode.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(audioCtx.destination);
+    noiseNode.start();
+}
 
-canvas.addEventListener('mousemove', (e) => {
-  if (isDragging) {
-    const dx = e.clientX - lastMouse.x;
-    const dy = e.clientY - lastMouse.y;
-    rotY += dx * 0.005;
-    rotX += dy * 0.005;
-    lastMouse = { x: e.clientX, y: e.clientY };
-  }
-});
-
-canvas.addEventListener('mouseup', () => {
-  isDragging = false;
-  setTimeout(() => { autoRotate = true; }, 3000);
-});
-
-canvas.addEventListener('click', (e) => {
-  // Perturb — restart with new initial conditions
-  initParticles();
-  perturbFlash = 1;
-});
-
-// Touch support
-canvas.addEventListener('touchstart', (e) => {
-  isDragging = true;
-  autoRotate = false;
-  lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-});
-
-canvas.addEventListener('touchmove', (e) => {
-  if (isDragging && e.touches.length === 1) {
-    const dx = e.touches[0].clientX - lastMouse.x;
-    const dy = e.touches[0].clientY - lastMouse.y;
-    rotY += dx * 0.005;
-    rotX += dy * 0.005;
-    lastMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-  }
-});
-
-canvas.addEventListener('touchend', () => {
-  isDragging = false;
-  setTimeout(() => { autoRotate = true; }, 3000);
-});
-
-let perturbFlash = 0;
-
-// 3D to 2D projection with rotation
 function project(x, y, z) {
-  // Center the attractor (it orbits around ~0,0,25)
-  const cx = x;
-  const cy = y;
-  const cz = z - 25;
-  
-  // Rotate around Y axis
-  const x1 = cx * Math.cos(rotY) - cz * Math.sin(rotY);
-  const z1 = cx * Math.sin(rotY) + cz * Math.cos(rotY);
-  
-  // Rotate around X axis
-  const y2 = cy * Math.cos(rotX) - z1 * Math.sin(rotX);
-  const z2 = cy * Math.sin(rotX) + z1 * Math.cos(rotX);
-  
-  // Perspective projection
-  const scale = 12;
-  const perspective = 200;
-  const factor = perspective / (perspective + z2);
-  
-  return {
-    x: W/2 + x1 * scale * factor,
-    y: H/2 + y2 * scale * factor,
-    z: z2,
-    factor: factor
-  };
+    const fov = 400;
+    const scale = fov / (z + fov);
+    return {
+        x: cx + x * scale + (mouseX - cx) * 0.05 * scale,
+        y: cy + y * scale + (mouseY - cy) * 0.05 * scale,
+        scale: scale
+    };
 }
 
-// Web Audio — ethereal drone based on particle positions
-let audioCtx, gainNode, oscillators = [];
-let audioInitialized = false;
-
-function initAudio() {
-  if (audioInitialized) return;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  gainNode = audioCtx.createGain();
-  gainNode.gain.value = 0.03;
-  gainNode.connect(audioCtx.destination);
-  
-  // Create oscillators for each particle
-  for (let i = 0; i < 3; i++) {
-    const osc = audioCtx.createOscillator();
-    const oscGain = audioCtx.createGain();
-    oscGain.gain.value = 0.3;
-    osc.type = 'sine';
-    osc.frequency.value = 200 + i * 50;
-    osc.connect(oscGain);
-    oscGain.connect(gainNode);
-    osc.start();
-    oscillators.push({ osc, gain: oscGain });
-  }
-  
-  audioInitialized = true;
+function getColor(z, hue) {
+    const maxZ = 3000;
+    const t = 1 - z / maxZ;
+    const baseHue = (280 + hue) % 360; // purple base
+    const h = (baseHue + t * 60) % 360; // shift toward pink/cyan
+    const s = 80 + t * 20;
+    const l = 20 + t * 50;
+    return `hsla(${h}, ${s}%, ${l}%, ${0.3 + t * 0.7})`;
 }
 
-document.addEventListener('click', initAudio, { once: true });
-document.addEventListener('touchstart', initAudio, { once: true });
-
-function updateAudio() {
-  if (!audioInitialized) return;
-  
-  particles.forEach((p, i) => {
-    if (oscillators[i]) {
-      // Map position to frequency (pentatonic-ish for pleasantness)
-      const baseFreq = 100 + (p.z / 50) * 200;
-      const freq = baseFreq * (1 + p.x / 100);
-      oscillators[i].osc.frequency.setTargetAtTime(
-        Math.max(50, Math.min(800, freq)), 
-        audioCtx.currentTime, 
-        0.1
-      );
-      
-      // Map velocity to volume
-      const speed = Math.sqrt(p.x*p.x + p.y*p.y) / 50;
-      oscillators[i].gain.gain.setTargetAtTime(
-        Math.min(0.4, speed * 0.2),
-        audioCtx.currentTime,
-        0.1
-      );
-    }
-  });
-}
-
-function draw() {
-  // Fade effect for trails
-  ctx.fillStyle = 'rgba(10, 10, 15, 0.08)';
-  ctx.fillRect(0, 0, W, H);
-  
-  // Flash on perturbation
-  if (perturbFlash > 0) {
-    ctx.fillStyle = `rgba(0, 255, 255, ${perturbFlash * 0.1})`;
-    ctx.fillRect(0, 0, W, H);
-    perturbFlash *= 0.9;
-  }
-  
-  // Auto-rotate slowly
-  if (autoRotate) {
-    rotY += 0.002;
-  }
-  
-  // Step the simulation multiple times per frame for smoothness
-  for (let i = 0; i < 8; i++) {
-    particles.forEach(p => p.step());
-  }
-  
-  // Update audio
-  updateAudio();
-  
-  // Draw trails
-  particles.forEach((particle, pIdx) => {
-    const trail = particle.trail;
-    if (trail.length < 2) return;
+function drawRing(ring, time) {
+    const wobble = Math.sin(time * 0.5 + ring.wobblePhase) * ring.wobbleAmp;
+    const baseRadius = 800 + Math.sin(time * 0.3 + ring.z * 0.01) * 50;
     
     ctx.beginPath();
-    
-    for (let i = 1; i < trail.length; i++) {
-      const p0 = project(trail[i-1].x, trail[i-1].y, trail[i-1].z);
-      const p1 = project(trail[i].x, trail[i].y, trail[i].z);
-      
-      // Age-based alpha
-      const age = i / trail.length;
-      const alpha = age * 0.8 * p1.factor;
-      
-      // Depth-based lightness
-      const lightness = 40 + p1.factor * 30;
-      
-      ctx.strokeStyle = `hsla(${particle.hue}, 80%, ${lightness}%, ${alpha})`;
-      ctx.lineWidth = 1.5 * p1.factor;
-      
-      ctx.beginPath();
-      ctx.moveTo(p0.x, p0.y);
-      ctx.lineTo(p1.x, p1.y);
-      ctx.stroke();
+    for (let i = 0; i <= ring.segments; i++) {
+        const a = (i / ring.segments) * Math.PI * 2;
+        const distort = 1 + Math.sin(a * 3 + time + ring.z * 0.005) * ring.distortion;
+        const r = baseRadius * distort * (1 + wobble);
+        
+        const x = Math.cos(a) * r;
+        const y = Math.sin(a) * r;
+        
+        const p = project(x, y, ring.z);
+        
+        if (i === 0) {
+            ctx.moveTo(p.x, p.y);
+        } else {
+            ctx.lineTo(p.x, p.y);
+        }
     }
+    ctx.closePath();
     
-    // Draw current position as a glowing point
-    const current = trail[trail.length - 1];
-    const pc = project(current.x, current.y, current.z);
+    const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, 400);
+    const innerColor = getColor(ring.z, hueShift);
+    const outerColor = getColor(ring.z, hueShift + 40);
+    gradient.addColorStop(0, 'transparent');
+    gradient.addColorStop(0.7, innerColor);
+    gradient.addColorStop(1, outerColor);
     
-    const gradient = ctx.createRadialGradient(pc.x, pc.y, 0, pc.x, pc.y, 8 * pc.factor);
-    gradient.addColorStop(0, `hsla(${particle.hue}, 100%, 80%, 0.9)`);
-    gradient.addColorStop(0.5, `hsla(${particle.hue}, 80%, 50%, 0.4)`);
+    ctx.strokeStyle = getColor(ring.z, hueShift);
+    ctx.lineWidth = Math.max(0.5, (1 - ring.z / 3000) * 3);
+    ctx.stroke();
+}
+
+function drawStar(star, time) {
+    const x = Math.cos(star.angle) * star.dist * 1500;
+    const y = Math.sin(star.angle) * star.dist * 1500;
+    
+    const p = project(x, y, star.z);
+    
+    if (p.scale < 0.01) return;
+    
+    // Stretch based on z-velocity (creates star trails)
+    const stretch = Math.min(speed * 15, 50);
+    const alpha = star.brightness * p.scale * 2;
+    
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(Math.atan2(p.y - cy, p.x - cx));
+    
+    const gradient = ctx.createLinearGradient(-stretch, 0, star.size * p.scale * 3, 0);
+    gradient.addColorStop(0, `hsla(${(190 + hueShift) % 360}, 100%, 80%, 0)`);
+    gradient.addColorStop(0.5, `hsla(${(190 + hueShift) % 360}, 100%, 90%, ${alpha})`);
+    gradient.addColorStop(1, `hsla(${(320 + hueShift) % 360}, 100%, 70%, ${alpha * 0.5})`);
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(-stretch, -star.size * p.scale * 0.5, stretch + star.size * p.scale * 3, star.size * p.scale);
+    
+    ctx.restore();
+}
+
+function drawDebris(d, time) {
+    const x = Math.cos(d.angle) * d.dist * 1000;
+    const y = Math.sin(d.angle) * d.dist * 1000;
+    
+    const p = project(x, y, d.z);
+    
+    if (p.scale < 0.02) return;
+    
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(d.rotation);
+    
+    const size = d.size * p.scale * 10;
+    const alpha = Math.min(1, p.scale * 3);
+    
+    ctx.fillStyle = `hsla(${(280 + hueShift) % 360}, 60%, 30%, ${alpha})`;
+    ctx.beginPath();
+    ctx.moveTo(0, -size);
+    ctx.lineTo(size * 0.7, size * 0.5);
+    ctx.lineTo(-size * 0.7, size * 0.5);
+    ctx.closePath();
+    ctx.fill();
+    
+    ctx.strokeStyle = `hsla(${(320 + hueShift) % 360}, 80%, 50%, ${alpha * 0.8})`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    
+    ctx.restore();
+}
+
+function drawCenterVortex(time) {
+    const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, 150);
+    gradient.addColorStop(0, `hsla(${(190 + hueShift) % 360}, 100%, 90%, 0.8)`);
+    gradient.addColorStop(0.3, `hsla(${(280 + hueShift) % 360}, 80%, 50%, 0.3)`);
+    gradient.addColorStop(0.7, `hsla(${(320 + hueShift) % 360}, 60%, 30%, 0.1)`);
     gradient.addColorStop(1, 'transparent');
     
     ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.arc(pc.x, pc.y, 8 * pc.factor, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 150, 0, Math.PI * 2);
     ctx.fill();
-  });
-  
-  // Draw faint attractor skeleton (the equilibrium points)
-  const eq1 = project(Math.sqrt(beta * (rho - 1)), Math.sqrt(beta * (rho - 1)), rho - 1);
-  const eq2 = project(-Math.sqrt(beta * (rho - 1)), -Math.sqrt(beta * (rho - 1)), rho - 1);
-  
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-  ctx.beginPath();
-  ctx.arc(eq1.x, eq1.y, 3, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(eq2.x, eq2.y, 3, 0, Math.PI * 2);
-  ctx.fill();
-  
-  requestAnimationFrame(draw);
+    
+    // Inner light spiral
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(time * 0.5);
+    
+    for (let i = 0; i < 4; i++) {
+        ctx.rotate(Math.PI / 2);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        for (let j = 0; j < 30; j++) {
+            const t = j / 30;
+            const r = t * 100;
+            const a = t * Math.PI * 2;
+            ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+        }
+        ctx.strokeStyle = `hsla(${(190 + hueShift) % 360}, 100%, 80%, ${0.3})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+    ctx.restore();
 }
 
-draw();
+function drawExitHorizon(time) {
+    // Distant exit point - the "other side"
+    const pulse = 1 + Math.sin(time * 2) * 0.2;
+    const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, 80 * pulse);
+    gradient.addColorStop(0, `hsla(${(180 + hueShift) % 360}, 100%, 95%, 1)`);
+    gradient.addColorStop(0.5, `hsla(${(200 + hueShift) % 360}, 90%, 70%, 0.5)`);
+    gradient.addColorStop(1, 'transparent');
+    
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 80 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function update(time) {
+    // Move everything toward camera
+    const baseSpeed = 8 * speed;
+    
+    rings.forEach(ring => {
+        ring.z -= baseSpeed;
+        if (ring.z < -100) {
+            ring.z += 3000;
+            ring.wobblePhase = Math.random() * Math.PI * 2;
+        }
+    });
+    
+    stars.forEach(star => {
+        star.z -= baseSpeed * 1.5;
+        if (star.z < -100) {
+            star.z += 3000;
+            star.angle = Math.random() * Math.PI * 2;
+            star.dist = 0.3 + Math.random() * 0.7;
+        }
+    });
+    
+    debris.forEach(d => {
+        d.z -= baseSpeed * 0.8;
+        d.rotation += d.rotSpeed;
+        d.angle += 0.002;
+        if (d.z < -100) {
+            d.z += 2000;
+            d.angle = Math.random() * Math.PI * 2;
+        }
+    });
+    
+    // Smooth hue transition
+    hueShift += (targetHue - hueShift) * 0.02;
+    
+    // Transit phase cycles
+    transitPhase += 0.001;
+    speed = 1 + Math.sin(transitPhase) * 0.3;
+    
+    // Update audio
+    if (audioStarted && oscillators.length) {
+        oscillators.forEach((o, i) => {
+            const freq = o.baseFreq * (1 + speed * 0.2);
+            o.osc.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.1);
+        });
+        if (noiseGain) {
+            noiseGain.gain.setTargetAtTime(0.05 + speed * 0.05, audioCtx.currentTime, 0.1);
+        }
+    }
+}
+
+function draw(time) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+    ctx.fillRect(0, 0, w, h);
+    
+    // Sort by z for proper layering
+    const sortedRings = [...rings].sort((a, b) => b.z - a.z);
+    const sortedStars = [...stars].sort((a, b) => b.z - a.z);
+    const sortedDebris = [...debris].sort((a, b) => b.z - a.z);
+    
+    // Draw distant stars first
+    sortedStars.forEach(s => drawStar(s, time));
+    
+    // Draw rings (the wormhole structure)
+    sortedRings.forEach(r => drawRing(r, time));
+    
+    // Draw floating debris
+    sortedDebris.forEach(d => drawDebris(d, time));
+    
+    // Draw center vortex/exit
+    drawCenterVortex(time);
+    drawExitHorizon(time);
+}
+
+function loop(timestamp) {
+    const time = timestamp * 0.001;
+    update(time);
+    draw(time);
+    requestAnimationFrame(loop);
+}
+
+// Events
+window.addEventListener('resize', resize);
+
+canvas.addEventListener('mousemove', e => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+});
+
+canvas.addEventListener('click', e => {
+    startAudio();
+    // Shift to new destination
+    targetHue = (targetHue + 60 + Math.random() * 60) % 360;
+    speed = 2;
+    setTimeout(() => speed = 1, 500);
+});
+
+canvas.addEventListener('touchstart', e => {
+    startAudio();
+    targetHue = (targetHue + 60 + Math.random() * 60) % 360;
+}, { passive: true });
+
+// Init
+resize();
+initRings();
+initStars();
+initDebris();
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>
