@@ -1,11 +1,16 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<title>transit</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ferrum</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: #000; overflow: hidden; }
+body { 
+  background: #0a0a0f; 
+  overflow: hidden; 
+  cursor: crosshair;
+}
 canvas { display: block; }
 </style>
 </head>
@@ -15,381 +20,359 @@ canvas { display: block; }
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
-let w, h, cx, cy;
-let mouseX = 0, mouseY = 0;
-let audioCtx, oscillators = [], noiseNode, noiseGain;
-let audioStarted = false;
-let hueShift = 0;
-let targetHue = 0;
-let speed = 1;
-let transitPhase = 0;
-
-const rings = [];
-const stars = [];
-const debris = [];
-
+let W, H;
 function resize() {
-    w = canvas.width = window.innerWidth;
-    h = canvas.height = window.innerHeight;
-    cx = w / 2;
-    cy = h / 2;
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
 }
-
-function initRings() {
-    rings.length = 0;
-    for (let i = 0; i < 60; i++) {
-        rings.push({
-            z: i * 50 + Math.random() * 30,
-            wobblePhase: Math.random() * Math.PI * 2,
-            wobbleAmp: 0.02 + Math.random() * 0.03,
-            segments: 32 + Math.floor(Math.random() * 16),
-            distortion: Math.random() * 0.3
-        });
-    }
-}
-
-function initStars() {
-    stars.length = 0;
-    for (let i = 0; i < 200; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const dist = 0.3 + Math.random() * 0.7;
-        stars.push({
-            angle: angle,
-            dist: dist,
-            z: Math.random() * 3000,
-            brightness: 0.3 + Math.random() * 0.7,
-            size: 0.5 + Math.random() * 1.5
-        });
-    }
-}
-
-function initDebris() {
-    debris.length = 0;
-    for (let i = 0; i < 30; i++) {
-        debris.push({
-            angle: Math.random() * Math.PI * 2,
-            dist: 0.1 + Math.random() * 0.4,
-            z: Math.random() * 2000,
-            rotSpeed: (Math.random() - 0.5) * 0.1,
-            size: 2 + Math.random() * 4,
-            rotation: Math.random() * Math.PI * 2
-        });
-    }
-}
-
-function startAudio() {
-    if (audioStarted) return;
-    audioStarted = true;
-    
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    
-    // Deep rumble drone
-    const freqs = [40, 60, 80, 120];
-    freqs.forEach((f, i) => {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = f;
-        gain.gain.value = 0.03 / (i + 1);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        oscillators.push({ osc, gain, baseFreq: f });
-    });
-    
-    // Whooshing noise
-    const bufferSize = audioCtx.sampleRate * 2;
-    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-        data[i] = Math.random() * 2 - 1;
-    }
-    
-    noiseNode = audioCtx.createBufferSource();
-    noiseNode.buffer = buffer;
-    noiseNode.loop = true;
-    
-    const filter = audioCtx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.value = 200;
-    filter.Q.value = 0.5;
-    
-    noiseGain = audioCtx.createGain();
-    noiseGain.gain.value = 0.08;
-    
-    noiseNode.connect(filter);
-    filter.connect(noiseGain);
-    noiseGain.connect(audioCtx.destination);
-    noiseNode.start();
-}
-
-function project(x, y, z) {
-    const fov = 400;
-    const scale = fov / (z + fov);
-    return {
-        x: cx + x * scale + (mouseX - cx) * 0.05 * scale,
-        y: cy + y * scale + (mouseY - cy) * 0.05 * scale,
-        scale: scale
-    };
-}
-
-function getColor(z, hue) {
-    const maxZ = 3000;
-    const t = 1 - z / maxZ;
-    const baseHue = (280 + hue) % 360; // purple base
-    const h = (baseHue + t * 60) % 360; // shift toward pink/cyan
-    const s = 80 + t * 20;
-    const l = 20 + t * 50;
-    return `hsla(${h}, ${s}%, ${l}%, ${0.3 + t * 0.7})`;
-}
-
-function drawRing(ring, time) {
-    const wobble = Math.sin(time * 0.5 + ring.wobblePhase) * ring.wobbleAmp;
-    const baseRadius = 800 + Math.sin(time * 0.3 + ring.z * 0.01) * 50;
-    
-    ctx.beginPath();
-    for (let i = 0; i <= ring.segments; i++) {
-        const a = (i / ring.segments) * Math.PI * 2;
-        const distort = 1 + Math.sin(a * 3 + time + ring.z * 0.005) * ring.distortion;
-        const r = baseRadius * distort * (1 + wobble);
-        
-        const x = Math.cos(a) * r;
-        const y = Math.sin(a) * r;
-        
-        const p = project(x, y, ring.z);
-        
-        if (i === 0) {
-            ctx.moveTo(p.x, p.y);
-        } else {
-            ctx.lineTo(p.x, p.y);
-        }
-    }
-    ctx.closePath();
-    
-    const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, 400);
-    const innerColor = getColor(ring.z, hueShift);
-    const outerColor = getColor(ring.z, hueShift + 40);
-    gradient.addColorStop(0, 'transparent');
-    gradient.addColorStop(0.7, innerColor);
-    gradient.addColorStop(1, outerColor);
-    
-    ctx.strokeStyle = getColor(ring.z, hueShift);
-    ctx.lineWidth = Math.max(0.5, (1 - ring.z / 3000) * 3);
-    ctx.stroke();
-}
-
-function drawStar(star, time) {
-    const x = Math.cos(star.angle) * star.dist * 1500;
-    const y = Math.sin(star.angle) * star.dist * 1500;
-    
-    const p = project(x, y, star.z);
-    
-    if (p.scale < 0.01) return;
-    
-    // Stretch based on z-velocity (creates star trails)
-    const stretch = Math.min(speed * 15, 50);
-    const alpha = star.brightness * p.scale * 2;
-    
-    ctx.save();
-    ctx.translate(p.x, p.y);
-    ctx.rotate(Math.atan2(p.y - cy, p.x - cx));
-    
-    const gradient = ctx.createLinearGradient(-stretch, 0, star.size * p.scale * 3, 0);
-    gradient.addColorStop(0, `hsla(${(190 + hueShift) % 360}, 100%, 80%, 0)`);
-    gradient.addColorStop(0.5, `hsla(${(190 + hueShift) % 360}, 100%, 90%, ${alpha})`);
-    gradient.addColorStop(1, `hsla(${(320 + hueShift) % 360}, 100%, 70%, ${alpha * 0.5})`);
-    
-    ctx.fillStyle = gradient;
-    ctx.fillRect(-stretch, -star.size * p.scale * 0.5, stretch + star.size * p.scale * 3, star.size * p.scale);
-    
-    ctx.restore();
-}
-
-function drawDebris(d, time) {
-    const x = Math.cos(d.angle) * d.dist * 1000;
-    const y = Math.sin(d.angle) * d.dist * 1000;
-    
-    const p = project(x, y, d.z);
-    
-    if (p.scale < 0.02) return;
-    
-    ctx.save();
-    ctx.translate(p.x, p.y);
-    ctx.rotate(d.rotation);
-    
-    const size = d.size * p.scale * 10;
-    const alpha = Math.min(1, p.scale * 3);
-    
-    ctx.fillStyle = `hsla(${(280 + hueShift) % 360}, 60%, 30%, ${alpha})`;
-    ctx.beginPath();
-    ctx.moveTo(0, -size);
-    ctx.lineTo(size * 0.7, size * 0.5);
-    ctx.lineTo(-size * 0.7, size * 0.5);
-    ctx.closePath();
-    ctx.fill();
-    
-    ctx.strokeStyle = `hsla(${(320 + hueShift) % 360}, 80%, 50%, ${alpha * 0.8})`;
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    
-    ctx.restore();
-}
-
-function drawCenterVortex(time) {
-    const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, 150);
-    gradient.addColorStop(0, `hsla(${(190 + hueShift) % 360}, 100%, 90%, 0.8)`);
-    gradient.addColorStop(0.3, `hsla(${(280 + hueShift) % 360}, 80%, 50%, 0.3)`);
-    gradient.addColorStop(0.7, `hsla(${(320 + hueShift) % 360}, 60%, 30%, 0.1)`);
-    gradient.addColorStop(1, 'transparent');
-    
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 150, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Inner light spiral
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(time * 0.5);
-    
-    for (let i = 0; i < 4; i++) {
-        ctx.rotate(Math.PI / 2);
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        for (let j = 0; j < 30; j++) {
-            const t = j / 30;
-            const r = t * 100;
-            const a = t * Math.PI * 2;
-            ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
-        }
-        ctx.strokeStyle = `hsla(${(190 + hueShift) % 360}, 100%, 80%, ${0.3})`;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-    }
-    ctx.restore();
-}
-
-function drawExitHorizon(time) {
-    // Distant exit point - the "other side"
-    const pulse = 1 + Math.sin(time * 2) * 0.2;
-    const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, 80 * pulse);
-    gradient.addColorStop(0, `hsla(${(180 + hueShift) % 360}, 100%, 95%, 1)`);
-    gradient.addColorStop(0.5, `hsla(${(200 + hueShift) % 360}, 90%, 70%, 0.5)`);
-    gradient.addColorStop(1, 'transparent');
-    
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 80 * pulse, 0, Math.PI * 2);
-    ctx.fill();
-}
-
-function update(time) {
-    // Move everything toward camera
-    const baseSpeed = 8 * speed;
-    
-    rings.forEach(ring => {
-        ring.z -= baseSpeed;
-        if (ring.z < -100) {
-            ring.z += 3000;
-            ring.wobblePhase = Math.random() * Math.PI * 2;
-        }
-    });
-    
-    stars.forEach(star => {
-        star.z -= baseSpeed * 1.5;
-        if (star.z < -100) {
-            star.z += 3000;
-            star.angle = Math.random() * Math.PI * 2;
-            star.dist = 0.3 + Math.random() * 0.7;
-        }
-    });
-    
-    debris.forEach(d => {
-        d.z -= baseSpeed * 0.8;
-        d.rotation += d.rotSpeed;
-        d.angle += 0.002;
-        if (d.z < -100) {
-            d.z += 2000;
-            d.angle = Math.random() * Math.PI * 2;
-        }
-    });
-    
-    // Smooth hue transition
-    hueShift += (targetHue - hueShift) * 0.02;
-    
-    // Transit phase cycles
-    transitPhase += 0.001;
-    speed = 1 + Math.sin(transitPhase) * 0.3;
-    
-    // Update audio
-    if (audioStarted && oscillators.length) {
-        oscillators.forEach((o, i) => {
-            const freq = o.baseFreq * (1 + speed * 0.2);
-            o.osc.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.1);
-        });
-        if (noiseGain) {
-            noiseGain.gain.setTargetAtTime(0.05 + speed * 0.05, audioCtx.currentTime, 0.1);
-        }
-    }
-}
-
-function draw(time) {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
-    ctx.fillRect(0, 0, w, h);
-    
-    // Sort by z for proper layering
-    const sortedRings = [...rings].sort((a, b) => b.z - a.z);
-    const sortedStars = [...stars].sort((a, b) => b.z - a.z);
-    const sortedDebris = [...debris].sort((a, b) => b.z - a.z);
-    
-    // Draw distant stars first
-    sortedStars.forEach(s => drawStar(s, time));
-    
-    // Draw rings (the wormhole structure)
-    sortedRings.forEach(r => drawRing(r, time));
-    
-    // Draw floating debris
-    sortedDebris.forEach(d => drawDebris(d, time));
-    
-    // Draw center vortex/exit
-    drawCenterVortex(time);
-    drawExitHorizon(time);
-}
-
-function loop(timestamp) {
-    const time = timestamp * 0.001;
-    update(time);
-    draw(time);
-    requestAnimationFrame(loop);
-}
-
-// Events
+resize();
 window.addEventListener('resize', resize);
 
-canvas.addEventListener('mousemove', e => {
-    mouseX = e.clientX;
-    mouseY = e.clientY;
+// Magnetic poles - click to place, alternate polarity
+const poles = [];
+let nextPolarity = 1;
+
+// Iron filing particles
+const particles = [];
+const PARTICLE_COUNT = 4000;
+
+class Particle {
+  constructor() {
+    this.x = Math.random() * W;
+    this.y = Math.random() * H;
+    this.angle = Math.random() * Math.PI * 2;
+    this.length = 3 + Math.random() * 4;
+    this.vx = 0;
+    this.vy = 0;
+    this.va = 0; // angular velocity
+  }
+
+  update() {
+    if (poles.length === 0) {
+      // Gentle brownian motion when no poles
+      this.angle += (Math.random() - 0.5) * 0.05;
+      return;
+    }
+
+    // Calculate net magnetic field at this point
+    let bx = 0, by = 0;
+    
+    for (const pole of poles) {
+      const dx = this.x - pole.x;
+      const dy = this.y - pole.y;
+      const distSq = dx * dx + dy * dy;
+      const dist = Math.sqrt(distSq) + 1;
+      
+      // Field strength falls off with distance squared
+      const strength = (pole.polarity * pole.strength) / (distSq + 500);
+      
+      // Field points away from positive, toward negative
+      bx += (dx / dist) * strength;
+      by += (dy / dist) * strength;
+    }
+
+    // Calculate target angle from field direction
+    const fieldStrength = Math.sqrt(bx * bx + by * by);
+    
+    if (fieldStrength > 0.0001) {
+      const targetAngle = Math.atan2(by, bx);
+      
+      // Smoothly rotate toward field direction
+      let angleDiff = targetAngle - this.angle;
+      while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+      while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+      
+      // Filings can align either direction (180° symmetry)
+      if (Math.abs(angleDiff) > Math.PI / 2) {
+        angleDiff = angleDiff > 0 ? angleDiff - Math.PI : angleDiff + Math.PI;
+      }
+      
+      this.va += angleDiff * 0.15 * Math.min(fieldStrength * 50, 1);
+      this.va *= 0.85; // damping
+      this.angle += this.va;
+      
+      // Slight drift along field lines
+      const drift = fieldStrength * 0.3;
+      this.vx += bx * drift * 0.1;
+      this.vy += by * drift * 0.1;
+    }
+    
+    // Apply velocity with damping
+    this.vx *= 0.95;
+    this.vy *= 0.95;
+    this.x += this.vx;
+    this.y += this.vy;
+    
+    // Wrap around edges
+    if (this.x < 0) this.x += W;
+    if (this.x > W) this.x -= W;
+    if (this.y < 0) this.y += H;
+    if (this.y > H) this.y -= H;
+  }
+
+  draw() {
+    const cos = Math.cos(this.angle);
+    const sin = Math.sin(this.angle);
+    const x1 = this.x - cos * this.length;
+    const y1 = this.y - sin * this.length;
+    const x2 = this.x + cos * this.length;
+    const y2 = this.y + sin * this.length;
+    
+    // Color based on local field strength
+    let fieldStrength = 0;
+    for (const pole of poles) {
+      const dx = this.x - pole.x;
+      const dy = this.y - pole.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) + 1;
+      fieldStrength += pole.strength / (dist * 0.5);
+    }
+    
+    const intensity = Math.min(fieldStrength * 0.02, 1);
+    const alpha = 0.3 + intensity * 0.5;
+    
+    // Gradient from cyan to pink based on field alignment
+    const r = Math.floor(100 + intensity * 155);
+    const g = Math.floor(180 - intensity * 80);
+    const b = Math.floor(220 - intensity * 20);
+    
+    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    ctx.lineWidth = 1 + intensity * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+}
+
+// Initialize particles
+for (let i = 0; i < PARTICLE_COUNT; i++) {
+  particles.push(new Particle());
+}
+
+// Draw magnetic field lines (for visual effect)
+function drawFieldLines() {
+  if (poles.length < 1) return;
+  
+  ctx.globalAlpha = 0.1;
+  
+  for (const pole of poles) {
+    const numLines = 16;
+    
+    for (let i = 0; i < numLines; i++) {
+      const startAngle = (i / numLines) * Math.PI * 2;
+      let x = pole.x + Math.cos(startAngle) * 10;
+      let y = pole.y + Math.sin(startAngle) * 10;
+      
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      
+      const direction = pole.polarity;
+      
+      for (let step = 0; step < 200; step++) {
+        let bx = 0, by = 0;
+        
+        for (const p of poles) {
+          const dx = x - p.x;
+          const dy = y - p.y;
+          const distSq = dx * dx + dy * dy;
+          const dist = Math.sqrt(distSq) + 1;
+          const strength = p.polarity / (distSq + 100);
+          bx += (dx / dist) * strength;
+          by += (dy / dist) * strength;
+        }
+        
+        const mag = Math.sqrt(bx * bx + by * by);
+        if (mag < 0.00001) break;
+        
+        x += (bx / mag) * 5 * direction;
+        y += (by / mag) * 5 * direction;
+        
+        if (x < 0 || x > W || y < 0 || y > H) break;
+        
+        // Check if reached another pole
+        let reachedPole = false;
+        for (const p of poles) {
+          const dx = x - p.x;
+          const dy = y - p.y;
+          if (dx * dx + dy * dy < 400) {
+            reachedPole = true;
+            break;
+          }
+        }
+        if (reachedPole) break;
+        
+        ctx.lineTo(x, y);
+      }
+      
+      const gradient = ctx.createLinearGradient(pole.x, pole.y, x, y);
+      gradient.addColorStop(0, pole.polarity > 0 ? 'rgba(255, 100, 200, 0.3)' : 'rgba(100, 220, 255, 0.3)');
+      gradient.addColorStop(1, 'rgba(100, 100, 150, 0.1)');
+      ctx.strokeStyle = gradient;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+  
+  ctx.globalAlpha = 1;
+}
+
+// Draw poles
+function drawPoles() {
+  for (const pole of poles) {
+    // Glow
+    const gradient = ctx.createRadialGradient(pole.x, pole.y, 0, pole.x, pole.y, 60);
+    const color = pole.polarity > 0 ? 'rgba(255, 100, 200,' : 'rgba(100, 220, 255,';
+    gradient.addColorStop(0, color + '0.4)');
+    gradient.addColorStop(0.5, color + '0.1)');
+    gradient.addColorStop(1, color + '0)');
+    
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(pole.x, pole.y, 60, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Core
+    ctx.fillStyle = pole.polarity > 0 ? '#ff64c8' : '#64dcff';
+    ctx.beginPath();
+    ctx.arc(pole.x, pole.y, 8, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Symbol
+    ctx.fillStyle = '#0a0a0f';
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(pole.polarity > 0 ? '+' : '−', pole.x, pole.y);
+  }
+}
+
+// Web Audio for magnetic hum
+let audioCtx = null;
+let oscillators = [];
+let gainNode = null;
+
+function initAudio() {
+  if (audioCtx) return;
+  
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  gainNode = audioCtx.createGain();
+  gainNode.gain.value = 0;
+  gainNode.connect(audioCtx.destination);
+  
+  // Create layered drone
+  const freqs = [55, 82.5, 110, 165];
+  freqs.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const oscGain = audioCtx.createGain();
+    osc.type = i % 2 === 0 ? 'sine' : 'triangle';
+    osc.frequency.value = freq;
+    oscGain.gain.value = 0.15 / (i + 1);
+    osc.connect(oscGain);
+    oscGain.connect(gainNode);
+    osc.start();
+    oscillators.push({ osc, gain: oscGain });
+  });
+}
+
+function updateAudio() {
+  if (!audioCtx || poles.length === 0) {
+    if (gainNode) gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.1);
+    return;
+  }
+  
+  // Calculate total field energy
+  let energy = 0;
+  for (const pole of poles) {
+    energy += pole.strength;
+  }
+  
+  const targetGain = Math.min(energy * 0.001, 0.15);
+  gainNode.gain.linearRampToValueAtTime(targetGain, audioCtx.currentTime + 0.1);
+  
+  // Modulate frequencies based on pole count
+  oscillators.forEach((o, i) => {
+    const baseFreq = [55, 82.5, 110, 165][i];
+    const mod = 1 + poles.length * 0.02;
+    o.osc.frequency.linearRampToValueAtTime(baseFreq * mod, audioCtx.currentTime + 0.1);
+  });
+}
+
+// Click to place poles
+canvas.addEventListener('click', (e) => {
+  initAudio();
+  
+  // Check if clicking on existing pole (remove it)
+  for (let i = poles.length - 1; i >= 0; i--) {
+    const dx = e.clientX - poles[i].x;
+    const dy = e.clientY - poles[i].y;
+    if (dx * dx + dy * dy < 400) {
+      poles.splice(i, 1);
+      return;
+    }
+  }
+  
+  // Add new pole
+  poles.push({
+    x: e.clientX,
+    y: e.clientY,
+    polarity: nextPolarity,
+    strength: 100
+  });
+  
+  nextPolarity *= -1; // Alternate polarity
+  
+  // Limit poles
+  if (poles.length > 8) {
+    poles.shift();
+  }
 });
 
-canvas.addEventListener('click', e => {
-    startAudio();
-    // Shift to new destination
-    targetHue = (targetHue + 60 + Math.random() * 60) % 360;
-    speed = 2;
-    setTimeout(() => speed = 1, 500);
+// Mouse movement affects nearby particles
+let mouseX = W / 2, mouseY = H / 2;
+canvas.addEventListener('mousemove', (e) => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
 });
 
-canvas.addEventListener('touchstart', e => {
-    startAudio();
-    targetHue = (targetHue + 60 + Math.random() * 60) % 360;
-}, { passive: true });
+// Animation loop
+function animate() {
+  // Fade trail
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
+  ctx.fillRect(0, 0, W, H);
+  
+  // Draw field lines
+  drawFieldLines();
+  
+  // Update and draw particles
+  for (const p of particles) {
+    // Mouse repulsion
+    const dx = p.x - mouseX;
+    const dy = p.y - mouseY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 100) {
+      const force = (100 - dist) * 0.002;
+      p.vx += (dx / dist) * force;
+      p.vy += (dy / dist) * force;
+    }
+    
+    p.update();
+    p.draw();
+  }
+  
+  // Draw poles
+  drawPoles();
+  
+  // Update audio
+  updateAudio();
+  
+  requestAnimationFrame(animate);
+}
 
-// Init
-resize();
-initRings();
-initStars();
-initDebris();
-requestAnimationFrame(loop);
+// Start with two default poles
+poles.push({ x: W * 0.35, y: H * 0.5, polarity: 1, strength: 100 });
+poles.push({ x: W * 0.65, y: H * 0.5, polarity: -1, strength: 100 });
+
+animate();
 </script>
 </body>
 </html>
