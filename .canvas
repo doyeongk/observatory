@@ -3,14 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ferrum</title>
+<title>topo</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { 
-  background: #0a0a0f; 
-  overflow: hidden; 
-  cursor: crosshair;
-}
+body { background: #0a0a0f; overflow: hidden; }
 canvas { display: block; }
 </style>
 </head>
@@ -20,359 +16,343 @@ canvas { display: block; }
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
-let W, H;
+let W, H, cols, rows;
+const cellSize = 8;
+let terrain = [];
+let time = 0;
+let mouse = { x: -1000, y: -1000, active: false, raising: true };
+let eroding = false;
+
+// Perlin noise implementation
+class Perlin {
+  constructor() {
+    this.p = [];
+    for (let i = 0; i < 512; i++) {
+      this.p[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  
+  fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+  lerp(a, b, t) { return a + t * (b - a); }
+  grad(hash, x, y) {
+    const h = hash & 3;
+    const u = h < 2 ? x : y;
+    const v = h < 2 ? y : x;
+    return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+  }
+  
+  noise(x, y) {
+    const X = Math.floor(x) & 255;
+    const Y = Math.floor(y) & 255;
+    x -= Math.floor(x);
+    y -= Math.floor(y);
+    const u = this.fade(x);
+    const v = this.fade(y);
+    const A = this.p[X] + Y;
+    const B = this.p[X + 1] + Y;
+    return this.lerp(
+      this.lerp(this.grad(this.p[A], x, y), this.grad(this.p[B], x - 1, y), u),
+      this.lerp(this.grad(this.p[A + 1], x, y - 1), this.grad(this.p[B + 1], x - 1, y - 1), u),
+      v
+    );
+  }
+  
+  octave(x, y, octaves) {
+    let val = 0, amp = 1, freq = 1, max = 0;
+    for (let i = 0; i < octaves; i++) {
+      val += this.noise(x * freq, y * freq) * amp;
+      max += amp;
+      amp *= 0.5;
+      freq *= 2;
+    }
+    return val / max;
+  }
+}
+
+const perlin = new Perlin();
+const contourLevels = 12;
+
+// Web Audio
+let audioCtx, oscillators = [];
+function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  // Ambient drone based on terrain
+  for (let i = 0; i < 3; i++) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 60 + i * 30;
+    gain.gain.value = 0;
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    oscillators.push({ osc, gain });
+  }
+}
+
 function resize() {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
+  cols = Math.ceil(W / cellSize) + 1;
+  rows = Math.ceil(H / cellSize) + 1;
+  terrain = new Float32Array(cols * rows);
 }
-resize();
-window.addEventListener('resize', resize);
 
-// Magnetic poles - click to place, alternate polarity
-const poles = [];
-let nextPolarity = 1;
+function getIdx(x, y) { return y * cols + x; }
 
-// Iron filing particles
-const particles = [];
-const PARTICLE_COUNT = 4000;
-
-class Particle {
-  constructor() {
-    this.x = Math.random() * W;
-    this.y = Math.random() * H;
-    this.angle = Math.random() * Math.PI * 2;
-    this.length = 3 + Math.random() * 4;
-    this.vx = 0;
-    this.vy = 0;
-    this.va = 0; // angular velocity
-  }
-
-  update() {
-    if (poles.length === 0) {
-      // Gentle brownian motion when no poles
-      this.angle += (Math.random() - 0.5) * 0.05;
-      return;
-    }
-
-    // Calculate net magnetic field at this point
-    let bx = 0, by = 0;
-    
-    for (const pole of poles) {
-      const dx = this.x - pole.x;
-      const dy = this.y - pole.y;
-      const distSq = dx * dx + dy * dy;
-      const dist = Math.sqrt(distSq) + 1;
+function updateTerrain() {
+  const baseScale = 0.015;
+  const drift = time * 0.0003;
+  
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const px = x * cellSize;
+      const py = y * cellSize;
       
-      // Field strength falls off with distance squared
-      const strength = (pole.polarity * pole.strength) / (distSq + 500);
+      // Base terrain from perlin
+      let elevation = perlin.octave(x * baseScale + drift, y * baseScale + drift * 0.7, 4);
+      elevation = (elevation + 1) * 0.5; // normalize to 0-1
       
-      // Field points away from positive, toward negative
-      bx += (dx / dist) * strength;
-      by += (dy / dist) * strength;
-    }
-
-    // Calculate target angle from field direction
-    const fieldStrength = Math.sqrt(bx * bx + by * by);
-    
-    if (fieldStrength > 0.0001) {
-      const targetAngle = Math.atan2(by, bx);
+      // Add some ridges
+      const ridge = Math.abs(perlin.noise((x * baseScale * 2) + drift * 0.5, (y * baseScale * 2) + drift * 0.3));
+      elevation += ridge * 0.3;
       
-      // Smoothly rotate toward field direction
-      let angleDiff = targetAngle - this.angle;
-      while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-      while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-      
-      // Filings can align either direction (180° symmetry)
-      if (Math.abs(angleDiff) > Math.PI / 2) {
-        angleDiff = angleDiff > 0 ? angleDiff - Math.PI : angleDiff + Math.PI;
+      // Mouse influence
+      if (mouse.active) {
+        const dx = px - mouse.x;
+        const dy = py - mouse.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const radius = 120;
+        if (dist < radius) {
+          const influence = Math.pow(1 - dist / radius, 2) * 0.4;
+          elevation += mouse.raising ? influence : -influence;
+        }
       }
       
-      this.va += angleDiff * 0.15 * Math.min(fieldStrength * 50, 1);
-      this.va *= 0.85; // damping
-      this.angle += this.va;
-      
-      // Slight drift along field lines
-      const drift = fieldStrength * 0.3;
-      this.vx += bx * drift * 0.1;
-      this.vy += by * drift * 0.1;
-    }
-    
-    // Apply velocity with damping
-    this.vx *= 0.95;
-    this.vy *= 0.95;
-    this.x += this.vx;
-    this.y += this.vy;
-    
-    // Wrap around edges
-    if (this.x < 0) this.x += W;
-    if (this.x > W) this.x -= W;
-    if (this.y < 0) this.y += H;
-    if (this.y > H) this.y -= H;
-  }
-
-  draw() {
-    const cos = Math.cos(this.angle);
-    const sin = Math.sin(this.angle);
-    const x1 = this.x - cos * this.length;
-    const y1 = this.y - sin * this.length;
-    const x2 = this.x + cos * this.length;
-    const y2 = this.y + sin * this.length;
-    
-    // Color based on local field strength
-    let fieldStrength = 0;
-    for (const pole of poles) {
-      const dx = this.x - pole.x;
-      const dy = this.y - pole.y;
-      const dist = Math.sqrt(dx * dx + dy * dy) + 1;
-      fieldStrength += pole.strength / (dist * 0.5);
-    }
-    
-    const intensity = Math.min(fieldStrength * 0.02, 1);
-    const alpha = 0.3 + intensity * 0.5;
-    
-    // Gradient from cyan to pink based on field alignment
-    const r = Math.floor(100 + intensity * 155);
-    const g = Math.floor(180 - intensity * 80);
-    const b = Math.floor(220 - intensity * 20);
-    
-    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    ctx.lineWidth = 1 + intensity * 0.5;
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-  }
-}
-
-// Initialize particles
-for (let i = 0; i < PARTICLE_COUNT; i++) {
-  particles.push(new Particle());
-}
-
-// Draw magnetic field lines (for visual effect)
-function drawFieldLines() {
-  if (poles.length < 1) return;
-  
-  ctx.globalAlpha = 0.1;
-  
-  for (const pole of poles) {
-    const numLines = 16;
-    
-    for (let i = 0; i < numLines; i++) {
-      const startAngle = (i / numLines) * Math.PI * 2;
-      let x = pole.x + Math.cos(startAngle) * 10;
-      let y = pole.y + Math.sin(startAngle) * 10;
-      
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      
-      const direction = pole.polarity;
-      
-      for (let step = 0; step < 200; step++) {
-        let bx = 0, by = 0;
-        
-        for (const p of poles) {
-          const dx = x - p.x;
-          const dy = y - p.y;
-          const distSq = dx * dx + dy * dy;
-          const dist = Math.sqrt(distSq) + 1;
-          const strength = p.polarity / (distSq + 100);
-          bx += (dx / dist) * strength;
-          by += (dy / dist) * strength;
-        }
-        
-        const mag = Math.sqrt(bx * bx + by * by);
-        if (mag < 0.00001) break;
-        
-        x += (bx / mag) * 5 * direction;
-        y += (by / mag) * 5 * direction;
-        
-        if (x < 0 || x > W || y < 0 || y > H) break;
-        
-        // Check if reached another pole
-        let reachedPole = false;
-        for (const p of poles) {
-          const dx = x - p.x;
-          const dy = y - p.y;
-          if (dx * dx + dy * dy < 400) {
-            reachedPole = true;
-            break;
-          }
-        }
-        if (reachedPole) break;
-        
-        ctx.lineTo(x, y);
+      // Erosion simulation (simple thermal erosion)
+      if (eroding && x > 0 && x < cols - 1 && y > 0 && y < rows - 1) {
+        const current = terrain[getIdx(x, y)];
+        const neighbors = [
+          terrain[getIdx(x-1, y)], terrain[getIdx(x+1, y)],
+          terrain[getIdx(x, y-1)], terrain[getIdx(x, y+1)]
+        ];
+        const avgNeighbor = neighbors.reduce((a, b) => a + b, 0) / 4;
+        elevation = elevation * 0.95 + avgNeighbor * 0.05;
       }
       
-      const gradient = ctx.createLinearGradient(pole.x, pole.y, x, y);
-      gradient.addColorStop(0, pole.polarity > 0 ? 'rgba(255, 100, 200, 0.3)' : 'rgba(100, 220, 255, 0.3)');
-      gradient.addColorStop(1, 'rgba(100, 100, 150, 0.1)');
-      ctx.strokeStyle = gradient;
-      ctx.lineWidth = 1;
-      ctx.stroke();
+      terrain[getIdx(x, y)] = Math.max(0, Math.min(1.3, elevation));
     }
   }
-  
-  ctx.globalAlpha = 1;
 }
 
-// Draw poles
-function drawPoles() {
-  for (const pole of poles) {
-    // Glow
-    const gradient = ctx.createRadialGradient(pole.x, pole.y, 0, pole.x, pole.y, 60);
-    const color = pole.polarity > 0 ? 'rgba(255, 100, 200,' : 'rgba(100, 220, 255,';
-    gradient.addColorStop(0, color + '0.4)');
-    gradient.addColorStop(0.5, color + '0.1)');
-    gradient.addColorStop(1, color + '0)');
-    
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(pole.x, pole.y, 60, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Core
-    ctx.fillStyle = pole.polarity > 0 ? '#ff64c8' : '#64dcff';
-    ctx.beginPath();
-    ctx.arc(pole.x, pole.y, 8, 0, Math.PI * 2);
-    ctx.fill();
-    
-    // Symbol
-    ctx.fillStyle = '#0a0a0f';
-    ctx.font = 'bold 12px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(pole.polarity > 0 ? '+' : '−', pole.x, pole.y);
-  }
-}
-
-// Web Audio for magnetic hum
-let audioCtx = null;
-let oscillators = [];
-let gainNode = null;
-
-function initAudio() {
-  if (audioCtx) return;
+// Marching squares for contour lines
+function getContourSegments(level) {
+  const segments = [];
   
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  gainNode = audioCtx.createGain();
-  gainNode.gain.value = 0;
-  gainNode.connect(audioCtx.destination);
-  
-  // Create layered drone
-  const freqs = [55, 82.5, 110, 165];
-  freqs.forEach((freq, i) => {
-    const osc = audioCtx.createOscillator();
-    const oscGain = audioCtx.createGain();
-    osc.type = i % 2 === 0 ? 'sine' : 'triangle';
-    osc.frequency.value = freq;
-    oscGain.gain.value = 0.15 / (i + 1);
-    osc.connect(oscGain);
-    oscGain.connect(gainNode);
-    osc.start();
-    oscillators.push({ osc, gain: oscGain });
-  });
-}
-
-function updateAudio() {
-  if (!audioCtx || poles.length === 0) {
-    if (gainNode) gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.1);
-    return;
-  }
-  
-  // Calculate total field energy
-  let energy = 0;
-  for (const pole of poles) {
-    energy += pole.strength;
-  }
-  
-  const targetGain = Math.min(energy * 0.001, 0.15);
-  gainNode.gain.linearRampToValueAtTime(targetGain, audioCtx.currentTime + 0.1);
-  
-  // Modulate frequencies based on pole count
-  oscillators.forEach((o, i) => {
-    const baseFreq = [55, 82.5, 110, 165][i];
-    const mod = 1 + poles.length * 0.02;
-    o.osc.frequency.linearRampToValueAtTime(baseFreq * mod, audioCtx.currentTime + 0.1);
-  });
-}
-
-// Click to place poles
-canvas.addEventListener('click', (e) => {
-  initAudio();
-  
-  // Check if clicking on existing pole (remove it)
-  for (let i = poles.length - 1; i >= 0; i--) {
-    const dx = e.clientX - poles[i].x;
-    const dy = e.clientY - poles[i].y;
-    if (dx * dx + dy * dy < 400) {
-      poles.splice(i, 1);
-      return;
+  for (let y = 0; y < rows - 1; y++) {
+    for (let x = 0; x < cols - 1; x++) {
+      const tl = terrain[getIdx(x, y)];
+      const tr = terrain[getIdx(x + 1, y)];
+      const br = terrain[getIdx(x + 1, y + 1)];
+      const bl = terrain[getIdx(x, y + 1)];
+      
+      // Marching squares case
+      let caseIndex = 0;
+      if (tl >= level) caseIndex |= 8;
+      if (tr >= level) caseIndex |= 4;
+      if (br >= level) caseIndex |= 2;
+      if (bl >= level) caseIndex |= 1;
+      
+      if (caseIndex === 0 || caseIndex === 15) continue;
+      
+      const px = x * cellSize;
+      const py = y * cellSize;
+      
+      // Interpolate edge positions
+      const lerp = (a, b, t) => a + (b - a) * t;
+      const edgeTop = lerp(px, px + cellSize, (level - tl) / (tr - tl + 0.0001));
+      const edgeRight = lerp(py, py + cellSize, (level - tr) / (br - tr + 0.0001));
+      const edgeBottom = lerp(px, px + cellSize, (level - bl) / (br - bl + 0.0001));
+      const edgeLeft = lerp(py, py + cellSize, (level - tl) / (bl - tl + 0.0001));
+      
+      const addSeg = (x1, y1, x2, y2) => segments.push({ x1, y1, x2, y2 });
+      
+      // All 16 cases
+      switch (caseIndex) {
+        case 1: addSeg(px, edgeLeft, edgeBottom, py + cellSize); break;
+        case 2: addSeg(edgeBottom, py + cellSize, px + cellSize, edgeRight); break;
+        case 3: addSeg(px, edgeLeft, px + cellSize, edgeRight); break;
+        case 4: addSeg(edgeTop, py, px + cellSize, edgeRight); break;
+        case 5:
+          addSeg(px, edgeLeft, edgeTop, py);
+          addSeg(edgeBottom, py + cellSize, px + cellSize, edgeRight);
+          break;
+        case 6: addSeg(edgeTop, py, edgeBottom, py + cellSize); break;
+        case 7: addSeg(px, edgeLeft, edgeTop, py); break;
+        case 8: addSeg(edgeTop, py, px, edgeLeft); break;
+        case 9: addSeg(edgeTop, py, edgeBottom, py + cellSize); break;
+        case 10:
+          addSeg(edgeTop, py, px + cellSize, edgeRight);
+          addSeg(px, edgeLeft, edgeBottom, py + cellSize);
+          break;
+        case 11: addSeg(edgeTop, py, px + cellSize, edgeRight); break;
+        case 12: addSeg(px, edgeLeft, px + cellSize, edgeRight); break;
+        case 13: addSeg(edgeBottom, py + cellSize, px + cellSize, edgeRight); break;
+        case 14: addSeg(px, edgeLeft, edgeBottom, py + cellSize); break;
+      }
     }
   }
-  
-  // Add new pole
-  poles.push({
-    x: e.clientX,
-    y: e.clientY,
-    polarity: nextPolarity,
-    strength: 100
-  });
-  
-  nextPolarity *= -1; // Alternate polarity
-  
-  // Limit poles
-  if (poles.length > 8) {
-    poles.shift();
-  }
-});
+  return segments;
+}
 
-// Mouse movement affects nearby particles
-let mouseX = W / 2, mouseY = H / 2;
-canvas.addEventListener('mousemove', (e) => {
-  mouseX = e.clientX;
-  mouseY = e.clientY;
-});
-
-// Animation loop
-function animate() {
-  // Fade trail
-  ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
+function draw() {
+  ctx.fillStyle = '#0a0a0f';
   ctx.fillRect(0, 0, W, H);
   
-  // Draw field lines
-  drawFieldLines();
-  
-  // Update and draw particles
-  for (const p of particles) {
-    // Mouse repulsion
-    const dx = p.x - mouseX;
-    const dy = p.y - mouseY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < 100) {
-      const force = (100 - dist) * 0.002;
-      p.vx += (dx / dist) * force;
-      p.vy += (dy / dist) * force;
-    }
+  // Draw filled regions for depth
+  for (let i = contourLevels - 1; i >= 0; i--) {
+    const level = (i + 1) / contourLevels;
+    const alpha = 0.03 + (i / contourLevels) * 0.04;
     
-    p.update();
-    p.draw();
+    // Subtle fill based on elevation
+    const hue = 280 + (level * 60); // purple to pink
+    ctx.fillStyle = `hsla(${hue}, 70%, 20%, ${alpha})`;
+    
+    for (let y = 0; y < rows - 1; y++) {
+      for (let x = 0; x < cols - 1; x++) {
+        const val = terrain[getIdx(x, y)];
+        if (val >= level) {
+          ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        }
+      }
+    }
   }
   
-  // Draw poles
-  drawPoles();
+  // Draw contour lines
+  for (let i = 0; i < contourLevels; i++) {
+    const level = (i + 1) / contourLevels;
+    const segments = getContourSegments(level);
+    
+    // Color: cyan at low elevation, pink at high
+    const t = i / contourLevels;
+    const r = Math.floor(40 + t * 215);
+    const g = Math.floor(220 - t * 140);
+    const b = Math.floor(220 + t * 35);
+    
+    const isMajor = i % 3 === 2;
+    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${isMajor ? 0.9 : 0.5})`;
+    ctx.lineWidth = isMajor ? 1.5 : 0.7;
+    
+    ctx.beginPath();
+    for (const seg of segments) {
+      ctx.moveTo(seg.x1, seg.y1);
+      ctx.lineTo(seg.x2, seg.y2);
+    }
+    ctx.stroke();
+  }
   
-  // Update audio
-  updateAudio();
+  // Mouse cursor indicator
+  if (mouse.x > 0 && mouse.y > 0) {
+    const gradient = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, 120);
+    gradient.addColorStop(0, mouse.raising ? 'rgba(255, 100, 200, 0.15)' : 'rgba(100, 200, 255, 0.15)');
+    gradient.addColorStop(1, 'transparent');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(mouse.x, mouse.y, 120, 0, Math.PI * 2);
+    ctx.fill();
+  }
   
-  requestAnimationFrame(animate);
+  // Erosion indicator
+  if (eroding) {
+    ctx.fillStyle = 'rgba(150, 100, 255, 0.7)';
+    ctx.font = '12px monospace';
+    ctx.fillText('⚡ erosion active', 20, 30);
+  }
+  
+  // Update audio based on average elevation near mouse
+  if (audioCtx && oscillators.length) {
+    let avgElevation = 0.5;
+    if (mouse.x > 0) {
+      const mx = Math.floor(mouse.x / cellSize);
+      const my = Math.floor(mouse.y / cellSize);
+      if (mx >= 0 && mx < cols && my >= 0 && my < rows) {
+        avgElevation = terrain[getIdx(mx, my)];
+      }
+    }
+    
+    oscillators.forEach((o, i) => {
+      o.osc.frequency.setTargetAtTime(40 + avgElevation * 80 + i * 20, audioCtx.currentTime, 0.1);
+      o.gain.gain.setTargetAtTime(0.015 * avgElevation, audioCtx.currentTime, 0.1);
+    });
+  }
 }
 
-// Start with two default poles
-poles.push({ x: W * 0.35, y: H * 0.5, polarity: 1, strength: 100 });
-poles.push({ x: W * 0.65, y: H * 0.5, polarity: -1, strength: 100 });
+function loop() {
+  time++;
+  updateTerrain();
+  draw();
+  requestAnimationFrame(loop);
+}
 
-animate();
+// Events
+window.addEventListener('resize', resize);
+
+canvas.addEventListener('mousemove', e => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+  mouse.active = true;
+});
+
+canvas.addEventListener('mouseleave', () => {
+  mouse.active = false;
+  mouse.x = -1000;
+  mouse.y = -1000;
+});
+
+canvas.addEventListener('mousedown', e => {
+  mouse.raising = e.button !== 2; // right click to lower
+});
+
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+canvas.addEventListener('click', () => {
+  if (!audioCtx) initAudio();
+  eroding = !eroding;
+});
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    eroding = !eroding;
+  }
+});
+
+// Touch support
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (!audioCtx) initAudio();
+  const touch = e.touches[0];
+  mouse.x = touch.clientX;
+  mouse.y = touch.clientY;
+  mouse.active = true;
+});
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  mouse.x = touch.clientX;
+  mouse.y = touch.clientY;
+});
+
+canvas.addEventListener('touchend', () => {
+  mouse.active = false;
+  mouse.x = -1000;
+  mouse.y = -1000;
+});
+
+// Init
+resize();
+loop();
 </script>
 </body>
 </html>
