@@ -3,365 +3,311 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>breath</title>
+<title>ink</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0f; }
-canvas { display: block; position: absolute; top: 0; left: 0; }
-#bg { z-index: 1; }
-#fog { z-index: 2; }
-#draw { z-index: 3; }
+canvas { display: block; width: 100%; height: 100%; }
 </style>
 </head>
 <body>
-<canvas id="bg"></canvas>
-<canvas id="fog"></canvas>
-<canvas id="draw"></canvas>
+<canvas id="canvas"></canvas>
 <script>
-const bgCanvas = document.getElementById('bg');
-const fogCanvas = document.getElementById('fog');
-const drawCanvas = document.getElementById('draw');
-const bgCtx = bgCanvas.getContext('2d');
-const fogCtx = fogCanvas.getContext('2d');
-const drawCtx = drawCanvas.getContext('2d');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
 
 let W, H;
-let mouse = { x: -1000, y: -1000 };
-let isDrawing = false;
-let lastMouse = { x: 0, y: 0 };
-
-// Fog density grid
-let fogGrid = [];
-let gridW, gridH;
-const CELL = 4;
-
-// City lights (bokeh effect)
-let lights = [];
-
-// Audio
-let audioCtx, breathGain, noiseNode, noiseGain;
-let breathPhase = 0;
-let isBreathing = false;
+let audioCtx, noiseNode, filterNode, gainNode;
+let audioStarted = false;
 
 function resize() {
-    W = window.innerWidth;
-    H = window.innerHeight;
-    bgCanvas.width = fogCanvas.width = drawCanvas.width = W;
-    bgCanvas.height = fogCanvas.height = drawCanvas.height = H;
-    
-    gridW = Math.ceil(W / CELL);
-    gridH = Math.ceil(H / CELL);
-    
-    // Preserve existing fog or initialize
-    const oldGrid = fogGrid;
-    fogGrid = new Float32Array(gridW * gridH);
-    
-    // Start with light ambient fog
-    for (let i = 0; i < fogGrid.length; i++) {
-        fogGrid[i] = 0.15 + Math.random() * 0.1;
-    }
-    
-    // Generate city lights
-    lights = [];
-    const numLights = Math.floor((W * H) / 8000);
-    for (let i = 0; i < numLights; i++) {
-        lights.push({
-            x: Math.random() * W,
-            y: H * 0.3 + Math.random() * H * 0.6,
-            r: 10 + Math.random() * 30,
-            hue: Math.random() < 0.6 ? (180 + Math.random() * 40) : (300 + Math.random() * 60), // cyan or pink
-            brightness: 0.3 + Math.random() * 0.7,
-            flicker: Math.random() * Math.PI * 2,
-            flickerSpeed: 0.02 + Math.random() * 0.03
-        });
-    }
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
 }
-
-function initAudio() {
-    if (audioCtx) return;
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    
-    // Create brown noise for breath sound
-    const bufferSize = audioCtx.sampleRate * 2;
-    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-    const data = buffer.getChannelData(0);
-    
-    let lastOut = 0;
-    for (let i = 0; i < bufferSize; i++) {
-        const white = Math.random() * 2 - 1;
-        data[i] = (lastOut + (0.02 * white)) / 1.02;
-        lastOut = data[i];
-        data[i] *= 3.5;
-    }
-    
-    noiseNode = audioCtx.createBufferSource();
-    noiseNode.buffer = buffer;
-    noiseNode.loop = true;
-    
-    // Filter for breath character
-    const filter = audioCtx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.value = 400;
-    filter.Q.value = 0.5;
-    
-    noiseGain = audioCtx.createGain();
-    noiseGain.gain.value = 0;
-    
-    // Master gain
-    breathGain = audioCtx.createGain();
-    breathGain.gain.value = 0.15;
-    
-    noiseNode.connect(filter);
-    filter.connect(noiseGain);
-    noiseGain.connect(breathGain);
-    breathGain.connect(audioCtx.destination);
-    
-    noiseNode.start();
-}
-
-function drawBackground() {
-    // Dark gradient background
-    const grad = bgCtx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, '#0a0812');
-    grad.addColorStop(0.5, '#0f0a18');
-    grad.addColorStop(1, '#0a0510');
-    bgCtx.fillStyle = grad;
-    bgCtx.fillRect(0, 0, W, H);
-    
-    // Draw blurred city lights (bokeh)
-    lights.forEach(light => {
-        light.flicker += light.flickerSpeed;
-        const flick = 0.7 + 0.3 * Math.sin(light.flicker);
-        const alpha = light.brightness * flick * 0.4;
-        
-        const grad = bgCtx.createRadialGradient(
-            light.x, light.y, 0,
-            light.x, light.y, light.r
-        );
-        grad.addColorStop(0, `hsla(${light.hue}, 80%, 70%, ${alpha})`);
-        grad.addColorStop(0.3, `hsla(${light.hue}, 70%, 50%, ${alpha * 0.5})`);
-        grad.addColorStop(1, 'transparent');
-        
-        bgCtx.fillStyle = grad;
-        bgCtx.fillRect(light.x - light.r, light.y - light.r, light.r * 2, light.r * 2);
-    });
-}
-
-function updateFog() {
-    const evapRate = 0.0008;
-    const spreadRate = 0.02;
-    
-    // Calculate breath intensity based on mouse movement
-    const dx = mouse.x - lastMouse.x;
-    const dy = mouse.y - lastMouse.y;
-    const movement = Math.sqrt(dx * dx + dy * dy);
-    isBreathing = movement > 0.5 || isDrawing;
-    
-    // Breath adds condensation
-    if (mouse.x > 0 && mouse.y > 0 && !isDrawing) {
-        const breathRadius = 60;
-        const cx = Math.floor(mouse.x / CELL);
-        const cy = Math.floor(mouse.y / CELL);
-        const r = Math.ceil(breathRadius / CELL);
-        
-        for (let dy = -r; dy <= r; dy++) {
-            for (let dx = -r; dx <= r; dx++) {
-                const gx = cx + dx;
-                const gy = cy + dy;
-                if (gx < 0 || gx >= gridW || gy < 0 || gy >= gridH) continue;
-                
-                const dist = Math.sqrt(dx * dx + dy * dy) * CELL;
-                if (dist < breathRadius) {
-                    const idx = gy * gridW + gx;
-                    const intensity = 1 - (dist / breathRadius);
-                    // Breathing rhythm
-                    breathPhase += 0.002;
-                    const breathMod = 0.5 + 0.5 * Math.sin(breathPhase * 5);
-                    fogGrid[idx] = Math.min(1, fogGrid[idx] + intensity * 0.08 * breathMod);
-                }
-            }
-        }
-    }
-    
-    // Drawing clears fog (finger wiping condensation)
-    if (isDrawing && mouse.x > 0) {
-        const wipeRadius = 25;
-        const cx = Math.floor(mouse.x / CELL);
-        const cy = Math.floor(mouse.y / CELL);
-        const r = Math.ceil(wipeRadius / CELL);
-        
-        for (let dy = -r; dy <= r; dy++) {
-            for (let dx = -r; dx <= r; dx++) {
-                const gx = cx + dx;
-                const gy = cy + dy;
-                if (gx < 0 || gx >= gridW || gy < 0 || gy >= gridH) continue;
-                
-                const dist = Math.sqrt(dx * dx + dy * dy) * CELL;
-                if (dist < wipeRadius) {
-                    const idx = gy * gridW + gx;
-                    const intensity = 1 - (dist / wipeRadius);
-                    fogGrid[idx] = Math.max(0, fogGrid[idx] - intensity * 0.5);
-                }
-            }
-        }
-    }
-    
-    // Evaporation and slight spread
-    const newGrid = new Float32Array(fogGrid.length);
-    for (let y = 0; y < gridH; y++) {
-        for (let x = 0; x < gridW; x++) {
-            const idx = y * gridW + x;
-            let val = fogGrid[idx];
-            
-            // Neighbor averaging (condensation spreads slightly)
-            let sum = val * 4;
-            let count = 4;
-            if (x > 0) { sum += fogGrid[idx - 1]; count++; }
-            if (x < gridW - 1) { sum += fogGrid[idx + 1]; count++; }
-            if (y > 0) { sum += fogGrid[idx - gridW]; count++; }
-            if (y < gridH - 1) { sum += fogGrid[idx + gridW]; count++; }
-            
-            val = val * (1 - spreadRate) + (sum / count) * spreadRate;
-            
-            // Evaporation (cleared areas evaporate faster)
-            val -= evapRate * (val < 0.1 ? 3 : 1);
-            
-            // Slow re-condensation to ambient level
-            if (val < 0.15) val += 0.0002;
-            
-            newGrid[idx] = Math.max(0, Math.min(1, val));
-        }
-    }
-    fogGrid = newGrid;
-    
-    lastMouse.x = mouse.x;
-    lastMouse.y = mouse.y;
-}
-
-function drawFog() {
-    fogCtx.clearRect(0, 0, W, H);
-    
-    // Create image data for fog
-    const imageData = fogCtx.createImageData(W, H);
-    const data = imageData.data;
-    
-    for (let y = 0; y < H; y++) {
-        const gy = Math.floor(y / CELL);
-        for (let x = 0; x < W; x++) {
-            const gx = Math.floor(x / CELL);
-            const idx = gy * gridW + gx;
-            const fog = fogGrid[idx] || 0;
-            
-            // Bilinear interpolation for smoother look
-            const px = (x % CELL) / CELL;
-            const py = (y % CELL) / CELL;
-            
-            let f00 = fog;
-            let f10 = gx < gridW - 1 ? fogGrid[idx + 1] : fog;
-            let f01 = gy < gridH - 1 ? fogGrid[idx + gridW] : fog;
-            let f11 = (gx < gridW - 1 && gy < gridH - 1) ? fogGrid[idx + gridW + 1] : fog;
-            
-            const smoothFog = f00 * (1 - px) * (1 - py) + f10 * px * (1 - py) + 
-                             f01 * (1 - px) * py + f11 * px * py;
-            
-            const pIdx = (y * W + x) * 4;
-            
-            // Fog color: slightly blue-gray tint
-            const alpha = smoothFog * 0.85;
-            data[pIdx] = 200;     // R
-            data[pIdx + 1] = 210; // G  
-            data[pIdx + 2] = 220; // B
-            data[pIdx + 3] = alpha * 255;
-        }
-    }
-    
-    fogCtx.putImageData(imageData, 0, 0);
-    
-    // Add subtle texture/noise overlay
-    fogCtx.globalAlpha = 0.03;
-    for (let i = 0; i < 1000; i++) {
-        const x = Math.random() * W;
-        const y = Math.random() * H;
-        const gy = Math.floor(y / CELL);
-        const gx = Math.floor(x / CELL);
-        const idx = gy * gridW + gx;
-        if (fogGrid[idx] > 0.3) {
-            fogCtx.fillStyle = `rgba(255,255,255,${Math.random() * 0.5})`;
-            fogCtx.fillRect(x, y, 1, 1);
-        }
-    }
-    fogCtx.globalAlpha = 1;
-}
-
-function updateAudio() {
-    if (!audioCtx) return;
-    
-    const targetGain = isBreathing ? 0.4 : 0.05;
-    noiseGain.gain.value += (targetGain - noiseGain.gain.value) * 0.1;
-}
-
-function animate() {
-    updateFog();
-    drawBackground();
-    drawFog();
-    updateAudio();
-    requestAnimationFrame(animate);
-}
-
-// Event listeners
+resize();
 window.addEventListener('resize', resize);
 
-drawCanvas.addEventListener('mousemove', (e) => {
-    mouse.x = e.clientX;
-    mouse.y = e.clientY;
-});
+// Ink particle system
+const particles = [];
+const maxParticles = 8000;
+const flowField = [];
+const flowRes = 20;
+let flowCols, flowRows;
+let time = 0;
+let mouseX = W / 2, mouseY = H / 2;
+let mouseActive = false;
 
-drawCanvas.addEventListener('mousedown', (e) => {
-    isDrawing = true;
-    initAudio();
-});
+function initFlowField() {
+  flowCols = Math.ceil(W / flowRes);
+  flowRows = Math.ceil(H / flowRes);
+  for (let i = 0; i < flowCols * flowRows; i++) {
+    flowField[i] = { angle: 0, strength: 0.3 };
+  }
+}
+initFlowField();
 
-drawCanvas.addEventListener('mouseup', () => {
-    isDrawing = false;
-});
+class InkParticle {
+  constructor(x, y, hue) {
+    this.x = x;
+    this.y = y;
+    this.vx = (Math.random() - 0.5) * 2;
+    this.vy = (Math.random() - 0.5) * 2 - 0.5;
+    this.hue = hue; // 320 = pink, 180 = cyan
+    this.saturation = 80 + Math.random() * 20;
+    this.lightness = 50 + Math.random() * 20;
+    this.alpha = 0.8;
+    this.size = 2 + Math.random() * 3;
+    this.life = 1;
+    this.decay = 0.001 + Math.random() * 0.002;
+    this.noiseOffsetX = Math.random() * 1000;
+    this.noiseOffsetY = Math.random() * 1000;
+  }
 
-drawCanvas.addEventListener('mouseleave', () => {
-    mouse.x = -1000;
-    mouse.y = -1000;
-    isDrawing = false;
-});
+  update() {
+    // Perlin-like noise for organic movement
+    const noiseScale = 0.003;
+    const nx = Math.sin((this.x + this.noiseOffsetX) * noiseScale + time * 0.5) * 
+               Math.cos((this.y + this.noiseOffsetY) * noiseScale * 0.7);
+    const ny = Math.cos((this.y + this.noiseOffsetY) * noiseScale + time * 0.3) * 
+               Math.sin((this.x + this.noiseOffsetX) * noiseScale * 0.8);
 
-drawCanvas.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    isDrawing = true;
-    const touch = e.touches[0];
-    mouse.x = touch.clientX;
-    mouse.y = touch.clientY;
-    initAudio();
-});
-
-drawCanvas.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    const touch = e.touches[0];
-    mouse.x = touch.clientX;
-    mouse.y = touch.clientY;
-});
-
-drawCanvas.addEventListener('touchend', () => {
-    isDrawing = false;
-    mouse.x = -1000;
-    mouse.y = -1000;
-});
-
-// Double-click to clear all fog (fresh glass)
-drawCanvas.addEventListener('dblclick', () => {
-    for (let i = 0; i < fogGrid.length; i++) {
-        fogGrid[i] = 0;
+    // Flow field influence
+    const col = Math.floor(this.x / flowRes);
+    const row = Math.floor(this.y / flowRes);
+    if (col >= 0 && col < flowCols && row >= 0 && row < flowRows) {
+      const idx = col + row * flowCols;
+      const flow = flowField[idx];
+      this.vx += Math.cos(flow.angle) * flow.strength * 0.1;
+      this.vy += Math.sin(flow.angle) * flow.strength * 0.1;
     }
+
+    // Organic turbulence
+    this.vx += nx * 0.15;
+    this.vy += ny * 0.15;
+
+    // Buoyancy - ink rises slightly
+    this.vy -= 0.02;
+
+    // Mouse influence - creates currents
+    if (mouseActive) {
+      const dx = this.x - mouseX;
+      const dy = this.y - mouseY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 200 && dist > 1) {
+        const force = (200 - dist) / 200;
+        // Circular current around mouse
+        const angle = Math.atan2(dy, dx) + Math.PI * 0.5;
+        this.vx += Math.cos(angle) * force * 0.3;
+        this.vy += Math.sin(angle) * force * 0.3;
+      }
+    }
+
+    // Friction (water viscosity)
+    this.vx *= 0.98;
+    this.vy *= 0.98;
+
+    this.x += this.vx;
+    this.y += this.vy;
+
+    // Diffusion - particles spread out
+    this.size += 0.02;
+    this.life -= this.decay;
+    this.alpha = this.life * 0.6;
+
+    // Hue shifts slightly as ink disperses
+    if (this.hue > 300) {
+      this.hue -= 0.1; // Pink shifts toward magenta
+    } else if (this.hue < 200) {
+      this.hue += 0.1; // Cyan shifts toward teal
+    }
+  }
+
+  draw() {
+    if (this.alpha <= 0) return;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${this.hue}, ${this.saturation}%, ${this.lightness}%, ${this.alpha})`;
+    ctx.fill();
+  }
+
+  isDead() {
+    return this.life <= 0 || this.x < -50 || this.x > W + 50 || this.y < -50 || this.y > H + 50;
+  }
+}
+
+function dropInk(x, y, hue, count = 50) {
+  for (let i = 0; i < count; i++) {
+    if (particles.length < maxParticles) {
+      const offsetX = (Math.random() - 0.5) * 30;
+      const offsetY = (Math.random() - 0.5) * 30;
+      // Slight hue variation
+      const hueVar = hue + (Math.random() - 0.5) * 30;
+      particles.push(new InkParticle(x + offsetX, y + offsetY, hueVar));
+    }
+  }
+}
+
+function updateFlowField() {
+  time += 0.01;
+  for (let row = 0; row < flowRows; row++) {
+    for (let col = 0; col < flowCols; col++) {
+      const idx = col + row * flowCols;
+      const x = col * flowRes;
+      const y = row * flowRes;
+      
+      // Slow rotating flow patterns
+      const angle = Math.sin(x * 0.005 + time) * Math.cos(y * 0.005 + time * 0.7) * Math.PI * 2;
+      flowField[idx].angle = angle;
+      
+      // Mouse creates stronger currents nearby
+      if (mouseActive) {
+        const dx = x - mouseX;
+        const dy = y - mouseY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 150) {
+          flowField[idx].strength = 0.5 + (150 - dist) / 150 * 0.5;
+          flowField[idx].angle = Math.atan2(dy, dx) + Math.PI * 0.5;
+        } else {
+          flowField[idx].strength = 0.3;
+        }
+      }
+    }
+  }
+}
+
+// Underwater ambient audio
+function initAudio() {
+  if (audioStarted) return;
+  audioStarted = true;
+  
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  
+  // Deep underwater rumble - brown noise
+  const bufferSize = 2 * audioCtx.sampleRate;
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  
+  let lastOut = 0;
+  for (let i = 0; i < bufferSize; i++) {
+    const white = Math.random() * 2 - 1;
+    data[i] = (lastOut + (0.02 * white)) / 1.02;
+    lastOut = data[i];
+    data[i] *= 3.5;
+  }
+  
+  noiseNode = audioCtx.createBufferSource();
+  noiseNode.buffer = buffer;
+  noiseNode.loop = true;
+  
+  // Muffled underwater filter
+  filterNode = audioCtx.createBiquadFilter();
+  filterNode.type = 'lowpass';
+  filterNode.frequency.value = 200;
+  filterNode.Q.value = 1;
+  
+  gainNode = audioCtx.createGain();
+  gainNode.gain.value = 0.15;
+  
+  noiseNode.connect(filterNode);
+  filterNode.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+  
+  noiseNode.start();
+}
+
+// Bubble sound on click
+function playBubble() {
+  if (!audioCtx) return;
+  
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(800 + Math.random() * 400, audioCtx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.15);
+  
+  gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+  
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.2);
+}
+
+// Auto-drop ink periodically
+let lastAutoDrop = 0;
+function autoDrop() {
+  if (Date.now() - lastAutoDrop > 2000) {
+    const x = Math.random() * W;
+    const y = Math.random() * H * 0.3 + H * 0.2;
+    const hue = Math.random() > 0.5 ? 320 : 185; // Pink or cyan
+    dropInk(x, y, hue, 30);
+    lastAutoDrop = Date.now();
+  }
+}
+
+// Mouse events
+canvas.addEventListener('mousemove', (e) => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+  mouseActive = true;
 });
 
-// Initialize
-resize();
+canvas.addEventListener('mouseleave', () => {
+  mouseActive = false;
+});
+
+canvas.addEventListener('click', (e) => {
+  initAudio();
+  playBubble();
+  
+  // Alternate pink and cyan
+  const hue = Math.random() > 0.5 ? 320 : 185;
+  dropInk(e.clientX, e.clientY, hue, 80);
+});
+
+// Initial ink drops
+setTimeout(() => {
+  dropInk(W * 0.3, H * 0.3, 320, 60); // Pink
+  dropInk(W * 0.7, H * 0.4, 185, 60); // Cyan
+}, 500);
+
+function animate() {
+  // Very subtle fade for trailing effect
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.03)';
+  ctx.fillRect(0, 0, W, H);
+  
+  updateFlowField();
+  autoDrop();
+  
+  // Update and draw particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.update();
+    p.draw();
+    
+    if (p.isDead()) {
+      particles.splice(i, 1);
+    }
+  }
+  
+  // Blend layer for mixing colors
+  ctx.globalCompositeOperation = 'lighter';
+  for (const p of particles) {
+    if (p.alpha > 0.1) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * 0.5, 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(${p.hue}, ${p.saturation}%, ${p.lightness * 0.3}%, ${p.alpha * 0.3})`;
+      ctx.fill();
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  
+  requestAnimationFrame(animate);
+}
+
 animate();
 </script>
 </body>
