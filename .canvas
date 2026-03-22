@@ -3,23 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ink</title>
+<title>strings</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0f; }
-canvas { display: block; width: 100%; height: 100%; }
+body { background: #0a0a0f; overflow: hidden; }
+canvas { display: block; }
 </style>
 </head>
 <body>
-<canvas id="canvas"></canvas>
+<canvas id="c"></canvas>
 <script>
-const canvas = document.getElementById('canvas');
+const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
 let W, H;
-let audioCtx, noiseNode, filterNode, gainNode;
-let audioStarted = false;
-
 function resize() {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
@@ -27,283 +24,496 @@ function resize() {
 resize();
 window.addEventListener('resize', resize);
 
-// Ink particle system
-const particles = [];
-const maxParticles = 8000;
-const flowField = [];
-const flowRes = 20;
-let flowCols, flowRows;
-let time = 0;
-let mouseX = W / 2, mouseY = H / 2;
-let mouseActive = false;
-
-function initFlowField() {
-  flowCols = Math.ceil(W / flowRes);
-  flowRows = Math.ceil(H / flowRes);
-  for (let i = 0; i < flowCols * flowRows; i++) {
-    flowField[i] = { angle: 0, strength: 0.3 };
+// Web Audio setup
+let audioCtx = null;
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   }
 }
-initFlowField();
 
-class InkParticle {
-  constructor(x, y, hue) {
-    this.x = x;
-    this.y = y;
-    this.vx = (Math.random() - 0.5) * 2;
-    this.vy = (Math.random() - 0.5) * 2 - 0.5;
-    this.hue = hue; // 320 = pink, 180 = cyan
-    this.saturation = 80 + Math.random() * 20;
-    this.lightness = 50 + Math.random() * 20;
-    this.alpha = 0.8;
-    this.size = 2 + Math.random() * 3;
-    this.life = 1;
-    this.decay = 0.001 + Math.random() * 0.002;
-    this.noiseOffsetX = Math.random() * 1000;
-    this.noiseOffsetY = Math.random() * 1000;
-  }
+function playTone(freq, duration = 0.8, volume = 0.15) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  const filter = audioCtx.createBiquadFilter();
+  
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  
+  // Add slight vibrato
+  const vibrato = audioCtx.createOscillator();
+  const vibratoGain = audioCtx.createGain();
+  vibrato.frequency.value = 5;
+  vibratoGain.gain.value = freq * 0.01;
+  vibrato.connect(vibratoGain);
+  vibratoGain.connect(osc.frequency);
+  vibrato.start();
+  
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(freq * 4, audioCtx.currentTime);
+  filter.frequency.exponentialRampToValueAtTime(freq * 1.5, audioCtx.currentTime + duration * 0.5);
+  
+  gain.gain.setValueAtTime(0, audioCtx.currentTime);
+  gain.gain.linearRampToValueAtTime(volume, audioCtx.currentTime + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+  
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(audioCtx.destination);
+  
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+  vibrato.stop(audioCtx.currentTime + duration);
+}
 
-  update() {
-    // Perlin-like noise for organic movement
-    const noiseScale = 0.003;
-    const nx = Math.sin((this.x + this.noiseOffsetX) * noiseScale + time * 0.5) * 
-               Math.cos((this.y + this.noiseOffsetY) * noiseScale * 0.7);
-    const ny = Math.cos((this.y + this.noiseOffsetY) * noiseScale + time * 0.3) * 
-               Math.sin((this.x + this.noiseOffsetX) * noiseScale * 0.8);
-
-    // Flow field influence
-    const col = Math.floor(this.x / flowRes);
-    const row = Math.floor(this.y / flowRes);
-    if (col >= 0 && col < flowCols && row >= 0 && row < flowRows) {
-      const idx = col + row * flowCols;
-      const flow = flowField[idx];
-      this.vx += Math.cos(flow.angle) * flow.strength * 0.1;
-      this.vy += Math.sin(flow.angle) * flow.strength * 0.1;
+// String class with verlet integration
+class StringInstrument {
+  constructor(x1, y1, x2, y2, segments, baseFreq) {
+    this.x1 = x1;
+    this.y1 = y1;
+    this.x2 = x2;
+    this.y2 = y2;
+    this.segments = segments;
+    this.baseFreq = baseFreq;
+    this.points = [];
+    this.prevPoints = [];
+    this.restLength = Math.hypot(x2 - x1, y2 - y1) / segments;
+    this.damping = 0.992;
+    this.tension = 0.4;
+    this.energy = 0;
+    this.lastPluck = 0;
+    this.hue = 0;
+    
+    // Initialize points along the string
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const x = x1 + (x2 - x1) * t;
+      const y = y1 + (y2 - y1) * t;
+      this.points.push({ x, y });
+      this.prevPoints.push({ x, y });
     }
-
-    // Organic turbulence
-    this.vx += nx * 0.15;
-    this.vy += ny * 0.15;
-
-    // Buoyancy - ink rises slightly
-    this.vy -= 0.02;
-
-    // Mouse influence - creates currents
-    if (mouseActive) {
-      const dx = this.x - mouseX;
-      const dy = this.y - mouseY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < 200 && dist > 1) {
-        const force = (200 - dist) / 200;
-        // Circular current around mouse
-        const angle = Math.atan2(dy, dx) + Math.PI * 0.5;
-        this.vx += Math.cos(angle) * force * 0.3;
-        this.vy += Math.sin(angle) * force * 0.3;
+  }
+  
+  pluck(px, py, force = 1) {
+    const now = Date.now();
+    if (now - this.lastPluck < 100) return false;
+    
+    // Find closest point to pluck position
+    let minDist = Infinity;
+    let pluckIndex = -1;
+    
+    for (let i = 1; i < this.points.length - 1; i++) {
+      const p = this.points[i];
+      const dist = Math.hypot(p.x - px, p.y - py);
+      if (dist < minDist && dist < 50) {
+        minDist = dist;
+        pluckIndex = i;
       }
     }
-
-    // Friction (water viscosity)
-    this.vx *= 0.98;
-    this.vy *= 0.98;
-
-    this.x += this.vx;
-    this.y += this.vy;
-
-    // Diffusion - particles spread out
-    this.size += 0.02;
-    this.life -= this.decay;
-    this.alpha = this.life * 0.6;
-
-    // Hue shifts slightly as ink disperses
-    if (this.hue > 300) {
-      this.hue -= 0.1; // Pink shifts toward magenta
-    } else if (this.hue < 200) {
-      this.hue += 0.1; // Cyan shifts toward teal
+    
+    if (pluckIndex > 0) {
+      // Displace perpendicular to string
+      const dx = this.x2 - this.x1;
+      const dy = this.y2 - this.y1;
+      const len = Math.hypot(dx, dy);
+      const perpX = -dy / len;
+      const perpY = dx / len;
+      
+      // Which side of the string is the mouse?
+      const toMouseX = px - this.points[pluckIndex].x;
+      const toMouseY = py - this.points[pluckIndex].y;
+      const side = perpX * toMouseX + perpY * toMouseY > 0 ? 1 : -1;
+      
+      // Displace away from mouse
+      const displacement = (30 + Math.random() * 20) * force * -side;
+      
+      // Gaussian displacement centered on pluck point
+      for (let i = 1; i < this.points.length - 1; i++) {
+        const dist = Math.abs(i - pluckIndex);
+        const falloff = Math.exp(-dist * dist / (this.segments * 0.15));
+        this.points[i].x += perpX * displacement * falloff;
+        this.points[i].y += perpY * displacement * falloff;
+      }
+      
+      this.lastPluck = now;
+      this.energy = 1;
+      return true;
     }
+    return false;
   }
-
-  draw() {
-    if (this.alpha <= 0) return;
+  
+  update() {
+    // Verlet integration
+    for (let i = 1; i < this.points.length - 1; i++) {
+      const p = this.points[i];
+      const prev = this.prevPoints[i];
+      
+      const vx = (p.x - prev.x) * this.damping;
+      const vy = (p.y - prev.y) * this.damping;
+      
+      prev.x = p.x;
+      prev.y = p.y;
+      
+      p.x += vx;
+      p.y += vy;
+    }
+    
+    // Constraint solving (multiple iterations for stability)
+    for (let iter = 0; iter < 5; iter++) {
+      // Pin endpoints
+      this.points[0].x = this.x1;
+      this.points[0].y = this.y1;
+      this.points[this.points.length - 1].x = this.x2;
+      this.points[this.points.length - 1].y = this.y2;
+      
+      // Distance constraints
+      for (let i = 0; i < this.points.length - 1; i++) {
+        const p1 = this.points[i];
+        const p2 = this.points[i + 1];
+        
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const dist = Math.hypot(dx, dy);
+        const diff = (dist - this.restLength) / dist;
+        
+        const moveX = dx * diff * this.tension;
+        const moveY = dy * diff * this.tension;
+        
+        if (i > 0) {
+          p1.x += moveX * 0.5;
+          p1.y += moveY * 0.5;
+        }
+        if (i < this.points.length - 2) {
+          p2.x -= moveX * 0.5;
+          p2.y -= moveY * 0.5;
+        }
+      }
+    }
+    
+    // Calculate energy (for glow intensity)
+    let totalVel = 0;
+    for (let i = 1; i < this.points.length - 1; i++) {
+      const vx = this.points[i].x - this.prevPoints[i].x;
+      const vy = this.points[i].y - this.prevPoints[i].y;
+      totalVel += Math.hypot(vx, vy);
+    }
+    this.energy = Math.min(1, totalVel / 10);
+  }
+  
+  draw(ctx) {
+    // Glow based on energy
+    const glowIntensity = this.energy * 30 + 5;
+    
+    // Calculate hue based on frequency (lower = more pink, higher = more cyan)
+    const freqRatio = (this.baseFreq - 110) / (880 - 110);
+    const hue = 300 + freqRatio * 180; // 300 (magenta) to 180 (cyan)
+    
+    ctx.save();
+    ctx.shadowBlur = glowIntensity;
+    ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+    
+    // Draw string
     ctx.beginPath();
-    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-    ctx.fillStyle = `hsla(${this.hue}, ${this.saturation}%, ${this.lightness}%, ${this.alpha})`;
-    ctx.fill();
-  }
-
-  isDead() {
-    return this.life <= 0 || this.x < -50 || this.x > W + 50 || this.y < -50 || this.y > H + 50;
-  }
-}
-
-function dropInk(x, y, hue, count = 50) {
-  for (let i = 0; i < count; i++) {
-    if (particles.length < maxParticles) {
-      const offsetX = (Math.random() - 0.5) * 30;
-      const offsetY = (Math.random() - 0.5) * 30;
-      // Slight hue variation
-      const hueVar = hue + (Math.random() - 0.5) * 30;
-      particles.push(new InkParticle(x + offsetX, y + offsetY, hueVar));
+    ctx.moveTo(this.points[0].x, this.points[0].y);
+    
+    for (let i = 1; i < this.points.length; i++) {
+      const p = this.points[i];
+      const prev = this.points[i - 1];
+      const cpx = (prev.x + p.x) / 2;
+      const cpy = (prev.y + p.y) / 2;
+      ctx.quadraticCurveTo(prev.x, prev.y, cpx, cpy);
     }
+    ctx.lineTo(this.points[this.points.length - 1].x, this.points[this.points.length - 1].y);
+    
+    const alpha = 0.6 + this.energy * 0.4;
+    ctx.strokeStyle = `hsla(${hue}, 100%, ${70 + this.energy * 20}%, ${alpha})`;
+    ctx.lineWidth = 2 + this.energy * 2;
+    ctx.stroke();
+    
+    // Draw secondary harmonic ghost
+    if (this.energy > 0.1) {
+      ctx.beginPath();
+      ctx.moveTo(this.points[0].x, this.points[0].y);
+      for (let i = 1; i < this.points.length; i++) {
+        ctx.lineTo(this.points[i].x, this.points[i].y);
+      }
+      ctx.strokeStyle = `hsla(${hue + 60}, 100%, 80%, ${this.energy * 0.3})`;
+      ctx.lineWidth = 1;
+      ctx.shadowBlur = glowIntensity * 2;
+      ctx.stroke();
+    }
+    
+    ctx.restore();
+    
+    // Draw mount points
+    this.drawMount(ctx, this.x1, this.y1, hue);
+    this.drawMount(ctx, this.x2, this.y2, hue);
+  }
+  
+  drawMount(ctx, x, y, hue) {
+    ctx.save();
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+    ctx.fillStyle = `hsl(${hue}, 80%, 40%)`;
+    ctx.beginPath();
+    ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `hsl(${hue}, 100%, 70%)`;
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 }
 
-function updateFlowField() {
-  time += 0.01;
-  for (let row = 0; row < flowRows; row++) {
-    for (let col = 0; col < flowCols; col++) {
-      const idx = col + row * flowCols;
-      const x = col * flowRes;
-      const y = row * flowRes;
-      
-      // Slow rotating flow patterns
-      const angle = Math.sin(x * 0.005 + time) * Math.cos(y * 0.005 + time * 0.7) * Math.PI * 2;
-      flowField[idx].angle = angle;
-      
-      // Mouse creates stronger currents nearby
-      if (mouseActive) {
-        const dx = x - mouseX;
-        const dy = y - mouseY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 150) {
-          flowField[idx].strength = 0.5 + (150 - dist) / 150 * 0.5;
-          flowField[idx].angle = Math.atan2(dy, dx) + Math.PI * 0.5;
-        } else {
-          flowField[idx].strength = 0.3;
+// Create strings in a harp-like arrangement
+let strings = [];
+
+function createStrings() {
+  strings = [];
+  
+  const centerX = W / 2;
+  const centerY = H / 2;
+  const numStrings = 12;
+  
+  // Pentatonic-ish frequencies for pleasant harmonies
+  const frequencies = [
+    110, 146.83, 164.81, 196, 220,
+    293.66, 329.63, 392, 440,
+    587.33, 659.25, 783.99
+  ];
+  
+  const startY = H * 0.15;
+  const endY = H * 0.85;
+  const spreadTop = W * 0.35;
+  const spreadBottom = W * 0.5;
+  
+  for (let i = 0; i < numStrings; i++) {
+    const t = i / (numStrings - 1);
+    
+    // Top anchor (narrower spread)
+    const topX = centerX - spreadTop / 2 + spreadTop * t;
+    
+    // Bottom anchor (wider spread) - creates harp shape
+    const bottomX = centerX - spreadBottom / 2 + spreadBottom * t;
+    
+    // Longer strings = more segments = lower frequency feel
+    const segments = 30 + Math.floor((1 - t) * 20);
+    
+    const str = new StringInstrument(
+      topX, startY,
+      bottomX, endY,
+      segments,
+      frequencies[i]
+    );
+    strings.push(str);
+  }
+}
+
+createStrings();
+window.addEventListener('resize', () => {
+  resize();
+  createStrings();
+});
+
+// Mouse interaction
+let mouseX = 0, mouseY = 0;
+let lastMouseX = 0, lastMouseY = 0;
+let isMouseDown = false;
+
+canvas.addEventListener('mousedown', (e) => {
+  initAudio();
+  isMouseDown = true;
+});
+
+canvas.addEventListener('mouseup', () => {
+  isMouseDown = false;
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  lastMouseX = mouseX;
+  lastMouseY = mouseY;
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+  
+  if (isMouseDown) {
+    // Check for string crossing (plucking)
+    const dx = mouseX - lastMouseX;
+    const dy = mouseY - lastMouseY;
+    const speed = Math.hypot(dx, dy);
+    
+    if (speed > 3) {
+      for (const str of strings) {
+        if (str.pluck(mouseX, mouseY, Math.min(speed / 20, 2))) {
+          playTone(str.baseFreq, 1.5 + Math.random() * 0.5, 0.12);
         }
       }
     }
   }
-}
-
-// Underwater ambient audio
-function initAudio() {
-  if (audioStarted) return;
-  audioStarted = true;
-  
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  
-  // Deep underwater rumble - brown noise
-  const bufferSize = 2 * audioCtx.sampleRate;
-  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-  
-  let lastOut = 0;
-  for (let i = 0; i < bufferSize; i++) {
-    const white = Math.random() * 2 - 1;
-    data[i] = (lastOut + (0.02 * white)) / 1.02;
-    lastOut = data[i];
-    data[i] *= 3.5;
-  }
-  
-  noiseNode = audioCtx.createBufferSource();
-  noiseNode.buffer = buffer;
-  noiseNode.loop = true;
-  
-  // Muffled underwater filter
-  filterNode = audioCtx.createBiquadFilter();
-  filterNode.type = 'lowpass';
-  filterNode.frequency.value = 200;
-  filterNode.Q.value = 1;
-  
-  gainNode = audioCtx.createGain();
-  gainNode.gain.value = 0.15;
-  
-  noiseNode.connect(filterNode);
-  filterNode.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
-  
-  noiseNode.start();
-}
-
-// Bubble sound on click
-function playBubble() {
-  if (!audioCtx) return;
-  
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(800 + Math.random() * 400, audioCtx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.15);
-  
-  gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
-  
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  
-  osc.start();
-  osc.stop(audioCtx.currentTime + 0.2);
-}
-
-// Auto-drop ink periodically
-let lastAutoDrop = 0;
-function autoDrop() {
-  if (Date.now() - lastAutoDrop > 2000) {
-    const x = Math.random() * W;
-    const y = Math.random() * H * 0.3 + H * 0.2;
-    const hue = Math.random() > 0.5 ? 320 : 185; // Pink or cyan
-    dropInk(x, y, hue, 30);
-    lastAutoDrop = Date.now();
-  }
-}
-
-// Mouse events
-canvas.addEventListener('mousemove', (e) => {
-  mouseX = e.clientX;
-  mouseY = e.clientY;
-  mouseActive = true;
 });
 
-canvas.addEventListener('mouseleave', () => {
-  mouseActive = false;
-});
-
-canvas.addEventListener('click', (e) => {
+// Touch support
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
   initAudio();
-  playBubble();
-  
-  // Alternate pink and cyan
-  const hue = Math.random() > 0.5 ? 320 : 185;
-  dropInk(e.clientX, e.clientY, hue, 80);
+  const touch = e.touches[0];
+  mouseX = touch.clientX;
+  mouseY = touch.clientY;
+  lastMouseX = mouseX;
+  lastMouseY = mouseY;
+  isMouseDown = true;
 });
 
-// Initial ink drops
-setTimeout(() => {
-  dropInk(W * 0.3, H * 0.3, 320, 60); // Pink
-  dropInk(W * 0.7, H * 0.4, 185, 60); // Cyan
-}, 500);
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  lastMouseX = mouseX;
+  lastMouseY = mouseY;
+  mouseX = touch.clientX;
+  mouseY = touch.clientY;
+  
+  const dx = mouseX - lastMouseX;
+  const dy = mouseY - lastMouseY;
+  const speed = Math.hypot(dx, dy);
+  
+  if (speed > 3) {
+    for (const str of strings) {
+      if (str.pluck(mouseX, mouseY, Math.min(speed / 20, 2))) {
+        playTone(str.baseFreq, 1.5 + Math.random() * 0.5, 0.12);
+      }
+    }
+  }
+});
 
+canvas.addEventListener('touchend', () => {
+  isMouseDown = false;
+});
+
+// Ambient pluck (occasional)
+function ambientPluck() {
+  if (Math.random() < 0.003) {
+    const str = strings[Math.floor(Math.random() * strings.length)];
+    const midPoint = Math.floor(str.points.length / 2);
+    const p = str.points[midPoint];
+    if (str.pluck(p.x + (Math.random() - 0.5) * 10, p.y + (Math.random() - 0.5) * 10, 0.3)) {
+      playTone(str.baseFreq, 2, 0.05);
+    }
+  }
+}
+
+// Background particles (resonance motes)
+class Mote {
+  constructor() {
+    this.reset();
+  }
+  
+  reset() {
+    this.x = Math.random() * W;
+    this.y = Math.random() * H;
+    this.size = Math.random() * 2 + 0.5;
+    this.alpha = Math.random() * 0.3 + 0.1;
+    this.vx = (Math.random() - 0.5) * 0.3;
+    this.vy = (Math.random() - 0.5) * 0.3;
+    this.hue = Math.random() > 0.5 ? 300 : 180; // pink or cyan
+  }
+  
+  update() {
+    // Attracted to vibrating strings
+    for (const str of strings) {
+      if (str.energy > 0.2) {
+        const midIdx = Math.floor(str.points.length / 2);
+        const target = str.points[midIdx];
+        const dx = target.x - this.x;
+        const dy = target.y - this.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 200 && dist > 10) {
+          this.vx += (dx / dist) * str.energy * 0.02;
+          this.vy += (dy / dist) * str.energy * 0.02;
+        }
+      }
+    }
+    
+    this.x += this.vx;
+    this.y += this.vy;
+    this.vx *= 0.99;
+    this.vy *= 0.99;
+    
+    if (this.x < 0 || this.x > W || this.y < 0 || this.y > H) {
+      this.reset();
+    }
+  }
+  
+  draw(ctx) {
+    ctx.save();
+    ctx.globalAlpha = this.alpha;
+    ctx.fillStyle = `hsl(${this.hue}, 100%, 70%)`;
+    ctx.shadowBlur = 5;
+    ctx.shadowColor = `hsl(${this.hue}, 100%, 60%)`;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+const motes = [];
+for (let i = 0; i < 50; i++) {
+  motes.push(new Mote());
+}
+
+// Frame border decoration
+function drawFrame(ctx) {
+  const gradient = ctx.createLinearGradient(0, 0, W, H);
+  gradient.addColorStop(0, 'rgba(180, 0, 255, 0.1)');
+  gradient.addColorStop(0.5, 'rgba(0, 255, 255, 0.1)');
+  gradient.addColorStop(1, 'rgba(255, 0, 128, 0.1)');
+  
+  ctx.strokeStyle = gradient;
+  ctx.lineWidth = 2;
+  
+  // Corner accents
+  const corner = 40;
+  ctx.beginPath();
+  // Top left
+  ctx.moveTo(corner, 10);
+  ctx.lineTo(10, 10);
+  ctx.lineTo(10, corner);
+  // Top right
+  ctx.moveTo(W - corner, 10);
+  ctx.lineTo(W - 10, 10);
+  ctx.lineTo(W - 10, corner);
+  // Bottom left
+  ctx.moveTo(corner, H - 10);
+  ctx.lineTo(10, H - 10);
+  ctx.lineTo(10, H - corner);
+  // Bottom right
+  ctx.moveTo(W - corner, H - 10);
+  ctx.lineTo(W - 10, H - 10);
+  ctx.lineTo(W - 10, H - corner);
+  ctx.stroke();
+}
+
+// Main loop
 function animate() {
-  // Very subtle fade for trailing effect
-  ctx.fillStyle = 'rgba(10, 10, 15, 0.03)';
+  // Fade trail
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
   ctx.fillRect(0, 0, W, H);
   
-  updateFlowField();
-  autoDrop();
-  
-  // Update and draw particles
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
-    p.update();
-    p.draw();
-    
-    if (p.isDead()) {
-      particles.splice(i, 1);
-    }
+  // Update and draw motes
+  for (const mote of motes) {
+    mote.update();
+    mote.draw(ctx);
   }
   
-  // Blend layer for mixing colors
-  ctx.globalCompositeOperation = 'lighter';
-  for (const p of particles) {
-    if (p.alpha > 0.1) {
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size * 0.5, 0, Math.PI * 2);
-      ctx.fillStyle = `hsla(${p.hue}, ${p.saturation}%, ${p.lightness * 0.3}%, ${p.alpha * 0.3})`;
-      ctx.fill();
-    }
+  // Update and draw strings
+  for (const str of strings) {
+    str.update();
+    str.draw(ctx);
   }
-  ctx.globalCompositeOperation = 'source-over';
+  
+  ambientPluck();
+  drawFrame(ctx);
   
   requestAnimationFrame(animate);
 }
