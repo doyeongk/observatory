@@ -3,522 +3,387 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>strings</title>
+<title>chladni</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: #0a0a0f; overflow: hidden; }
+body { 
+  background: #0a0a0f; 
+  overflow: hidden; 
+  cursor: crosshair;
+}
 canvas { display: block; }
+#info {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  color: rgba(0, 255, 255, 0.4);
+  font: 12px monospace;
+  pointer-events: none;
+  text-transform: lowercase;
+}
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
+<canvas id="canvas"></canvas>
+<div id="info">drag to change frequency · click to strike plate · space for random mode</div>
 <script>
-const canvas = document.getElementById('c');
+const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
-let W, H;
+let W, H, centerX, centerY, plateRadius;
+const particles = [];
+const NUM_PARTICLES = 8000;
+
+// Chladni parameters
+let m = 3, n = 2; // mode numbers
+let targetM = m, targetN = n;
+let frequency = 440;
+let amplitude = 0;
+let maxAmplitude = 1;
+let decayRate = 0.985;
+
+// Audio
+let audioCtx = null;
+let oscillator = null;
+let gainNode = null;
+
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  oscillator = audioCtx.createOscillator();
+  gainNode = audioCtx.createGain();
+  
+  oscillator.type = 'sine';
+  oscillator.frequency.value = frequency;
+  gainNode.gain.value = 0;
+  
+  oscillator.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+  oscillator.start();
+}
+
+function playTone(freq, amp) {
+  if (!audioCtx) return;
+  oscillator.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.1);
+  gainNode.gain.setTargetAtTime(amp * 0.15, audioCtx.currentTime, 0.02);
+}
+
 function resize() {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
-}
-resize();
-window.addEventListener('resize', resize);
-
-// Web Audio setup
-let audioCtx = null;
-function initAudio() {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
+  centerX = W / 2;
+  centerY = H / 2;
+  plateRadius = Math.min(W, H) * 0.42;
 }
 
-function playTone(freq, duration = 0.8, volume = 0.15) {
-  if (!audioCtx) return;
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  const filter = audioCtx.createBiquadFilter();
+// Chladni equation: amplitude at point (x, y) for mode (m, n)
+// Using the classic square plate equation adapted to circle
+function chladniAmplitude(x, y, m, n) {
+  // Normalize to -1 to 1
+  const nx = (x - centerX) / plateRadius;
+  const ny = (y - centerY) / plateRadius;
   
-  osc.type = 'triangle';
-  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  // Distance from center
+  const r = Math.sqrt(nx * nx + ny * ny);
+  if (r > 1) return 0;
   
-  // Add slight vibrato
-  const vibrato = audioCtx.createOscillator();
-  const vibratoGain = audioCtx.createGain();
-  vibrato.frequency.value = 5;
-  vibratoGain.gain.value = freq * 0.01;
-  vibrato.connect(vibratoGain);
-  vibratoGain.connect(osc.frequency);
-  vibrato.start();
+  // Angle
+  const theta = Math.atan2(ny, nx);
   
-  filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(freq * 4, audioCtx.currentTime);
-  filter.frequency.exponentialRampToValueAtTime(freq * 1.5, audioCtx.currentTime + duration * 0.5);
+  // Circular Chladni pattern (Bessel-like)
+  // Combine angular and radial modes
+  const angular = Math.cos(m * theta);
+  const radial = Math.cos(n * Math.PI * r);
   
-  gain.gain.setValueAtTime(0, audioCtx.currentTime);
-  gain.gain.linearRampToValueAtTime(volume, audioCtx.currentTime + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-  
-  osc.connect(filter);
-  filter.connect(gain);
-  gain.connect(audioCtx.destination);
-  
-  osc.start();
-  osc.stop(audioCtx.currentTime + duration);
-  vibrato.stop(audioCtx.currentTime + duration);
+  return angular * radial;
 }
 
-// String class with verlet integration
-class StringInstrument {
-  constructor(x1, y1, x2, y2, segments, baseFreq) {
-    this.x1 = x1;
-    this.y1 = y1;
-    this.x2 = x2;
-    this.y2 = y2;
-    this.segments = segments;
-    this.baseFreq = baseFreq;
-    this.points = [];
-    this.prevPoints = [];
-    this.restLength = Math.hypot(x2 - x1, y2 - y1) / segments;
-    this.damping = 0.992;
-    this.tension = 0.4;
-    this.energy = 0;
-    this.lastPluck = 0;
-    this.hue = 0;
-    
-    // Initialize points along the string
-    for (let i = 0; i <= segments; i++) {
-      const t = i / segments;
-      const x = x1 + (x2 - x1) * t;
-      const y = y1 + (y2 - y1) * t;
-      this.points.push({ x, y });
-      this.prevPoints.push({ x, y });
-    }
+// Get force pushing particle toward nodal lines (where amplitude = 0)
+function getNodalForce(x, y, m, n) {
+  const amp = chladniAmplitude(x, y, m, n);
+  const absAmp = Math.abs(amp);
+  
+  // Gradient approximation
+  const dx = 2;
+  const ampX = Math.abs(chladniAmplitude(x + dx, y, m, n));
+  const ampY = Math.abs(chladniAmplitude(x, y + dx, m, n));
+  
+  // Move toward lower absolute amplitude (nodal lines)
+  const gradX = (ampX - absAmp) / dx;
+  const gradY = (ampY - absAmp) / dx;
+  
+  return { fx: -gradX, fy: -gradY, amp: amp };
+}
+
+class Particle {
+  constructor() {
+    this.reset();
   }
   
-  pluck(px, py, force = 1) {
-    const now = Date.now();
-    if (now - this.lastPluck < 100) return false;
-    
-    // Find closest point to pluck position
-    let minDist = Infinity;
-    let pluckIndex = -1;
-    
-    for (let i = 1; i < this.points.length - 1; i++) {
-      const p = this.points[i];
-      const dist = Math.hypot(p.x - px, p.y - py);
-      if (dist < minDist && dist < 50) {
-        minDist = dist;
-        pluckIndex = i;
-      }
-    }
-    
-    if (pluckIndex > 0) {
-      // Displace perpendicular to string
-      const dx = this.x2 - this.x1;
-      const dy = this.y2 - this.y1;
-      const len = Math.hypot(dx, dy);
-      const perpX = -dy / len;
-      const perpY = dx / len;
-      
-      // Which side of the string is the mouse?
-      const toMouseX = px - this.points[pluckIndex].x;
-      const toMouseY = py - this.points[pluckIndex].y;
-      const side = perpX * toMouseX + perpY * toMouseY > 0 ? 1 : -1;
-      
-      // Displace away from mouse
-      const displacement = (30 + Math.random() * 20) * force * -side;
-      
-      // Gaussian displacement centered on pluck point
-      for (let i = 1; i < this.points.length - 1; i++) {
-        const dist = Math.abs(i - pluckIndex);
-        const falloff = Math.exp(-dist * dist / (this.segments * 0.15));
-        this.points[i].x += perpX * displacement * falloff;
-        this.points[i].y += perpY * displacement * falloff;
-      }
-      
-      this.lastPluck = now;
-      this.energy = 1;
-      return true;
-    }
-    return false;
+  reset() {
+    // Random position on plate
+    const angle = Math.random() * Math.PI * 2;
+    const r = Math.sqrt(Math.random()) * plateRadius * 0.95;
+    this.x = centerX + Math.cos(angle) * r;
+    this.y = centerY + Math.sin(angle) * r;
+    this.vx = 0;
+    this.vy = 0;
+    this.settled = 0;
   }
   
   update() {
-    // Verlet integration
-    for (let i = 1; i < this.points.length - 1; i++) {
-      const p = this.points[i];
-      const prev = this.prevPoints[i];
-      
-      const vx = (p.x - prev.x) * this.damping;
-      const vy = (p.y - prev.y) * this.damping;
-      
-      prev.x = p.x;
-      prev.y = p.y;
-      
-      p.x += vx;
-      p.y += vy;
+    const dx = this.x - centerX;
+    const dy = this.y - centerY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    
+    // Keep on plate
+    if (dist > plateRadius * 0.98) {
+      const angle = Math.atan2(dy, dx);
+      this.x = centerX + Math.cos(angle) * plateRadius * 0.97;
+      this.y = centerY + Math.sin(angle) * plateRadius * 0.97;
+      this.vx *= -0.5;
+      this.vy *= -0.5;
     }
     
-    // Constraint solving (multiple iterations for stability)
-    for (let iter = 0; iter < 5; iter++) {
-      // Pin endpoints
-      this.points[0].x = this.x1;
-      this.points[0].y = this.y1;
-      this.points[this.points.length - 1].x = this.x2;
-      this.points[this.points.length - 1].y = this.y2;
-      
-      // Distance constraints
-      for (let i = 0; i < this.points.length - 1; i++) {
-        const p1 = this.points[i];
-        const p2 = this.points[i + 1];
-        
-        const dx = p2.x - p1.x;
-        const dy = p2.y - p1.y;
-        const dist = Math.hypot(dx, dy);
-        const diff = (dist - this.restLength) / dist;
-        
-        const moveX = dx * diff * this.tension;
-        const moveY = dy * diff * this.tension;
-        
-        if (i > 0) {
-          p1.x += moveX * 0.5;
-          p1.y += moveY * 0.5;
-        }
-        if (i < this.points.length - 2) {
-          p2.x -= moveX * 0.5;
-          p2.y -= moveY * 0.5;
-        }
-      }
+    // Get nodal force
+    const { fx, fy, amp } = getNodalForce(this.x, this.y, m, n);
+    
+    // Vibration kicks particles off high-amplitude areas
+    const kick = amplitude * Math.abs(amp) * 0.8;
+    const kickAngle = Math.random() * Math.PI * 2;
+    
+    // Apply forces
+    const forceMult = amplitude * 2.5;
+    this.vx += fx * forceMult + Math.cos(kickAngle) * kick;
+    this.vy += fy * forceMult + Math.sin(kickAngle) * kick;
+    
+    // Small random jitter when vibrating
+    if (amplitude > 0.1) {
+      this.vx += (Math.random() - 0.5) * amplitude * 0.3;
+      this.vy += (Math.random() - 0.5) * amplitude * 0.3;
     }
     
-    // Calculate energy (for glow intensity)
-    let totalVel = 0;
-    for (let i = 1; i < this.points.length - 1; i++) {
-      const vx = this.points[i].x - this.prevPoints[i].x;
-      const vy = this.points[i].y - this.prevPoints[i].y;
-      totalVel += Math.hypot(vx, vy);
+    // Damping
+    this.vx *= 0.92;
+    this.vy *= 0.92;
+    
+    // Update position
+    this.x += this.vx;
+    this.y += this.vy;
+    
+    // Track how settled
+    const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+    if (speed < 0.1 && Math.abs(amp) < 0.15) {
+      this.settled = Math.min(1, this.settled + 0.02);
+    } else {
+      this.settled = Math.max(0, this.settled - 0.05);
     }
-    this.energy = Math.min(1, totalVel / 10);
   }
   
-  draw(ctx) {
-    // Glow based on energy
-    const glowIntensity = this.energy * 30 + 5;
+  draw() {
+    const dx = this.x - centerX;
+    const dy = this.y - centerY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > plateRadius) return;
     
-    // Calculate hue based on frequency (lower = more pink, higher = more cyan)
-    const freqRatio = (this.baseFreq - 110) / (880 - 110);
-    const hue = 300 + freqRatio * 180; // 300 (magenta) to 180 (cyan)
+    const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
     
-    ctx.save();
-    ctx.shadowBlur = glowIntensity;
-    ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
+    // Color based on movement and position
+    const hue = this.settled > 0.5 ? 300 + this.settled * 20 : 180 + speed * 30; // cyan when moving, pink when settled
+    const sat = 80 + this.settled * 20;
+    const light = 50 + speed * 20 + amplitude * 20;
+    const alpha = 0.6 + this.settled * 0.3;
     
-    // Draw string
-    ctx.beginPath();
-    ctx.moveTo(this.points[0].x, this.points[0].y);
-    
-    for (let i = 1; i < this.points.length; i++) {
-      const p = this.points[i];
-      const prev = this.points[i - 1];
-      const cpx = (prev.x + p.x) / 2;
-      const cpy = (prev.y + p.y) / 2;
-      ctx.quadraticCurveTo(prev.x, prev.y, cpx, cpy);
-    }
-    ctx.lineTo(this.points[this.points.length - 1].x, this.points[this.points.length - 1].y);
-    
-    const alpha = 0.6 + this.energy * 0.4;
-    ctx.strokeStyle = `hsla(${hue}, 100%, ${70 + this.energy * 20}%, ${alpha})`;
-    ctx.lineWidth = 2 + this.energy * 2;
-    ctx.stroke();
-    
-    // Draw secondary harmonic ghost
-    if (this.energy > 0.1) {
-      ctx.beginPath();
-      ctx.moveTo(this.points[0].x, this.points[0].y);
-      for (let i = 1; i < this.points.length; i++) {
-        ctx.lineTo(this.points[i].x, this.points[i].y);
-      }
-      ctx.strokeStyle = `hsla(${hue + 60}, 100%, 80%, ${this.energy * 0.3})`;
+    ctx.fillStyle = `hsla(${hue}, ${sat}%, ${Math.min(80, light)}%, ${alpha})`;
+    const size = 1.5 + this.settled * 1;
+    ctx.fillRect(this.x - size/2, this.y - size/2, size, size);
+  }
+}
+
+function init() {
+  resize();
+  particles.length = 0;
+  for (let i = 0; i < NUM_PARTICLES; i++) {
+    particles.push(new Particle());
+  }
+}
+
+function drawPlate() {
+  // Plate edge glow
+  const gradient = ctx.createRadialGradient(centerX, centerY, plateRadius * 0.9, centerX, centerY, plateRadius * 1.05);
+  gradient.addColorStop(0, 'rgba(138, 43, 226, 0)');
+  gradient.addColorStop(0.7, 'rgba(138, 43, 226, 0.1)');
+  gradient.addColorStop(1, 'rgba(138, 43, 226, 0)');
+  
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, plateRadius * 1.05, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Plate surface (subtle)
+  ctx.strokeStyle = `rgba(0, 255, 255, ${0.1 + amplitude * 0.2})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, plateRadius, 0, Math.PI * 2);
+  ctx.stroke();
+  
+  // Vibration visualization - concentric rings when active
+  if (amplitude > 0.05) {
+    const time = Date.now() / 100;
+    for (let i = 1; i <= 3; i++) {
+      const r = plateRadius * (0.3 + i * 0.2);
+      const a = amplitude * 0.15 * (1 - i * 0.2);
+      ctx.strokeStyle = `rgba(255, 105, 180, ${a})`;
       ctx.lineWidth = 1;
-      ctx.shadowBlur = glowIntensity * 2;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, r + Math.sin(time * 2 + i) * 3 * amplitude, 0, Math.PI * 2);
       ctx.stroke();
     }
-    
-    ctx.restore();
-    
-    // Draw mount points
-    this.drawMount(ctx, this.x1, this.y1, hue);
-    this.drawMount(ctx, this.x2, this.y2, hue);
-  }
-  
-  drawMount(ctx, x, y, hue) {
-    ctx.save();
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = `hsl(${hue}, 100%, 60%)`;
-    ctx.fillStyle = `hsl(${hue}, 80%, 40%)`;
-    ctx.beginPath();
-    ctx.arc(x, y, 6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = `hsl(${hue}, 100%, 70%)`;
-    ctx.beginPath();
-    ctx.arc(x, y, 3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
   }
 }
 
-// Create strings in a harp-like arrangement
-let strings = [];
+function drawModeIndicator() {
+  ctx.fillStyle = `rgba(0, 255, 255, 0.5)`;
+  ctx.font = '14px monospace';
+  ctx.fillText(`mode (${Math.round(m)}, ${Math.round(n)})`, 20, 30);
+  ctx.fillText(`${Math.round(frequency)} Hz`, 20, 50);
+}
 
-function createStrings() {
-  strings = [];
+function animate() {
+  // Fade
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
+  ctx.fillRect(0, 0, W, H);
   
-  const centerX = W / 2;
-  const centerY = H / 2;
-  const numStrings = 12;
+  // Smoothly transition modes
+  m += (targetM - m) * 0.05;
+  n += (targetN - n) * 0.05;
   
-  // Pentatonic-ish frequencies for pleasant harmonies
-  const frequencies = [
-    110, 146.83, 164.81, 196, 220,
-    293.66, 329.63, 392, 440,
-    587.33, 659.25, 783.99
-  ];
+  // Decay amplitude
+  amplitude *= decayRate;
+  if (amplitude < 0.001) amplitude = 0;
   
-  const startY = H * 0.15;
-  const endY = H * 0.85;
-  const spreadTop = W * 0.35;
-  const spreadBottom = W * 0.5;
+  // Update audio
+  if (audioCtx && amplitude > 0) {
+    playTone(frequency, amplitude);
+  } else if (audioCtx) {
+    gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+  }
   
-  for (let i = 0; i < numStrings; i++) {
-    const t = i / (numStrings - 1);
-    
-    // Top anchor (narrower spread)
-    const topX = centerX - spreadTop / 2 + spreadTop * t;
-    
-    // Bottom anchor (wider spread) - creates harp shape
-    const bottomX = centerX - spreadBottom / 2 + spreadBottom * t;
-    
-    // Longer strings = more segments = lower frequency feel
-    const segments = 30 + Math.floor((1 - t) * 20);
-    
-    const str = new StringInstrument(
-      topX, startY,
-      bottomX, endY,
-      segments,
-      frequencies[i]
-    );
-    strings.push(str);
+  drawPlate();
+  
+  // Update and draw particles
+  for (const p of particles) {
+    p.update();
+    p.draw();
+  }
+  
+  drawModeIndicator();
+  
+  requestAnimationFrame(animate);
+}
+
+// Strike the plate
+function strike(intensity = 1) {
+  initAudio();
+  amplitude = maxAmplitude * intensity;
+  
+  // Calculate frequency based on mode (simplified)
+  frequency = 110 * Math.sqrt(m * m + n * n);
+  
+  // Add some chaos to particles
+  for (const p of particles) {
+    const dist = Math.sqrt((p.x - centerX) ** 2 + (p.y - centerY) ** 2);
+    if (dist < plateRadius) {
+      p.vx += (Math.random() - 0.5) * 5 * intensity;
+      p.vy += (Math.random() - 0.5) * 5 * intensity;
+      p.settled = 0;
+    }
   }
 }
 
-createStrings();
-window.addEventListener('resize', () => {
-  resize();
-  createStrings();
-});
-
-// Mouse interaction
-let mouseX = 0, mouseY = 0;
-let lastMouseX = 0, lastMouseY = 0;
-let isMouseDown = false;
+// Mouse controls
+let isDragging = false;
+let lastX, lastY;
 
 canvas.addEventListener('mousedown', (e) => {
-  initAudio();
-  isMouseDown = true;
-});
-
-canvas.addEventListener('mouseup', () => {
-  isMouseDown = false;
+  isDragging = true;
+  lastX = e.clientX;
+  lastY = e.clientY;
+  strike(0.8);
 });
 
 canvas.addEventListener('mousemove', (e) => {
-  lastMouseX = mouseX;
-  lastMouseY = mouseY;
-  mouseX = e.clientX;
-  mouseY = e.clientY;
+  if (!isDragging) return;
   
-  if (isMouseDown) {
-    // Check for string crossing (plucking)
-    const dx = mouseX - lastMouseX;
-    const dy = mouseY - lastMouseY;
-    const speed = Math.hypot(dx, dy);
-    
-    if (speed > 3) {
-      for (const str of strings) {
-        if (str.pluck(mouseX, mouseY, Math.min(speed / 20, 2))) {
-          playTone(str.baseFreq, 1.5 + Math.random() * 0.5, 0.12);
-        }
-      }
-    }
+  const dx = e.clientX - lastX;
+  const dy = e.clientY - lastY;
+  
+  // Change mode based on drag
+  targetM = Math.max(1, Math.min(8, targetM + dx * 0.02));
+  targetN = Math.max(1, Math.min(8, targetN + dy * 0.02));
+  
+  // Keep vibrating while dragging
+  amplitude = Math.max(amplitude, 0.5);
+  frequency = 110 * Math.sqrt(targetM * targetM + targetN * targetN);
+  
+  lastX = e.clientX;
+  lastY = e.clientY;
+});
+
+canvas.addEventListener('mouseup', () => {
+  isDragging = false;
+});
+
+canvas.addEventListener('mouseleave', () => {
+  isDragging = false;
+});
+
+// Keyboard
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    // Random mode
+    targetM = 1 + Math.floor(Math.random() * 7);
+    targetN = 1 + Math.floor(Math.random() * 7);
+    strike(1);
   }
 });
 
 // Touch support
 canvas.addEventListener('touchstart', (e) => {
   e.preventDefault();
-  initAudio();
   const touch = e.touches[0];
-  mouseX = touch.clientX;
-  mouseY = touch.clientY;
-  lastMouseX = mouseX;
-  lastMouseY = mouseY;
-  isMouseDown = true;
+  lastX = touch.clientX;
+  lastY = touch.clientY;
+  isDragging = true;
+  strike(0.8);
 });
 
 canvas.addEventListener('touchmove', (e) => {
   e.preventDefault();
+  if (!isDragging) return;
   const touch = e.touches[0];
-  lastMouseX = mouseX;
-  lastMouseY = mouseY;
-  mouseX = touch.clientX;
-  mouseY = touch.clientY;
-  
-  const dx = mouseX - lastMouseX;
-  const dy = mouseY - lastMouseY;
-  const speed = Math.hypot(dx, dy);
-  
-  if (speed > 3) {
-    for (const str of strings) {
-      if (str.pluck(mouseX, mouseY, Math.min(speed / 20, 2))) {
-        playTone(str.baseFreq, 1.5 + Math.random() * 0.5, 0.12);
-      }
-    }
-  }
+  const dx = touch.clientX - lastX;
+  const dy = touch.clientY - lastY;
+  targetM = Math.max(1, Math.min(8, targetM + dx * 0.02));
+  targetN = Math.max(1, Math.min(8, targetN + dy * 0.02));
+  amplitude = Math.max(amplitude, 0.5);
+  frequency = 110 * Math.sqrt(targetM * targetM + targetN * targetN);
+  lastX = touch.clientX;
+  lastY = touch.clientY;
 });
 
 canvas.addEventListener('touchend', () => {
-  isMouseDown = false;
+  isDragging = false;
 });
 
-// Ambient pluck (occasional)
-function ambientPluck() {
-  if (Math.random() < 0.003) {
-    const str = strings[Math.floor(Math.random() * strings.length)];
-    const midPoint = Math.floor(str.points.length / 2);
-    const p = str.points[midPoint];
-    if (str.pluck(p.x + (Math.random() - 0.5) * 10, p.y + (Math.random() - 0.5) * 10, 0.3)) {
-      playTone(str.baseFreq, 2, 0.05);
-    }
-  }
-}
+window.addEventListener('resize', resize);
 
-// Background particles (resonance motes)
-class Mote {
-  constructor() {
-    this.reset();
-  }
-  
-  reset() {
-    this.x = Math.random() * W;
-    this.y = Math.random() * H;
-    this.size = Math.random() * 2 + 0.5;
-    this.alpha = Math.random() * 0.3 + 0.1;
-    this.vx = (Math.random() - 0.5) * 0.3;
-    this.vy = (Math.random() - 0.5) * 0.3;
-    this.hue = Math.random() > 0.5 ? 300 : 180; // pink or cyan
-  }
-  
-  update() {
-    // Attracted to vibrating strings
-    for (const str of strings) {
-      if (str.energy > 0.2) {
-        const midIdx = Math.floor(str.points.length / 2);
-        const target = str.points[midIdx];
-        const dx = target.x - this.x;
-        const dy = target.y - this.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist < 200 && dist > 10) {
-          this.vx += (dx / dist) * str.energy * 0.02;
-          this.vy += (dy / dist) * str.energy * 0.02;
-        }
-      }
-    }
-    
-    this.x += this.vx;
-    this.y += this.vy;
-    this.vx *= 0.99;
-    this.vy *= 0.99;
-    
-    if (this.x < 0 || this.x > W || this.y < 0 || this.y > H) {
-      this.reset();
-    }
-  }
-  
-  draw(ctx) {
-    ctx.save();
-    ctx.globalAlpha = this.alpha;
-    ctx.fillStyle = `hsl(${this.hue}, 100%, 70%)`;
-    ctx.shadowBlur = 5;
-    ctx.shadowColor = `hsl(${this.hue}, 100%, 60%)`;
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-}
-
-const motes = [];
-for (let i = 0; i < 50; i++) {
-  motes.push(new Mote());
-}
-
-// Frame border decoration
-function drawFrame(ctx) {
-  const gradient = ctx.createLinearGradient(0, 0, W, H);
-  gradient.addColorStop(0, 'rgba(180, 0, 255, 0.1)');
-  gradient.addColorStop(0.5, 'rgba(0, 255, 255, 0.1)');
-  gradient.addColorStop(1, 'rgba(255, 0, 128, 0.1)');
-  
-  ctx.strokeStyle = gradient;
-  ctx.lineWidth = 2;
-  
-  // Corner accents
-  const corner = 40;
-  ctx.beginPath();
-  // Top left
-  ctx.moveTo(corner, 10);
-  ctx.lineTo(10, 10);
-  ctx.lineTo(10, corner);
-  // Top right
-  ctx.moveTo(W - corner, 10);
-  ctx.lineTo(W - 10, 10);
-  ctx.lineTo(W - 10, corner);
-  // Bottom left
-  ctx.moveTo(corner, H - 10);
-  ctx.lineTo(10, H - 10);
-  ctx.lineTo(10, H - corner);
-  // Bottom right
-  ctx.moveTo(W - corner, H - 10);
-  ctx.lineTo(W - 10, H - 10);
-  ctx.lineTo(W - 10, H - corner);
-  ctx.stroke();
-}
-
-// Main loop
-function animate() {
-  // Fade trail
-  ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
-  ctx.fillRect(0, 0, W, H);
-  
-  // Update and draw motes
-  for (const mote of motes) {
-    mote.update();
-    mote.draw(ctx);
-  }
-  
-  // Update and draw strings
-  for (const str of strings) {
-    str.update();
-    str.draw(ctx);
-  }
-  
-  ambientPluck();
-  drawFrame(ctx);
-  
-  requestAnimationFrame(animate);
-}
-
+init();
 animate();
+
+// Initial gentle strike after a moment
+setTimeout(() => strike(0.6), 500);
 </script>
 </body>
 </html>
