@@ -3,387 +3,398 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>chladni</title>
+<title>sonar</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { 
-  background: #0a0a0f; 
-  overflow: hidden; 
-  cursor: crosshair;
-}
+body { background: #000; overflow: hidden; }
 canvas { display: block; }
-#info {
-  position: fixed;
-  bottom: 20px;
-  left: 20px;
-  color: rgba(0, 255, 255, 0.4);
-  font: 12px monospace;
-  pointer-events: none;
-  text-transform: lowercase;
-}
 </style>
 </head>
 <body>
-<canvas id="canvas"></canvas>
-<div id="info">drag to change frequency · click to strike plate · space for random mode</div>
+<canvas id="c"></canvas>
 <script>
-const canvas = document.getElementById('canvas');
+const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
-
-let W, H, centerX, centerY, plateRadius;
-const particles = [];
-const NUM_PARTICLES = 8000;
-
-// Chladni parameters
-let m = 3, n = 2; // mode numbers
-let targetM = m, targetN = n;
-let frequency = 440;
-let amplitude = 0;
-let maxAmplitude = 1;
-let decayRate = 0.985;
-
-// Audio
-let audioCtx = null;
-let oscillator = null;
-let gainNode = null;
-
-function initAudio() {
-  if (audioCtx) return;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  oscillator = audioCtx.createOscillator();
-  gainNode = audioCtx.createGain();
-  
-  oscillator.type = 'sine';
-  oscillator.frequency.value = frequency;
-  gainNode.gain.value = 0;
-  
-  oscillator.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
-  oscillator.start();
-}
-
-function playTone(freq, amp) {
-  if (!audioCtx) return;
-  oscillator.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.1);
-  gainNode.gain.setTargetAtTime(amp * 0.15, audioCtx.currentTime, 0.02);
-}
+let W, H, cx, cy;
 
 function resize() {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
-  centerX = W / 2;
-  centerY = H / 2;
-  plateRadius = Math.min(W, H) * 0.42;
+  cx = W / 2;
+  cy = H / 2;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Audio setup
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let audioStarted = false;
+
+function startAudio() {
+  if (!audioStarted && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+  audioStarted = true;
 }
 
-// Chladni equation: amplitude at point (x, y) for mode (m, n)
-// Using the classic square plate equation adapted to circle
-function chladniAmplitude(x, y, m, n) {
-  // Normalize to -1 to 1
-  const nx = (x - centerX) / plateRadius;
-  const ny = (y - centerY) / plateRadius;
+function playPing(freq = 1200, duration = 0.15, volume = 0.3) {
+  if (!audioStarted) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  const filter = audioCtx.createBiquadFilter();
   
-  // Distance from center
-  const r = Math.sqrt(nx * nx + ny * ny);
-  if (r > 1) return 0;
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.7, audioCtx.currentTime + duration);
   
-  // Angle
-  const theta = Math.atan2(ny, nx);
+  filter.type = 'lowpass';
+  filter.frequency.value = 2000;
+  filter.Q.value = 5;
   
-  // Circular Chladni pattern (Bessel-like)
-  // Combine angular and radial modes
-  const angular = Math.cos(m * theta);
-  const radial = Math.cos(n * Math.PI * r);
+  gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
   
-  return angular * radial;
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(audioCtx.destination);
+  
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
 }
 
-// Get force pushing particle toward nodal lines (where amplitude = 0)
-function getNodalForce(x, y, m, n) {
-  const amp = chladniAmplitude(x, y, m, n);
-  const absAmp = Math.abs(amp);
-  
-  // Gradient approximation
-  const dx = 2;
-  const ampX = Math.abs(chladniAmplitude(x + dx, y, m, n));
-  const ampY = Math.abs(chladniAmplitude(x, y + dx, m, n));
-  
-  // Move toward lower absolute amplitude (nodal lines)
-  const gradX = (ampX - absAmp) / dx;
-  const gradY = (ampY - absAmp) / dx;
-  
-  return { fx: -gradX, fy: -gradY, amp: amp };
+function playEcho(delay, intensity) {
+  if (!audioStarted) return;
+  setTimeout(() => {
+    playPing(800 + Math.random() * 200, 0.08, intensity * 0.15);
+  }, delay);
 }
 
-class Particle {
-  constructor() {
-    this.reset();
+// Sonar state
+let sweepAngle = 0;
+const sweepSpeed = 0.015;
+let lastPingAngle = 0;
+const pingInterval = Math.PI / 6;
+
+// Contacts - things in the deep
+const contacts = [];
+const maxContacts = 12;
+
+function spawnContact() {
+  const angle = Math.random() * Math.PI * 2;
+  const dist = 100 + Math.random() * (Math.min(W, H) * 0.4);
+  contacts.push({
+    x: cx + Math.cos(angle) * dist,
+    y: cy + Math.sin(angle) * dist,
+    size: 8 + Math.random() * 25,
+    depth: Math.random(),
+    vx: (Math.random() - 0.5) * 0.3,
+    vy: (Math.random() - 0.5) * 0.3,
+    type: Math.random() > 0.7 ? 'large' : 'small',
+    lastSeen: -10,
+    echoStrength: 0
+  });
+}
+
+for (let i = 0; i < maxContacts; i++) spawnContact();
+
+// Terrain - underwater ridges
+const terrain = [];
+const terrainSegments = 60;
+for (let i = 0; i < terrainSegments; i++) {
+  const angle = (i / terrainSegments) * Math.PI * 2;
+  const baseRadius = Math.min(W, H) * 0.35;
+  const noise = Math.sin(angle * 3) * 40 + Math.sin(angle * 7) * 20 + Math.sin(angle * 13) * 10;
+  terrain.push({
+    angle: angle,
+    radius: baseRadius + noise + Math.random() * 30
+  });
+}
+
+// Sweep history for fade effect
+const sweepHistory = [];
+const maxSweepHistory = 150;
+
+// Mouse interaction
+let mouseX = cx, mouseY = cy;
+let manualPing = false;
+
+canvas.addEventListener('mousemove', e => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+});
+
+canvas.addEventListener('click', e => {
+  startAudio();
+  manualPing = true;
+  playPing(1400, 0.2, 0.5);
+});
+
+canvas.addEventListener('touchstart', e => {
+  startAudio();
+  manualPing = true;
+  playPing(1400, 0.2, 0.5);
+});
+
+// Echo ripples from pings
+const ripples = [];
+
+function addRipple(x, y, maxRadius) {
+  ripples.push({
+    x, y,
+    radius: 0,
+    maxRadius: maxRadius,
+    alpha: 1
+  });
+}
+
+function update() {
+  // Sweep rotation
+  sweepAngle += sweepSpeed;
+  if (sweepAngle > Math.PI * 2) sweepAngle -= Math.PI * 2;
+  
+  // Automatic ping sound at intervals
+  if (sweepAngle - lastPingAngle > pingInterval || sweepAngle < lastPingAngle) {
+    lastPingAngle = sweepAngle;
+    playPing(1200, 0.12, 0.2);
+    addRipple(cx, cy, Math.min(W, H) * 0.5);
   }
   
-  reset() {
-    // Random position on plate
-    const angle = Math.random() * Math.PI * 2;
-    const r = Math.sqrt(Math.random()) * plateRadius * 0.95;
-    this.x = centerX + Math.cos(angle) * r;
-    this.y = centerY + Math.sin(angle) * r;
-    this.vx = 0;
-    this.vy = 0;
-    this.settled = 0;
-  }
-  
-  update() {
-    const dx = this.x - centerX;
-    const dy = this.y - centerY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+  // Manual ping burst
+  if (manualPing) {
+    manualPing = false;
+    addRipple(cx, cy, Math.min(W, H) * 0.6);
     
-    // Keep on plate
-    if (dist > plateRadius * 0.98) {
-      const angle = Math.atan2(dy, dx);
-      this.x = centerX + Math.cos(angle) * plateRadius * 0.97;
-      this.y = centerY + Math.sin(angle) * plateRadius * 0.97;
-      this.vx *= -0.5;
-      this.vy *= -0.5;
+    // Check all contacts for echo
+    contacts.forEach(c => {
+      const dx = c.x - cx;
+      const dy = c.y - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const intensity = Math.max(0, 1 - dist / (Math.min(W, H) * 0.5));
+      if (intensity > 0.1) {
+        playEcho(dist * 2, intensity);
+        c.echoStrength = 1;
+        c.lastSeen = sweepAngle;
+      }
+    });
+  }
+  
+  // Update contacts
+  contacts.forEach(c => {
+    c.x += c.vx;
+    c.y += c.vy;
+    
+    // Bounce off edges
+    const dist = Math.sqrt((c.x - cx) ** 2 + (c.y - cy) ** 2);
+    if (dist > Math.min(W, H) * 0.45) {
+      const angle = Math.atan2(c.y - cy, c.x - cx);
+      c.vx = -Math.cos(angle) * 0.3;
+      c.vy = -Math.sin(angle) * 0.3;
     }
     
-    // Get nodal force
-    const { fx, fy, amp } = getNodalForce(this.x, this.y, m, n);
+    // Check if sweep passes over
+    const contactAngle = Math.atan2(c.y - cy, c.x - cx);
+    const normalizedContact = (contactAngle + Math.PI * 2) % (Math.PI * 2);
+    const normalizedSweep = sweepAngle % (Math.PI * 2);
     
-    // Vibration kicks particles off high-amplitude areas
-    const kick = amplitude * Math.abs(amp) * 0.8;
-    const kickAngle = Math.random() * Math.PI * 2;
-    
-    // Apply forces
-    const forceMult = amplitude * 2.5;
-    this.vx += fx * forceMult + Math.cos(kickAngle) * kick;
-    this.vy += fy * forceMult + Math.sin(kickAngle) * kick;
-    
-    // Small random jitter when vibrating
-    if (amplitude > 0.1) {
-      this.vx += (Math.random() - 0.5) * amplitude * 0.3;
-      this.vy += (Math.random() - 0.5) * amplitude * 0.3;
+    if (Math.abs(normalizedContact - normalizedSweep) < 0.05) {
+      c.lastSeen = sweepAngle;
+      c.echoStrength = 1;
+      const intensity = Math.max(0, 1 - dist / (Math.min(W, H) * 0.5));
+      if (intensity > 0.2) {
+        playEcho(dist * 1.5, intensity * 0.5);
+      }
     }
     
-    // Damping
-    this.vx *= 0.92;
-    this.vy *= 0.92;
-    
-    // Update position
-    this.x += this.vx;
-    this.y += this.vy;
-    
-    // Track how settled
-    const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-    if (speed < 0.1 && Math.abs(amp) < 0.15) {
-      this.settled = Math.min(1, this.settled + 0.02);
-    } else {
-      this.settled = Math.max(0, this.settled - 0.05);
-    }
+    // Fade echo
+    c.echoStrength *= 0.98;
+  });
+  
+  // Update ripples
+  ripples.forEach(r => {
+    r.radius += 4;
+    r.alpha = 1 - (r.radius / r.maxRadius);
+  });
+  
+  // Remove dead ripples
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    if (ripples[i].alpha <= 0) ripples.splice(i, 1);
   }
   
-  draw() {
-    const dx = this.x - centerX;
-    const dy = this.y - centerY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist > plateRadius) return;
-    
-    const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-    
-    // Color based on movement and position
-    const hue = this.settled > 0.5 ? 300 + this.settled * 20 : 180 + speed * 30; // cyan when moving, pink when settled
-    const sat = 80 + this.settled * 20;
-    const light = 50 + speed * 20 + amplitude * 20;
-    const alpha = 0.6 + this.settled * 0.3;
-    
-    ctx.fillStyle = `hsla(${hue}, ${sat}%, ${Math.min(80, light)}%, ${alpha})`;
-    const size = 1.5 + this.settled * 1;
-    ctx.fillRect(this.x - size/2, this.y - size/2, size, size);
-  }
+  // Store sweep history
+  sweepHistory.push({
+    angle: sweepAngle,
+    time: Date.now()
+  });
+  if (sweepHistory.length > maxSweepHistory) sweepHistory.shift();
 }
 
-function init() {
-  resize();
-  particles.length = 0;
-  for (let i = 0; i < NUM_PARTICLES; i++) {
-    particles.push(new Particle());
+function draw() {
+  // Dark ocean background
+  ctx.fillStyle = '#020408';
+  ctx.fillRect(0, 0, W, H);
+  
+  const maxRadius = Math.min(W, H) * 0.45;
+  
+  // Draw range rings
+  ctx.strokeStyle = 'rgba(0, 255, 200, 0.1)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i <= 5; i++) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, maxRadius * (i / 5), 0, Math.PI * 2);
+    ctx.stroke();
   }
-}
-
-function drawPlate() {
-  // Plate edge glow
-  const gradient = ctx.createRadialGradient(centerX, centerY, plateRadius * 0.9, centerX, centerY, plateRadius * 1.05);
-  gradient.addColorStop(0, 'rgba(138, 43, 226, 0)');
-  gradient.addColorStop(0.7, 'rgba(138, 43, 226, 0.1)');
-  gradient.addColorStop(1, 'rgba(138, 43, 226, 0)');
+  
+  // Draw bearing lines
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(angle) * maxRadius, cy + Math.sin(angle) * maxRadius);
+    ctx.strokeStyle = 'rgba(0, 255, 200, 0.05)';
+    ctx.stroke();
+  }
+  
+  // Draw terrain echoes
+  ctx.beginPath();
+  terrain.forEach((t, i) => {
+    const ageDiff = (sweepAngle - t.angle + Math.PI * 2) % (Math.PI * 2);
+    const fade = Math.max(0, 1 - ageDiff / (Math.PI * 0.5));
+    
+    if (fade > 0) {
+      const x = cx + Math.cos(t.angle) * t.radius;
+      const y = cy + Math.sin(t.angle) * t.radius;
+      
+      ctx.fillStyle = `rgba(0, 255, 200, ${fade * 0.3})`;
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+  
+  // Draw contacts
+  contacts.forEach(c => {
+    const ageDiff = (sweepAngle - c.lastSeen + Math.PI * 2) % (Math.PI * 2);
+    const fade = Math.max(0, 1 - ageDiff / (Math.PI * 1.5));
+    
+    if (fade > 0.01) {
+      // Depth affects color: shallow = cyan, deep = pink
+      const r = Math.floor(255 * c.depth);
+      const g = Math.floor(255 * (1 - c.depth) * 0.8);
+      const b = Math.floor(200 + 55 * c.depth);
+      
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${fade * 0.9})`;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.size * fade, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Echo glow
+      if (c.echoStrength > 0.1) {
+        ctx.fillStyle = `rgba(0, 255, 255, ${c.echoStrength * 0.5})`;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.size * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      // Classification text for larger contacts
+      if (c.type === 'large' && fade > 0.5) {
+        ctx.font = '10px monospace';
+        ctx.fillStyle = `rgba(0, 255, 200, ${fade * 0.7})`;
+        ctx.fillText('CONTACT', c.x + c.size + 5, c.y);
+        ctx.fillText(`D:${Math.floor(c.depth * 1000)}m`, c.x + c.size + 5, c.y + 12);
+      }
+    }
+  });
+  
+  // Draw ping ripples
+  ripples.forEach(r => {
+    ctx.strokeStyle = `rgba(0, 255, 200, ${r.alpha * 0.3})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+  
+  // Sweep fade trail
+  const sweepLength = Math.PI * 0.4;
+  const gradient = ctx.createConicGradient(sweepAngle - sweepLength, cx, cy);
+  gradient.addColorStop(0, 'rgba(0, 255, 200, 0)');
+  gradient.addColorStop(0.7, 'rgba(0, 255, 200, 0.05)');
+  gradient.addColorStop(0.95, 'rgba(0, 255, 200, 0.15)');
+  gradient.addColorStop(1, 'rgba(0, 255, 200, 0.3)');
   
   ctx.fillStyle = gradient;
   ctx.beginPath();
-  ctx.arc(centerX, centerY, plateRadius * 1.05, 0, Math.PI * 2);
+  ctx.moveTo(cx, cy);
+  ctx.arc(cx, cy, maxRadius, sweepAngle - sweepLength, sweepAngle);
+  ctx.closePath();
   ctx.fill();
   
-  // Plate surface (subtle)
-  ctx.strokeStyle = `rgba(0, 255, 255, ${0.1 + amplitude * 0.2})`;
+  // Sweep line
+  ctx.strokeStyle = '#00ffc8';
   ctx.lineWidth = 2;
+  ctx.shadowColor = '#00ffc8';
+  ctx.shadowBlur = 15;
   ctx.beginPath();
-  ctx.arc(centerX, centerY, plateRadius, 0, Math.PI * 2);
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(sweepAngle) * maxRadius, cy + Math.sin(sweepAngle) * maxRadius);
   ctx.stroke();
+  ctx.shadowBlur = 0;
   
-  // Vibration visualization - concentric rings when active
-  if (amplitude > 0.05) {
-    const time = Date.now() / 100;
-    for (let i = 1; i <= 3; i++) {
-      const r = plateRadius * (0.3 + i * 0.2);
-      const a = amplitude * 0.15 * (1 - i * 0.2);
-      ctx.strokeStyle = `rgba(255, 105, 180, ${a})`;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, r + Math.sin(time * 2 + i) * 3 * amplitude, 0, Math.PI * 2);
-      ctx.stroke();
-    }
+  // Center pip
+  ctx.fillStyle = '#00ffc8';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+  ctx.fill();
+  
+  // Mouse bearing indicator
+  const mouseAngle = Math.atan2(mouseY - cy, mouseX - cx);
+  const mouseDist = Math.sqrt((mouseX - cx) ** 2 + (mouseY - cy) ** 2);
+  if (mouseDist > 50 && mouseDist < maxRadius) {
+    ctx.strokeStyle = 'rgba(255, 100, 200, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 10]);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(mouseX, mouseY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    // Bearing readout
+    const bearing = ((mouseAngle * 180 / Math.PI) + 90 + 360) % 360;
+    ctx.font = '12px monospace';
+    ctx.fillStyle = 'rgba(255, 100, 200, 0.7)';
+    ctx.fillText(`BRG: ${bearing.toFixed(0)}°`, mouseX + 10, mouseY - 10);
   }
-}
-
-function drawModeIndicator() {
-  ctx.fillStyle = `rgba(0, 255, 255, 0.5)`;
+  
+  // HUD elements
   ctx.font = '14px monospace';
-  ctx.fillText(`mode (${Math.round(m)}, ${Math.round(n)})`, 20, 30);
-  ctx.fillText(`${Math.round(frequency)} Hz`, 20, 50);
+  ctx.fillStyle = 'rgba(0, 255, 200, 0.7)';
+  ctx.fillText('SONAR', 20, 30);
+  ctx.fillText(`SWEEP: ${((sweepAngle * 180 / Math.PI) % 360).toFixed(0)}°`, 20, 50);
+  ctx.fillText(`CONTACTS: ${contacts.length}`, 20, 70);
+  ctx.fillText('CLICK TO PING', 20, H - 20);
+  
+  // Depth scale
+  ctx.fillStyle = 'rgba(255, 100, 200, 0.5)';
+  ctx.fillText('DEEP', W - 60, 30);
+  ctx.fillStyle = 'rgba(0, 255, 200, 0.5)';
+  ctx.fillText('SHALLOW', W - 80, H - 20);
+  
+  // Gradient depth indicator
+  const depthGrad = ctx.createLinearGradient(W - 20, 50, W - 20, H - 40);
+  depthGrad.addColorStop(0, 'rgba(255, 100, 200, 0.7)');
+  depthGrad.addColorStop(1, 'rgba(0, 255, 200, 0.7)');
+  ctx.fillStyle = depthGrad;
+  ctx.fillRect(W - 25, 50, 10, H - 90);
 }
 
-function animate() {
-  // Fade
-  ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
-  ctx.fillRect(0, 0, W, H);
-  
-  // Smoothly transition modes
-  m += (targetM - m) * 0.05;
-  n += (targetN - n) * 0.05;
-  
-  // Decay amplitude
-  amplitude *= decayRate;
-  if (amplitude < 0.001) amplitude = 0;
-  
-  // Update audio
-  if (audioCtx && amplitude > 0) {
-    playTone(frequency, amplitude);
-  } else if (audioCtx) {
-    gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
-  }
-  
-  drawPlate();
-  
-  // Update and draw particles
-  for (const p of particles) {
-    p.update();
-    p.draw();
-  }
-  
-  drawModeIndicator();
-  
-  requestAnimationFrame(animate);
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
 }
 
-// Strike the plate
-function strike(intensity = 1) {
-  initAudio();
-  amplitude = maxAmplitude * intensity;
-  
-  // Calculate frequency based on mode (simplified)
-  frequency = 110 * Math.sqrt(m * m + n * n);
-  
-  // Add some chaos to particles
-  for (const p of particles) {
-    const dist = Math.sqrt((p.x - centerX) ** 2 + (p.y - centerY) ** 2);
-    if (dist < plateRadius) {
-      p.vx += (Math.random() - 0.5) * 5 * intensity;
-      p.vy += (Math.random() - 0.5) * 5 * intensity;
-      p.settled = 0;
-    }
-  }
-}
-
-// Mouse controls
-let isDragging = false;
-let lastX, lastY;
-
-canvas.addEventListener('mousedown', (e) => {
-  isDragging = true;
-  lastX = e.clientX;
-  lastY = e.clientY;
-  strike(0.8);
-});
-
-canvas.addEventListener('mousemove', (e) => {
-  if (!isDragging) return;
-  
-  const dx = e.clientX - lastX;
-  const dy = e.clientY - lastY;
-  
-  // Change mode based on drag
-  targetM = Math.max(1, Math.min(8, targetM + dx * 0.02));
-  targetN = Math.max(1, Math.min(8, targetN + dy * 0.02));
-  
-  // Keep vibrating while dragging
-  amplitude = Math.max(amplitude, 0.5);
-  frequency = 110 * Math.sqrt(targetM * targetM + targetN * targetN);
-  
-  lastX = e.clientX;
-  lastY = e.clientY;
-});
-
-canvas.addEventListener('mouseup', () => {
-  isDragging = false;
-});
-
-canvas.addEventListener('mouseleave', () => {
-  isDragging = false;
-});
-
-// Keyboard
-document.addEventListener('keydown', (e) => {
-  if (e.code === 'Space') {
-    e.preventDefault();
-    // Random mode
-    targetM = 1 + Math.floor(Math.random() * 7);
-    targetN = 1 + Math.floor(Math.random() * 7);
-    strike(1);
-  }
-});
-
-// Touch support
-canvas.addEventListener('touchstart', (e) => {
-  e.preventDefault();
-  const touch = e.touches[0];
-  lastX = touch.clientX;
-  lastY = touch.clientY;
-  isDragging = true;
-  strike(0.8);
-});
-
-canvas.addEventListener('touchmove', (e) => {
-  e.preventDefault();
-  if (!isDragging) return;
-  const touch = e.touches[0];
-  const dx = touch.clientX - lastX;
-  const dy = touch.clientY - lastY;
-  targetM = Math.max(1, Math.min(8, targetM + dx * 0.02));
-  targetN = Math.max(1, Math.min(8, targetN + dy * 0.02));
-  amplitude = Math.max(amplitude, 0.5);
-  frequency = 110 * Math.sqrt(targetM * targetM + targetN * targetN);
-  lastX = touch.clientX;
-  lastY = touch.clientY;
-});
-
-canvas.addEventListener('touchend', () => {
-  isDragging = false;
-});
-
-window.addEventListener('resize', resize);
-
-init();
-animate();
-
-// Initial gentle strike after a moment
-setTimeout(() => strike(0.6), 500);
+loop();
 </script>
 </body>
 </html>
