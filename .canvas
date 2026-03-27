@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>plasma</title>
+<title>circuit</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+body { background: #000; overflow: hidden; }
 canvas { display: block; }
 </style>
 </head>
@@ -16,398 +16,513 @@ canvas { display: block; }
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
-let W, H, centerX, centerY, globeRadius;
-let mouse = { x: null, y: null, inside: false, touching: false };
-let tendrils = [];
-let audioCtx = null;
-let noiseNode = null;
-let gainNode = null;
-let filterNode = null;
-
+let W, H;
 function resize() {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
-  centerX = W / 2;
-  centerY = H / 2;
-  globeRadius = Math.min(W, H) * 0.38;
 }
-
-window.addEventListener('resize', resize);
 resize();
+window.addEventListener('resize', resize);
 
 // Audio setup
-function initAudio() {
-  if (audioCtx) return;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  
-  // Create noise buffer
-  const bufferSize = audioCtx.sampleRate * 2;
-  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const output = noiseBuffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    output[i] = Math.random() * 2 - 1;
-  }
-  
-  noiseNode = audioCtx.createBufferSource();
-  noiseNode.buffer = noiseBuffer;
-  noiseNode.loop = true;
-  
-  filterNode = audioCtx.createBiquadFilter();
-  filterNode.type = 'bandpass';
-  filterNode.frequency.value = 2000;
-  filterNode.Q.value = 5;
-  
-  gainNode = audioCtx.createGain();
-  gainNode.gain.value = 0;
-  
-  noiseNode.connect(filterNode);
-  filterNode.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
-  noiseNode.start();
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let audioStarted = false;
+
+// Oscillator pool for signal sounds
+function playSignalTone(freq, duration = 0.1) {
+  if (!audioStarted) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'square';
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
+  gain.gain.exponentialDecayTo?.(0.001, audioCtx.currentTime + duration) || 
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
 }
 
-// Mouse handling
-canvas.addEventListener('mousemove', (e) => {
-  mouse.x = e.clientX;
-  mouse.y = e.clientY;
-  const dx = mouse.x - centerX;
-  const dy = mouse.y - centerY;
-  mouse.inside = Math.sqrt(dx * dx + dy * dy) < globeRadius;
-});
+// Background hum
+let humOsc, humGain;
+function startHum() {
+  humOsc = audioCtx.createOscillator();
+  humGain = audioCtx.createGain();
+  humOsc.type = 'sawtooth';
+  humOsc.frequency.value = 60;
+  humGain.gain.value = 0.008;
+  humOsc.connect(humGain);
+  humGain.connect(audioCtx.destination);
+  humOsc.start();
+}
 
-canvas.addEventListener('mousedown', () => {
-  initAudio();
-  mouse.touching = true;
-});
+// Grid settings
+const GRID = 20;
+const TRACE_WIDTH = 3;
 
-canvas.addEventListener('mouseup', () => {
-  mouse.touching = false;
-});
+// PCB elements
+let nodes = [];
+let traces = [];
+let components = [];
+let signals = [];
+let sparks = [];
 
-canvas.addEventListener('mouseleave', () => {
-  mouse.x = null;
-  mouse.y = null;
-  mouse.inside = false;
-  mouse.touching = false;
-});
+// Component types
+const COMP_TYPES = ['chip', 'capacitor', 'led', 'resistor', 'via'];
 
-canvas.addEventListener('touchstart', (e) => {
-  e.preventDefault();
-  initAudio();
-  const touch = e.touches[0];
-  mouse.x = touch.clientX;
-  mouse.y = touch.clientY;
-  mouse.touching = true;
-  const dx = mouse.x - centerX;
-  const dy = mouse.y - centerY;
-  mouse.inside = Math.sqrt(dx * dx + dy * dy) < globeRadius;
-});
+function gridSnap(v) {
+  return Math.round(v / GRID) * GRID;
+}
 
-canvas.addEventListener('touchmove', (e) => {
-  e.preventDefault();
-  const touch = e.touches[0];
-  mouse.x = touch.clientX;
-  mouse.y = touch.clientY;
-  const dx = mouse.x - centerX;
-  const dy = mouse.y - centerY;
-  mouse.inside = Math.sqrt(dx * dx + dy * dy) < globeRadius;
-});
+function dist(a, b) {
+  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+}
 
-canvas.addEventListener('touchend', () => {
-  mouse.touching = false;
-});
-
-// Tendril class
-class Tendril {
-  constructor(angle, targetX, targetY) {
-    this.baseAngle = angle;
-    this.targetX = targetX;
-    this.targetY = targetY;
-    this.segments = [];
-    this.life = 1;
-    this.decay = 0.02 + Math.random() * 0.02;
-    this.hue = Math.random() < 0.5 ? 280 : 190; // purple or cyan
-    this.branches = [];
-    this.generatePath();
-  }
+// Generate a PCB layout
+function generatePCB() {
+  nodes = [];
+  traces = [];
+  components = [];
+  signals = [];
   
-  generatePath() {
-    const startX = centerX + Math.cos(this.baseAngle) * 20;
-    const startY = centerY + Math.sin(this.baseAngle) * 20;
-    
-    let x = startX;
-    let y = startY;
-    const dx = this.targetX - startX;
-    const dy = this.targetY - startY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const steps = Math.floor(dist / 8) + 5;
-    
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      const targetX = startX + dx * t;
-      const targetY = startY + dy * t;
-      
-      // Add jitter that increases then decreases
-      const jitterAmount = Math.sin(t * Math.PI) * 30;
-      const jitterX = (Math.random() - 0.5) * jitterAmount;
-      const jitterY = (Math.random() - 0.5) * jitterAmount;
-      
-      x = targetX + jitterX;
-      y = targetY + jitterY;
-      
-      this.segments.push({ x, y, width: (1 - t) * 3 + 1 });
-      
-      // Random branching
-      if (i > 3 && i < steps - 3 && Math.random() < 0.15) {
-        this.createBranch(x, y, t);
+  const cols = Math.floor(W / GRID);
+  const rows = Math.floor(H / GRID);
+  
+  // Create a grid of potential nodes
+  const nodeGrid = [];
+  for (let y = 2; y < rows - 2; y++) {
+    for (let x = 2; x < cols - 2; x++) {
+      if (Math.random() < 0.15) {
+        nodeGrid.push({ x: x * GRID, y: y * GRID, connections: [] });
       }
     }
   }
   
-  createBranch(startX, startY, parentT) {
-    const branchAngle = Math.atan2(this.targetY - centerY, this.targetX - centerX);
-    const offset = (Math.random() - 0.5) * Math.PI * 0.6;
-    const angle = branchAngle + offset;
-    const length = (1 - parentT) * 40 + 20;
+  // Place components at some nodes
+  const componentNodes = nodeGrid.filter(() => Math.random() < 0.3);
+  componentNodes.forEach(n => {
+    const type = COMP_TYPES[Math.floor(Math.random() * COMP_TYPES.length)];
+    components.push({
+      x: n.x,
+      y: n.y,
+      type,
+      charge: 0,
+      active: false,
+      pins: type === 'chip' ? 8 : type === 'capacitor' ? 2 : type === 'led' ? 2 : type === 'resistor' ? 2 : 1
+    });
+  });
+  
+  nodes = nodeGrid;
+  
+  // Create traces between nearby nodes (routing)
+  for (let i = 0; i < nodes.length; i++) {
+    const n1 = nodes[i];
+    // Find 1-3 nearby nodes to connect
+    const nearby = nodes
+      .map((n2, j) => ({ node: n2, idx: j, d: dist(n1, n2) }))
+      .filter(o => o.idx !== i && o.d < GRID * 8 && o.d > 0)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, Math.floor(Math.random() * 3) + 1);
     
-    const branch = [];
-    let x = startX;
-    let y = startY;
-    const steps = Math.floor(length / 6);
-    
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      x += Math.cos(angle + (Math.random() - 0.5) * 0.5) * 6;
-      y += Math.sin(angle + (Math.random() - 0.5) * 0.5) * 6;
-      branch.push({ x, y, width: (1 - t) * 2 + 0.5 });
-    }
-    
-    this.branches.push(branch);
+    nearby.forEach(o => {
+      // Check if trace already exists
+      const exists = traces.some(t => 
+        (t.from === i && t.to === o.idx) || (t.from === o.idx && t.to === i)
+      );
+      if (!exists) {
+        // Route with one bend (L-shaped)
+        const midX = Math.random() < 0.5 ? n1.x : o.node.x;
+        const midY = midX === n1.x ? o.node.y : n1.y;
+        traces.push({
+          from: i,
+          to: o.idx,
+          points: [
+            { x: n1.x, y: n1.y },
+            { x: midX, y: midY },
+            { x: o.node.x, y: o.node.y }
+          ],
+          layer: Math.random() < 0.3 ? 'power' : Math.random() < 0.5 ? 'ground' : 'signal'
+        });
+      }
+    });
+  }
+}
+
+// Signal class - pulses that travel along traces
+class Signal {
+  constructor(traceIdx, direction = 1) {
+    this.traceIdx = traceIdx;
+    this.progress = direction === 1 ? 0 : 1;
+    this.direction = direction;
+    this.speed = 0.02 + Math.random() * 0.02;
+    this.alive = true;
+    this.intensity = 1;
   }
   
   update() {
+    this.progress += this.speed * this.direction;
+    if (this.progress >= 1 || this.progress <= 0) {
+      this.alive = false;
+      // Trigger component if at endpoint
+      const trace = traces[this.traceIdx];
+      const endNode = this.direction === 1 ? trace.to : trace.from;
+      const comp = components.find(c => 
+        Math.abs(c.x - nodes[endNode].x) < GRID && 
+        Math.abs(c.y - nodes[endNode].y) < GRID
+      );
+      if (comp) {
+        comp.active = true;
+        comp.charge = Math.min(1, comp.charge + 0.3);
+        if (comp.type === 'led') {
+          playSignalTone(800 + Math.random() * 400, 0.05);
+        }
+      }
+      // Chance to spawn new signals on connected traces
+      const connectedTraces = traces
+        .map((t, i) => ({ t, i }))
+        .filter(o => o.i !== this.traceIdx && (o.t.from === endNode || o.t.to === endNode));
+      connectedTraces.forEach(o => {
+        if (Math.random() < 0.6) {
+          const dir = o.t.from === endNode ? 1 : -1;
+          signals.push(new Signal(o.i, dir));
+        }
+      });
+    }
+  }
+  
+  getPosition() {
+    const trace = traces[this.traceIdx];
+    const pts = trace.points;
+    const totalLen = pts.reduce((acc, p, i) => {
+      if (i === 0) return 0;
+      return acc + dist(pts[i-1], p);
+    }, 0);
+    let targetDist = this.progress * totalLen;
+    
+    for (let i = 1; i < pts.length; i++) {
+      const segLen = dist(pts[i-1], pts[i]);
+      if (targetDist <= segLen) {
+        const t = targetDist / segLen;
+        return {
+          x: pts[i-1].x + (pts[i].x - pts[i-1].x) * t,
+          y: pts[i-1].y + (pts[i].y - pts[i-1].y) * t
+        };
+      }
+      targetDist -= segLen;
+    }
+    return pts[pts.length - 1];
+  }
+}
+
+// Spark particles for surges
+class Spark {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.vx = (Math.random() - 0.5) * 8;
+    this.vy = (Math.random() - 0.5) * 8;
+    this.life = 1;
+    this.decay = 0.02 + Math.random() * 0.03;
+  }
+  
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.vx *= 0.95;
+    this.vy *= 0.95;
     this.life -= this.decay;
-    return this.life > 0;
-  }
-  
-  draw() {
-    const alpha = this.life;
-    
-    // Draw main tendril
-    this.drawPath(this.segments, alpha, 1);
-    
-    // Draw branches
-    for (const branch of this.branches) {
-      this.drawPath(branch, alpha * 0.7, 0.6);
-    }
-  }
-  
-  drawPath(segments, alpha, scale) {
-    if (segments.length < 2) return;
-    
-    // Glow layer
-    ctx.beginPath();
-    ctx.moveTo(segments[0].x, segments[0].y);
-    for (let i = 1; i < segments.length; i++) {
-      ctx.lineTo(segments[i].x, segments[i].y);
-    }
-    ctx.strokeStyle = `hsla(${this.hue}, 100%, 70%, ${alpha * 0.3})`;
-    ctx.lineWidth = segments[0].width * scale * 6;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.stroke();
-    
-    // Core
-    ctx.beginPath();
-    ctx.moveTo(segments[0].x, segments[0].y);
-    for (let i = 1; i < segments.length; i++) {
-      ctx.lineTo(segments[i].x, segments[i].y);
-    }
-    ctx.strokeStyle = `hsla(${this.hue}, 100%, 85%, ${alpha})`;
-    ctx.lineWidth = segments[0].width * scale * 1.5;
-    ctx.stroke();
-    
-    // Hot center
-    ctx.beginPath();
-    ctx.moveTo(segments[0].x, segments[0].y);
-    for (let i = 1; i < segments.length; i++) {
-      ctx.lineTo(segments[i].x, segments[i].y);
-    }
-    ctx.strokeStyle = `hsla(0, 0%, 100%, ${alpha * 0.8})`;
-    ctx.lineWidth = segments[0].width * scale * 0.5;
-    ctx.stroke();
   }
 }
 
-// Spawn tendril toward mouse or random edge
-function spawnTendril() {
-  const angle = Math.random() * Math.PI * 2;
-  let targetX, targetY;
+// Mouse state
+let mouse = { x: W/2, y: H/2 };
+canvas.addEventListener('mousemove', e => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+});
+
+canvas.addEventListener('click', e => {
+  if (!audioStarted) {
+    audioStarted = true;
+    audioCtx.resume();
+    startHum();
+  }
   
-  if (mouse.x !== null && mouse.inside) {
-    // Tend toward mouse with some spread
-    const spread = 30;
-    targetX = mouse.x + (Math.random() - 0.5) * spread;
-    targetY = mouse.y + (Math.random() - 0.5) * spread;
-  } else if (mouse.x !== null) {
-    // Mouse outside - tendrils reach toward it but stop at edge
-    const dx = mouse.x - centerX;
-    const dy = mouse.y - centerY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const edgeX = centerX + (dx / dist) * globeRadius * 0.95;
-    const edgeY = centerY + (dy / dist) * globeRadius * 0.95;
-    targetX = edgeX + (Math.random() - 0.5) * 40;
-    targetY = edgeY + (Math.random() - 0.5) * 40;
+  // Power surge - spawn signals on many traces
+  const surgeCount = Math.floor(traces.length * 0.3);
+  for (let i = 0; i < surgeCount; i++) {
+    const idx = Math.floor(Math.random() * traces.length);
+    signals.push(new Signal(idx, Math.random() < 0.5 ? 1 : -1));
+  }
+  
+  // Sparks at click point
+  for (let i = 0; i < 30; i++) {
+    sparks.push(new Spark(e.clientX, e.clientY));
+  }
+  
+  playSignalTone(150, 0.3);
+});
+
+// Initialize
+generatePCB();
+
+// Spawn initial signals
+for (let i = 0; i < 10; i++) {
+  const idx = Math.floor(Math.random() * traces.length);
+  signals.push(new Signal(idx));
+}
+
+// Colors
+const CYAN = '#00ffff';
+const PINK = '#ff69b4';
+const PURPLE = '#9932cc';
+const DARK_PURPLE = '#1a0a2e';
+
+function drawTrace(trace, glow = 0) {
+  const pts = trace.points;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) {
+    ctx.lineTo(pts[i].x, pts[i].y);
+  }
+  
+  let color;
+  if (trace.layer === 'power') color = PINK;
+  else if (trace.layer === 'ground') color = PURPLE;
+  else color = CYAN;
+  
+  if (glow > 0) {
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 10 + glow * 20;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = TRACE_WIDTH + glow * 3;
   } else {
-    // No mouse - random edge
-    const targetAngle = Math.random() * Math.PI * 2;
-    const r = globeRadius * (0.6 + Math.random() * 0.35);
-    targetX = centerX + Math.cos(targetAngle) * r;
-    targetY = centerY + Math.sin(targetAngle) * r;
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = color + '40';
+    ctx.lineWidth = TRACE_WIDTH;
   }
-  
-  tendrils.push(new Tendril(angle, targetX, targetY));
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+  ctx.shadowBlur = 0;
 }
 
-// Draw the globe
-function drawGlobe(time) {
-  // Outer glow
-  const gradient = ctx.createRadialGradient(
-    centerX, centerY, globeRadius * 0.8,
-    centerX, centerY, globeRadius * 1.2
-  );
-  gradient.addColorStop(0, 'rgba(100, 0, 150, 0.1)');
-  gradient.addColorStop(0.5, 'rgba(50, 0, 100, 0.05)');
-  gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+function drawComponent(comp) {
+  const { x, y, type, charge, active } = comp;
+  const glow = charge > 0 ? charge * 15 : 0;
+  
+  ctx.save();
+  if (glow > 0) {
+    ctx.shadowColor = type === 'led' ? PINK : CYAN;
+    ctx.shadowBlur = glow;
+  }
+  
+  ctx.strokeStyle = active ? CYAN : CYAN + '60';
+  ctx.fillStyle = active ? (type === 'led' ? PINK : DARK_PURPLE) : '#0a0515';
+  ctx.lineWidth = 2;
+  
+  switch(type) {
+    case 'chip':
+      ctx.fillRect(x - 20, y - 15, 40, 30);
+      ctx.strokeRect(x - 20, y - 15, 40, 30);
+      // Pins
+      for (let i = 0; i < 4; i++) {
+        ctx.fillStyle = CYAN + (active ? 'ff' : '40');
+        ctx.fillRect(x - 18 + i * 10, y - 20, 4, 5);
+        ctx.fillRect(x - 18 + i * 10, y + 15, 4, 5);
+      }
+      break;
+    case 'capacitor':
+      ctx.beginPath();
+      ctx.arc(x, y, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // Polarity mark
+      ctx.fillStyle = PINK;
+      ctx.fillRect(x - 1, y - 6, 2, 4);
+      break;
+    case 'led':
+      ctx.beginPath();
+      ctx.moveTo(x - 8, y - 8);
+      ctx.lineTo(x + 8, y);
+      ctx.lineTo(x - 8, y + 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      if (active && charge > 0.2) {
+        // LED glow
+        ctx.beginPath();
+        ctx.arc(x + 5, y, 20 * charge, 0, Math.PI * 2);
+        ctx.fillStyle = PINK + Math.floor(charge * 80).toString(16).padStart(2, '0');
+        ctx.fill();
+      }
+      break;
+    case 'resistor':
+      ctx.fillRect(x - 12, y - 5, 24, 10);
+      ctx.strokeRect(x - 12, y - 5, 24, 10);
+      // Color bands
+      const bands = [PINK, PURPLE, CYAN];
+      bands.forEach((c, i) => {
+        ctx.fillStyle = c;
+        ctx.fillRect(x - 8 + i * 6, y - 5, 3, 10);
+      });
+      break;
+    case 'via':
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = active ? CYAN : '#333';
+      ctx.fill();
+      ctx.strokeStyle = PINK;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x, y, 2, 0, Math.PI * 2);
+      ctx.fillStyle = '#000';
+      ctx.fill();
+      break;
+  }
+  ctx.restore();
+}
+
+function drawSignal(sig) {
+  const pos = sig.getPosition();
+  const trace = traces[sig.traceIdx];
+  const color = trace.layer === 'power' ? PINK : trace.layer === 'ground' ? PURPLE : CYAN;
+  
+  // Glow
+  const gradient = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, 20);
+  gradient.addColorStop(0, color);
+  gradient.addColorStop(0.5, color + '40');
+  gradient.addColorStop(1, 'transparent');
+  
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, 20, 0, Math.PI * 2);
   ctx.fillStyle = gradient;
+  ctx.fill();
+  
+  // Core
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+}
+
+function drawSpark(spark) {
+  ctx.beginPath();
+  ctx.arc(spark.x, spark.y, 2, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(255, 255, 255, ${spark.life})`;
+  ctx.fill();
+}
+
+// Background grid pattern (subtle PCB substrate)
+function drawSubstrate() {
+  ctx.fillStyle = '#050510';
   ctx.fillRect(0, 0, W, H);
   
-  // Glass sphere edge
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, globeRadius, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(150, 100, 200, 0.3)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
+  // Solder mask pattern
+  ctx.strokeStyle = '#0a0a20';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += GRID) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, H);
+    ctx.stroke();
+  }
+  for (let y = 0; y < H; y += GRID) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(W, y);
+    ctx.stroke();
+  }
   
-  // Specular highlight
-  const highlightX = centerX - globeRadius * 0.3;
-  const highlightY = centerY - globeRadius * 0.3;
-  const highlightGrad = ctx.createRadialGradient(
-    highlightX, highlightY, 0,
-    highlightX, highlightY, globeRadius * 0.4
-  );
-  highlightGrad.addColorStop(0, 'rgba(255, 255, 255, 0.08)');
-  highlightGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-  ctx.fillStyle = highlightGrad;
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, globeRadius, 0, Math.PI * 2);
-  ctx.fill();
-  
-  // Inner glow (electrode)
-  const coreGrad = ctx.createRadialGradient(
-    centerX, centerY, 0,
-    centerX, centerY, 30
-  );
-  coreGrad.addColorStop(0, 'rgba(255, 200, 255, 0.8)');
-  coreGrad.addColorStop(0.3, 'rgba(200, 100, 255, 0.4)');
-  coreGrad.addColorStop(1, 'rgba(100, 0, 150, 0)');
-  ctx.fillStyle = coreGrad;
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, 30, 0, Math.PI * 2);
-  ctx.fill();
-  
-  // Pulsing core
-  const pulse = Math.sin(time * 0.003) * 0.3 + 0.7;
-  ctx.beginPath();
-  ctx.arc(centerX, centerY, 8 * pulse, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(255, 255, 255, ${0.5 + pulse * 0.3})`;
-  ctx.fill();
+  // Ground plane fills (large background areas)
+  ctx.fillStyle = PURPLE + '08';
+  for (let i = 0; i < 5; i++) {
+    const px = Math.random() * W;
+    const py = Math.random() * H;
+    const pw = 100 + Math.random() * 200;
+    const ph = 100 + Math.random() * 200;
+    ctx.fillRect(px, py, pw, ph);
+  }
 }
 
-// Touch point glow
-function drawTouchPoint() {
-  if (mouse.x === null || !mouse.inside) return;
-  
-  const intensity = mouse.touching ? 0.4 : 0.15;
-  const size = mouse.touching ? 25 : 15;
-  
-  const touchGrad = ctx.createRadialGradient(
-    mouse.x, mouse.y, 0,
-    mouse.x, mouse.y, size
-  );
-  touchGrad.addColorStop(0, `rgba(255, 150, 255, ${intensity})`);
-  touchGrad.addColorStop(1, 'rgba(255, 150, 255, 0)');
-  ctx.fillStyle = touchGrad;
-  ctx.beginPath();
-  ctx.arc(mouse.x, mouse.y, size, 0, Math.PI * 2);
-  ctx.fill();
+// Mouse proximity creates interference
+function getInterference(x, y) {
+  const d = dist({ x, y }, mouse);
+  return Math.max(0, 1 - d / 200);
 }
 
-let lastSpawn = 0;
 let time = 0;
 
-function animate(timestamp) {
-  time = timestamp;
+function animate() {
+  time++;
   
-  // Clear with slight fade for trails
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
-  ctx.fillRect(0, 0, W, H);
+  drawSubstrate();
   
-  // Spawn rate based on interaction
-  let spawnRate = 120; // ms between spawns
-  if (mouse.inside) spawnRate = 60;
-  if (mouse.touching) spawnRate = 25;
+  // Calculate trace glow based on nearby signals
+  const traceGlow = traces.map((t, i) => {
+    const nearSignals = signals.filter(s => s.traceIdx === i);
+    return nearSignals.length > 0 ? 0.5 + nearSignals.length * 0.3 : 0;
+  });
   
-  if (timestamp - lastSpawn > spawnRate) {
-    const count = mouse.touching ? 3 : 1;
-    for (let i = 0; i < count; i++) {
-      spawnTendril();
-    }
-    lastSpawn = timestamp;
+  // Draw traces
+  traces.forEach((trace, i) => {
+    // Mouse interference effect
+    const midPt = trace.points[Math.floor(trace.points.length / 2)];
+    const interference = getInterference(midPt.x, midPt.y);
+    drawTrace(trace, traceGlow[i] + interference * 0.5);
+  });
+  
+  // Draw nodes (solder points)
+  nodes.forEach(n => {
+    const interference = getInterference(n.x, n.y);
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, 3 + interference * 2, 0, Math.PI * 2);
+    ctx.fillStyle = interference > 0.3 ? PINK : CYAN + '60';
+    ctx.fill();
+  });
+  
+  // Draw components
+  components.forEach(c => {
+    c.charge *= 0.95; // Decay
+    if (c.charge < 0.01) c.active = false;
+    drawComponent(c);
+  });
+  
+  // Update and draw signals
+  signals.forEach(s => {
+    s.update();
+    if (s.alive) drawSignal(s);
+  });
+  signals = signals.filter(s => s.alive);
+  
+  // Randomly spawn new signals
+  if (Math.random() < 0.02 && signals.length < 50) {
+    const idx = Math.floor(Math.random() * traces.length);
+    signals.push(new Signal(idx));
   }
   
-  // Update and draw tendrils
-  tendrils = tendrils.filter(t => t.update());
-  for (const tendril of tendrils) {
-    tendril.draw();
-  }
+  // Update and draw sparks
+  sparks.forEach(s => {
+    s.update();
+    if (s.life > 0) drawSpark(s);
+  });
+  sparks = sparks.filter(s => s.life > 0);
   
-  // Keep tendril count reasonable
-  if (tendrils.length > 50) {
-    tendrils.splice(0, tendrils.length - 50);
-  }
-  
-  // Draw globe on top
-  drawGlobe(timestamp);
-  drawTouchPoint();
-  
-  // Audio
-  if (gainNode) {
-    let targetGain = 0.02;
-    let targetFreq = 1500;
-    
-    if (mouse.inside) {
-      targetGain = 0.06;
-      targetFreq = 2500;
-    }
-    if (mouse.touching) {
-      targetGain = 0.12;
-      targetFreq = 4000;
-    }
-    
-    // Add crackle based on tendril activity
-    const activity = tendrils.length / 30;
-    targetGain += activity * 0.03;
-    
-    gainNode.gain.value += (targetGain - gainNode.gain.value) * 0.1;
-    filterNode.frequency.value += (targetFreq - filterNode.frequency.value) * 0.1;
-    filterNode.Q.value = 3 + activity * 5;
-  }
+  // Mouse cursor glow (interference field)
+  const mouseGrad = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, 150);
+  mouseGrad.addColorStop(0, PINK + '20');
+  mouseGrad.addColorStop(0.5, PURPLE + '10');
+  mouseGrad.addColorStop(1, 'transparent');
+  ctx.beginPath();
+  ctx.arc(mouse.x, mouse.y, 150, 0, Math.PI * 2);
+  ctx.fillStyle = mouseGrad;
+  ctx.fill();
   
   requestAnimationFrame(animate);
 }
 
-requestAnimationFrame(animate);
+animate();
 </script>
 </body>
 </html>
