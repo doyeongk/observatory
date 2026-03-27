@@ -1,528 +1,256 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>circuit</title>
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: #000; overflow: hidden; }
-canvas { display: block; }
-</style>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      background: #0a0a0a;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      font-family: 'Share Tech Mono', monospace;
+    }
+    
+    .board {
+      position: relative;
+      width: 100vmin;
+      height: 100vmin;
+      background: 
+        linear-gradient(90deg, rgba(0,40,30,0.3) 1px, transparent 1px),
+        linear-gradient(rgba(0,40,30,0.3) 1px, transparent 1px),
+        radial-gradient(circle at 30% 70%, #0d1a15 0%, #050505 100%);
+      background-size: 20px 20px, 20px 20px, 100% 100%;
+    }
+    
+    /* PCB traces as SVG paths */
+    .traces {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+    
+    .trace {
+      fill: none;
+      stroke-width: 3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 0 3px currentColor);
+    }
+    
+    .trace-cyan { stroke: #0ff; color: #0ff; }
+    .trace-pink { stroke: #ff2d95; color: #ff2d95; }
+    .trace-teal { stroke: #00ffa3; color: #00ffa3; }
+    
+    /* Current flow animation */
+    .trace {
+      stroke-dasharray: 20 80;
+      stroke-dashoffset: 100;
+      animation: flow 3s linear infinite;
+    }
+    
+    .trace:nth-child(2) { animation-delay: -0.5s; stroke-dasharray: 15 85; }
+    .trace:nth-child(3) { animation-delay: -1s; stroke-dasharray: 25 75; }
+    .trace:nth-child(4) { animation-delay: -1.5s; stroke-dasharray: 10 90; }
+    .trace:nth-child(5) { animation-delay: -2s; stroke-dasharray: 30 70; }
+    .trace:nth-child(6) { animation-delay: -0.3s; stroke-dasharray: 18 82; }
+    .trace:nth-child(7) { animation-delay: -2.2s; stroke-dasharray: 22 78; }
+    .trace:nth-child(8) { animation-delay: -1.8s; stroke-dasharray: 12 88; }
+    
+    @keyframes flow {
+      to { stroke-dashoffset: 0; }
+    }
+    
+    /* Components */
+    .chip {
+      position: absolute;
+      background: #111;
+      border: 2px solid #222;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 8px;
+      color: #444;
+      box-shadow: 
+        inset 0 1px 0 rgba(255,255,255,0.05),
+        0 4px 8px rgba(0,0,0,0.5);
+    }
+    
+    .chip::before {
+      content: '';
+      position: absolute;
+      top: 4px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #1a1a1a 40%, #0a0a0a 100%);
+    }
+    
+    .chip-main {
+      width: 80px;
+      height: 80px;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+    
+    .chip-main .label {
+      font-size: 10px;
+      color: #0ff;
+      text-shadow: 0 0 10px #0ff;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    
+    .chip-sm {
+      width: 40px;
+      height: 25px;
+    }
+    
+    .chip-1 { top: 20%; left: 15%; }
+    .chip-2 { top: 15%; right: 20%; }
+    .chip-3 { bottom: 25%; left: 20%; }
+    .chip-4 { bottom: 20%; right: 15%; }
+    
+    /* Via holes */
+    .via {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #0a0a0a;
+      border: 2px solid;
+      animation: via-glow 2s ease-in-out infinite;
+    }
+    
+    .via-cyan { border-color: #0ff; animation-delay: 0s; }
+    .via-pink { border-color: #ff2d95; animation-delay: 0.5s; }
+    .via-teal { border-color: #00ffa3; animation-delay: 1s; }
+    
+    @keyframes via-glow {
+      0%, 100% { box-shadow: 0 0 5px currentColor; }
+      50% { box-shadow: 0 0 15px currentColor, 0 0 25px currentColor; }
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 0.7; }
+      50% { opacity: 1; }
+    }
+    
+    /* Capacitors */
+    .cap {
+      position: absolute;
+      width: 12px;
+      height: 20px;
+      background: linear-gradient(90deg, #1a1a1a 30%, #333 50%, #1a1a1a 70%);
+      border-radius: 2px;
+    }
+    
+    /* Resistors */
+    .resistor {
+      position: absolute;
+      width: 24px;
+      height: 8px;
+      background: #2a1a1a;
+      border-radius: 2px;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      padding: 0 2px;
+    }
+    
+    .resistor span {
+      width: 3px;
+      height: 100%;
+    }
+    
+    .band-gold { background: #ffd700; }
+    .band-red { background: #ff4444; }
+    .band-brown { background: #8b4513; }
+    .band-orange { background: #ff8c00; }
+    
+    /* Spark effect on main chip */
+    .spark {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 4px;
+      height: 4px;
+      background: #fff;
+      border-radius: 50%;
+      box-shadow: 0 0 10px #0ff, 0 0 20px #0ff, 0 0 40px #0ff;
+      animation: spark-move 4s ease-in-out infinite;
+    }
+    
+    @keyframes spark-move {
+      0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+      10% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+      90% { transform: translate(calc(-50% + 200px), calc(-50% - 100px)) scale(0.5); opacity: 0.8; }
+      100% { transform: translate(calc(-50% + 200px), calc(-50% - 100px)) scale(0); opacity: 0; }
+    }
+  </style>
 </head>
 <body>
-<canvas id="c"></canvas>
-<script>
-const canvas = document.getElementById('c');
-const ctx = canvas.getContext('2d');
-
-let W, H;
-function resize() {
-  W = canvas.width = window.innerWidth;
-  H = canvas.height = window.innerHeight;
-}
-resize();
-window.addEventListener('resize', resize);
-
-// Audio setup
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-let audioStarted = false;
-
-// Oscillator pool for signal sounds
-function playSignalTone(freq, duration = 0.1) {
-  if (!audioStarted) return;
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.type = 'square';
-  osc.frequency.value = freq;
-  gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
-  gain.gain.exponentialDecayTo?.(0.001, audioCtx.currentTime + duration) || 
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  osc.start();
-  osc.stop(audioCtx.currentTime + duration);
-}
-
-// Background hum
-let humOsc, humGain;
-function startHum() {
-  humOsc = audioCtx.createOscillator();
-  humGain = audioCtx.createGain();
-  humOsc.type = 'sawtooth';
-  humOsc.frequency.value = 60;
-  humGain.gain.value = 0.008;
-  humOsc.connect(humGain);
-  humGain.connect(audioCtx.destination);
-  humOsc.start();
-}
-
-// Grid settings
-const GRID = 20;
-const TRACE_WIDTH = 3;
-
-// PCB elements
-let nodes = [];
-let traces = [];
-let components = [];
-let signals = [];
-let sparks = [];
-
-// Component types
-const COMP_TYPES = ['chip', 'capacitor', 'led', 'resistor', 'via'];
-
-function gridSnap(v) {
-  return Math.round(v / GRID) * GRID;
-}
-
-function dist(a, b) {
-  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
-}
-
-// Generate a PCB layout
-function generatePCB() {
-  nodes = [];
-  traces = [];
-  components = [];
-  signals = [];
-  
-  const cols = Math.floor(W / GRID);
-  const rows = Math.floor(H / GRID);
-  
-  // Create a grid of potential nodes
-  const nodeGrid = [];
-  for (let y = 2; y < rows - 2; y++) {
-    for (let x = 2; x < cols - 2; x++) {
-      if (Math.random() < 0.15) {
-        nodeGrid.push({ x: x * GRID, y: y * GRID, connections: [] });
-      }
-    }
-  }
-  
-  // Place components at some nodes
-  const componentNodes = nodeGrid.filter(() => Math.random() < 0.3);
-  componentNodes.forEach(n => {
-    const type = COMP_TYPES[Math.floor(Math.random() * COMP_TYPES.length)];
-    components.push({
-      x: n.x,
-      y: n.y,
-      type,
-      charge: 0,
-      active: false,
-      pins: type === 'chip' ? 8 : type === 'capacitor' ? 2 : type === 'led' ? 2 : type === 'resistor' ? 2 : 1
-    });
-  });
-  
-  nodes = nodeGrid;
-  
-  // Create traces between nearby nodes (routing)
-  for (let i = 0; i < nodes.length; i++) {
-    const n1 = nodes[i];
-    // Find 1-3 nearby nodes to connect
-    const nearby = nodes
-      .map((n2, j) => ({ node: n2, idx: j, d: dist(n1, n2) }))
-      .filter(o => o.idx !== i && o.d < GRID * 8 && o.d > 0)
-      .sort((a, b) => a.d - b.d)
-      .slice(0, Math.floor(Math.random() * 3) + 1);
+  <div class="board">
+    <svg class="traces" viewBox="0 0 100 100" preserveAspectRatio="none">
+      <!-- Main traces from center chip -->
+      <path class="trace trace-cyan" d="M50,50 L50,35 L25,35 L25,22"/>
+      <path class="trace trace-pink" d="M50,50 L65,50 L65,30 L78,30 L78,18"/>
+      <path class="trace trace-teal" d="M50,50 L50,65 L30,65 L30,78"/>
+      <path class="trace trace-cyan" d="M50,50 L35,50 L35,70 L20,70 L20,82"/>
+      <path class="trace trace-pink" d="M50,50 L60,60 L80,60 L80,78"/>
+      
+      <!-- Cross traces -->
+      <path class="trace trace-teal" d="M25,22 L25,15 L75,15 L75,22"/>
+      <path class="trace trace-cyan" d="M20,82 L20,90 L80,90 L80,78"/>
+      <path class="trace trace-pink" d="M15,40 L15,60 L25,60"/>
+      <path class="trace trace-teal" d="M85,35 L85,55 L75,55"/>
+    </svg>
     
-    nearby.forEach(o => {
-      // Check if trace already exists
-      const exists = traces.some(t => 
-        (t.from === i && t.to === o.idx) || (t.from === o.idx && t.to === i)
-      );
-      if (!exists) {
-        // Route with one bend (L-shaped)
-        const midX = Math.random() < 0.5 ? n1.x : o.node.x;
-        const midY = midX === n1.x ? o.node.y : n1.y;
-        traces.push({
-          from: i,
-          to: o.idx,
-          points: [
-            { x: n1.x, y: n1.y },
-            { x: midX, y: midY },
-            { x: o.node.x, y: o.node.y }
-          ],
-          layer: Math.random() < 0.3 ? 'power' : Math.random() < 0.5 ? 'ground' : 'signal'
-        });
-      }
-    });
-  }
-}
-
-// Signal class - pulses that travel along traces
-class Signal {
-  constructor(traceIdx, direction = 1) {
-    this.traceIdx = traceIdx;
-    this.progress = direction === 1 ? 0 : 1;
-    this.direction = direction;
-    this.speed = 0.02 + Math.random() * 0.02;
-    this.alive = true;
-    this.intensity = 1;
-  }
-  
-  update() {
-    this.progress += this.speed * this.direction;
-    if (this.progress >= 1 || this.progress <= 0) {
-      this.alive = false;
-      // Trigger component if at endpoint
-      const trace = traces[this.traceIdx];
-      const endNode = this.direction === 1 ? trace.to : trace.from;
-      const comp = components.find(c => 
-        Math.abs(c.x - nodes[endNode].x) < GRID && 
-        Math.abs(c.y - nodes[endNode].y) < GRID
-      );
-      if (comp) {
-        comp.active = true;
-        comp.charge = Math.min(1, comp.charge + 0.3);
-        if (comp.type === 'led') {
-          playSignalTone(800 + Math.random() * 400, 0.05);
-        }
-      }
-      // Chance to spawn new signals on connected traces
-      const connectedTraces = traces
-        .map((t, i) => ({ t, i }))
-        .filter(o => o.i !== this.traceIdx && (o.t.from === endNode || o.t.to === endNode));
-      connectedTraces.forEach(o => {
-        if (Math.random() < 0.6) {
-          const dir = o.t.from === endNode ? 1 : -1;
-          signals.push(new Signal(o.i, dir));
-        }
-      });
-    }
-  }
-  
-  getPosition() {
-    const trace = traces[this.traceIdx];
-    const pts = trace.points;
-    const totalLen = pts.reduce((acc, p, i) => {
-      if (i === 0) return 0;
-      return acc + dist(pts[i-1], p);
-    }, 0);
-    let targetDist = this.progress * totalLen;
+    <!-- Main processor chip -->
+    <div class="chip chip-main">
+      <span class="label">ψ-CORE</span>
+    </div>
     
-    for (let i = 1; i < pts.length; i++) {
-      const segLen = dist(pts[i-1], pts[i]);
-      if (targetDist <= segLen) {
-        const t = targetDist / segLen;
-        return {
-          x: pts[i-1].x + (pts[i].x - pts[i-1].x) * t,
-          y: pts[i-1].y + (pts[i].y - pts[i-1].y) * t
-        };
-      }
-      targetDist -= segLen;
-    }
-    return pts[pts.length - 1];
-  }
-}
-
-// Spark particles for surges
-class Spark {
-  constructor(x, y) {
-    this.x = x;
-    this.y = y;
-    this.vx = (Math.random() - 0.5) * 8;
-    this.vy = (Math.random() - 0.5) * 8;
-    this.life = 1;
-    this.decay = 0.02 + Math.random() * 0.03;
-  }
-  
-  update() {
-    this.x += this.vx;
-    this.y += this.vy;
-    this.vx *= 0.95;
-    this.vy *= 0.95;
-    this.life -= this.decay;
-  }
-}
-
-// Mouse state
-let mouse = { x: W/2, y: H/2 };
-canvas.addEventListener('mousemove', e => {
-  mouse.x = e.clientX;
-  mouse.y = e.clientY;
-});
-
-canvas.addEventListener('click', e => {
-  if (!audioStarted) {
-    audioStarted = true;
-    audioCtx.resume();
-    startHum();
-  }
-  
-  // Power surge - spawn signals on many traces
-  const surgeCount = Math.floor(traces.length * 0.3);
-  for (let i = 0; i < surgeCount; i++) {
-    const idx = Math.floor(Math.random() * traces.length);
-    signals.push(new Signal(idx, Math.random() < 0.5 ? 1 : -1));
-  }
-  
-  // Sparks at click point
-  for (let i = 0; i < 30; i++) {
-    sparks.push(new Spark(e.clientX, e.clientY));
-  }
-  
-  playSignalTone(150, 0.3);
-});
-
-// Initialize
-generatePCB();
-
-// Spawn initial signals
-for (let i = 0; i < 10; i++) {
-  const idx = Math.floor(Math.random() * traces.length);
-  signals.push(new Signal(idx));
-}
-
-// Colors
-const CYAN = '#00ffff';
-const PINK = '#ff69b4';
-const PURPLE = '#9932cc';
-const DARK_PURPLE = '#1a0a2e';
-
-function drawTrace(trace, glow = 0) {
-  const pts = trace.points;
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length; i++) {
-    ctx.lineTo(pts[i].x, pts[i].y);
-  }
-  
-  let color;
-  if (trace.layer === 'power') color = PINK;
-  else if (trace.layer === 'ground') color = PURPLE;
-  else color = CYAN;
-  
-  if (glow > 0) {
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 10 + glow * 20;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = TRACE_WIDTH + glow * 3;
-  } else {
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = color + '40';
-    ctx.lineWidth = TRACE_WIDTH;
-  }
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-}
-
-function drawComponent(comp) {
-  const { x, y, type, charge, active } = comp;
-  const glow = charge > 0 ? charge * 15 : 0;
-  
-  ctx.save();
-  if (glow > 0) {
-    ctx.shadowColor = type === 'led' ? PINK : CYAN;
-    ctx.shadowBlur = glow;
-  }
-  
-  ctx.strokeStyle = active ? CYAN : CYAN + '60';
-  ctx.fillStyle = active ? (type === 'led' ? PINK : DARK_PURPLE) : '#0a0515';
-  ctx.lineWidth = 2;
-  
-  switch(type) {
-    case 'chip':
-      ctx.fillRect(x - 20, y - 15, 40, 30);
-      ctx.strokeRect(x - 20, y - 15, 40, 30);
-      // Pins
-      for (let i = 0; i < 4; i++) {
-        ctx.fillStyle = CYAN + (active ? 'ff' : '40');
-        ctx.fillRect(x - 18 + i * 10, y - 20, 4, 5);
-        ctx.fillRect(x - 18 + i * 10, y + 15, 4, 5);
-      }
-      break;
-    case 'capacitor':
-      ctx.beginPath();
-      ctx.arc(x, y, 8, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      // Polarity mark
-      ctx.fillStyle = PINK;
-      ctx.fillRect(x - 1, y - 6, 2, 4);
-      break;
-    case 'led':
-      ctx.beginPath();
-      ctx.moveTo(x - 8, y - 8);
-      ctx.lineTo(x + 8, y);
-      ctx.lineTo(x - 8, y + 8);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      if (active && charge > 0.2) {
-        // LED glow
-        ctx.beginPath();
-        ctx.arc(x + 5, y, 20 * charge, 0, Math.PI * 2);
-        ctx.fillStyle = PINK + Math.floor(charge * 80).toString(16).padStart(2, '0');
-        ctx.fill();
-      }
-      break;
-    case 'resistor':
-      ctx.fillRect(x - 12, y - 5, 24, 10);
-      ctx.strokeRect(x - 12, y - 5, 24, 10);
-      // Color bands
-      const bands = [PINK, PURPLE, CYAN];
-      bands.forEach((c, i) => {
-        ctx.fillStyle = c;
-        ctx.fillRect(x - 8 + i * 6, y - 5, 3, 10);
-      });
-      break;
-    case 'via':
-      ctx.beginPath();
-      ctx.arc(x, y, 5, 0, Math.PI * 2);
-      ctx.fillStyle = active ? CYAN : '#333';
-      ctx.fill();
-      ctx.strokeStyle = PINK;
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(x, y, 2, 0, Math.PI * 2);
-      ctx.fillStyle = '#000';
-      ctx.fill();
-      break;
-  }
-  ctx.restore();
-}
-
-function drawSignal(sig) {
-  const pos = sig.getPosition();
-  const trace = traces[sig.traceIdx];
-  const color = trace.layer === 'power' ? PINK : trace.layer === 'ground' ? PURPLE : CYAN;
-  
-  // Glow
-  const gradient = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, 20);
-  gradient.addColorStop(0, color);
-  gradient.addColorStop(0.5, color + '40');
-  gradient.addColorStop(1, 'transparent');
-  
-  ctx.beginPath();
-  ctx.arc(pos.x, pos.y, 20, 0, Math.PI * 2);
-  ctx.fillStyle = gradient;
-  ctx.fill();
-  
-  // Core
-  ctx.beginPath();
-  ctx.arc(pos.x, pos.y, 4, 0, Math.PI * 2);
-  ctx.fillStyle = '#fff';
-  ctx.fill();
-}
-
-function drawSpark(spark) {
-  ctx.beginPath();
-  ctx.arc(spark.x, spark.y, 2, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(255, 255, 255, ${spark.life})`;
-  ctx.fill();
-}
-
-// Background grid pattern (subtle PCB substrate)
-function drawSubstrate() {
-  ctx.fillStyle = '#050510';
-  ctx.fillRect(0, 0, W, H);
-  
-  // Solder mask pattern
-  ctx.strokeStyle = '#0a0a20';
-  ctx.lineWidth = 1;
-  for (let x = 0; x < W; x += GRID) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, H);
-    ctx.stroke();
-  }
-  for (let y = 0; y < H; y += GRID) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(W, y);
-    ctx.stroke();
-  }
-  
-  // Ground plane fills (large background areas)
-  ctx.fillStyle = PURPLE + '08';
-  for (let i = 0; i < 5; i++) {
-    const px = Math.random() * W;
-    const py = Math.random() * H;
-    const pw = 100 + Math.random() * 200;
-    const ph = 100 + Math.random() * 200;
-    ctx.fillRect(px, py, pw, ph);
-  }
-}
-
-// Mouse proximity creates interference
-function getInterference(x, y) {
-  const d = dist({ x, y }, mouse);
-  return Math.max(0, 1 - d / 200);
-}
-
-let time = 0;
-
-function animate() {
-  time++;
-  
-  drawSubstrate();
-  
-  // Calculate trace glow based on nearby signals
-  const traceGlow = traces.map((t, i) => {
-    const nearSignals = signals.filter(s => s.traceIdx === i);
-    return nearSignals.length > 0 ? 0.5 + nearSignals.length * 0.3 : 0;
-  });
-  
-  // Draw traces
-  traces.forEach((trace, i) => {
-    // Mouse interference effect
-    const midPt = trace.points[Math.floor(trace.points.length / 2)];
-    const interference = getInterference(midPt.x, midPt.y);
-    drawTrace(trace, traceGlow[i] + interference * 0.5);
-  });
-  
-  // Draw nodes (solder points)
-  nodes.forEach(n => {
-    const interference = getInterference(n.x, n.y);
-    ctx.beginPath();
-    ctx.arc(n.x, n.y, 3 + interference * 2, 0, Math.PI * 2);
-    ctx.fillStyle = interference > 0.3 ? PINK : CYAN + '60';
-    ctx.fill();
-  });
-  
-  // Draw components
-  components.forEach(c => {
-    c.charge *= 0.95; // Decay
-    if (c.charge < 0.01) c.active = false;
-    drawComponent(c);
-  });
-  
-  // Update and draw signals
-  signals.forEach(s => {
-    s.update();
-    if (s.alive) drawSignal(s);
-  });
-  signals = signals.filter(s => s.alive);
-  
-  // Randomly spawn new signals
-  if (Math.random() < 0.02 && signals.length < 50) {
-    const idx = Math.floor(Math.random() * traces.length);
-    signals.push(new Signal(idx));
-  }
-  
-  // Update and draw sparks
-  sparks.forEach(s => {
-    s.update();
-    if (s.life > 0) drawSpark(s);
-  });
-  sparks = sparks.filter(s => s.life > 0);
-  
-  // Mouse cursor glow (interference field)
-  const mouseGrad = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, 150);
-  mouseGrad.addColorStop(0, PINK + '20');
-  mouseGrad.addColorStop(0.5, PURPLE + '10');
-  mouseGrad.addColorStop(1, 'transparent');
-  ctx.beginPath();
-  ctx.arc(mouse.x, mouse.y, 150, 0, Math.PI * 2);
-  ctx.fillStyle = mouseGrad;
-  ctx.fill();
-  
-  requestAnimationFrame(animate);
-}
-
-animate();
-</script>
+    <!-- Secondary chips -->
+    <div class="chip chip-sm chip-1"></div>
+    <div class="chip chip-sm chip-2"></div>
+    <div class="chip chip-sm chip-3"></div>
+    <div class="chip chip-sm chip-4"></div>
+    
+    <!-- Via holes scattered around -->
+    <div class="via via-cyan" style="top: 30%; left: 40%;"></div>
+    <div class="via via-pink" style="top: 45%; left: 65%;"></div>
+    <div class="via via-teal" style="top: 60%; left: 35%;"></div>
+    <div class="via via-cyan" style="top: 70%; left: 55%;"></div>
+    <div class="via via-pink" style="top: 25%; left: 60%;"></div>
+    <div class="via via-teal" style="top: 75%; left: 70%;"></div>
+    
+    <!-- Passive components -->
+    <div class="cap" style="top: 40%; left: 12%;"></div>
+    <div class="cap" style="top: 55%; right: 10%;"></div>
+    
+    <div class="resistor" style="top: 28%; left: 35%;">
+      <span class="band-brown"></span>
+      <span class="band-red"></span>
+      <span class="band-orange"></span>
+      <span class="band-gold"></span>
+    </div>
+    <div class="resistor" style="bottom: 32%; right: 30%;">
+      <span class="band-red"></span>
+      <span class="band-red"></span>
+      <span class="band-brown"></span>
+      <span class="band-gold"></span>
+    </div>
+    
+    <!-- Spark traveling -->
+    <div class="spark"></div>
+  </div>
 </body>
 </html>
