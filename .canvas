@@ -1,256 +1,542 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
-    
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    
-    body {
-      background: #0a0a0a;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-      font-family: 'Share Tech Mono', monospace;
-    }
-    
-    .board {
-      position: relative;
-      width: 100vmin;
-      height: 100vmin;
-      background: 
-        linear-gradient(90deg, rgba(0,40,30,0.3) 1px, transparent 1px),
-        linear-gradient(rgba(0,40,30,0.3) 1px, transparent 1px),
-        radial-gradient(circle at 30% 70%, #0d1a15 0%, #050505 100%);
-      background-size: 20px 20px, 20px 20px, 100% 100%;
-    }
-    
-    /* PCB traces as SVG paths */
-    .traces {
-      position: absolute;
-      inset: 0;
-      overflow: hidden;
-    }
-    
-    .trace {
-      fill: none;
-      stroke-width: 3;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      filter: drop-shadow(0 0 3px currentColor);
-    }
-    
-    .trace-cyan { stroke: #0ff; color: #0ff; }
-    .trace-pink { stroke: #ff2d95; color: #ff2d95; }
-    .trace-teal { stroke: #00ffa3; color: #00ffa3; }
-    
-    /* Current flow animation */
-    .trace {
-      stroke-dasharray: 20 80;
-      stroke-dashoffset: 100;
-      animation: flow 3s linear infinite;
-    }
-    
-    .trace:nth-child(2) { animation-delay: -0.5s; stroke-dasharray: 15 85; }
-    .trace:nth-child(3) { animation-delay: -1s; stroke-dasharray: 25 75; }
-    .trace:nth-child(4) { animation-delay: -1.5s; stroke-dasharray: 10 90; }
-    .trace:nth-child(5) { animation-delay: -2s; stroke-dasharray: 30 70; }
-    .trace:nth-child(6) { animation-delay: -0.3s; stroke-dasharray: 18 82; }
-    .trace:nth-child(7) { animation-delay: -2.2s; stroke-dasharray: 22 78; }
-    .trace:nth-child(8) { animation-delay: -1.8s; stroke-dasharray: 12 88; }
-    
-    @keyframes flow {
-      to { stroke-dashoffset: 0; }
-    }
-    
-    /* Components */
-    .chip {
-      position: absolute;
-      background: #111;
-      border: 2px solid #222;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 8px;
-      color: #444;
-      box-shadow: 
-        inset 0 1px 0 rgba(255,255,255,0.05),
-        0 4px 8px rgba(0,0,0,0.5);
-    }
-    
-    .chip::before {
-      content: '';
-      position: absolute;
-      top: 4px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: radial-gradient(circle, #1a1a1a 40%, #0a0a0a 100%);
-    }
-    
-    .chip-main {
-      width: 80px;
-      height: 80px;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-    }
-    
-    .chip-main .label {
-      font-size: 10px;
-      color: #0ff;
-      text-shadow: 0 0 10px #0ff;
-      animation: pulse 2s ease-in-out infinite;
-    }
-    
-    .chip-sm {
-      width: 40px;
-      height: 25px;
-    }
-    
-    .chip-1 { top: 20%; left: 15%; }
-    .chip-2 { top: 15%; right: 20%; }
-    .chip-3 { bottom: 25%; left: 20%; }
-    .chip-4 { bottom: 20%; right: 15%; }
-    
-    /* Via holes */
-    .via {
-      position: absolute;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #0a0a0a;
-      border: 2px solid;
-      animation: via-glow 2s ease-in-out infinite;
-    }
-    
-    .via-cyan { border-color: #0ff; animation-delay: 0s; }
-    .via-pink { border-color: #ff2d95; animation-delay: 0.5s; }
-    .via-teal { border-color: #00ffa3; animation-delay: 1s; }
-    
-    @keyframes via-glow {
-      0%, 100% { box-shadow: 0 0 5px currentColor; }
-      50% { box-shadow: 0 0 15px currentColor, 0 0 25px currentColor; }
-    }
-    
-    @keyframes pulse {
-      0%, 100% { opacity: 0.7; }
-      50% { opacity: 1; }
-    }
-    
-    /* Capacitors */
-    .cap {
-      position: absolute;
-      width: 12px;
-      height: 20px;
-      background: linear-gradient(90deg, #1a1a1a 30%, #333 50%, #1a1a1a 70%);
-      border-radius: 2px;
-    }
-    
-    /* Resistors */
-    .resistor {
-      position: absolute;
-      width: 24px;
-      height: 8px;
-      background: #2a1a1a;
-      border-radius: 2px;
-      display: flex;
-      justify-content: space-around;
-      align-items: center;
-      padding: 0 2px;
-    }
-    
-    .resistor span {
-      width: 3px;
-      height: 100%;
-    }
-    
-    .band-gold { background: #ffd700; }
-    .band-red { background: #ff4444; }
-    .band-brown { background: #8b4513; }
-    .band-orange { background: #ff8c00; }
-    
-    /* Spark effect on main chip */
-    .spark {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 4px;
-      height: 4px;
-      background: #fff;
-      border-radius: 50%;
-      box-shadow: 0 0 10px #0ff, 0 0 20px #0ff, 0 0 40px #0ff;
-      animation: spark-move 4s ease-in-out infinite;
-    }
-    
-    @keyframes spark-move {
-      0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
-      10% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-      90% { transform: translate(calc(-50% + 200px), calc(-50% - 100px)) scale(0.5); opacity: 0.8; }
-      100% { transform: translate(calc(-50% + 200px), calc(-50% - 100px)) scale(0); opacity: 0; }
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iridescence</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a0f; overflow: hidden; }
+canvas { display: block; }
+</style>
 </head>
 <body>
-  <div class="board">
-    <svg class="traces" viewBox="0 0 100 100" preserveAspectRatio="none">
-      <!-- Main traces from center chip -->
-      <path class="trace trace-cyan" d="M50,50 L50,35 L25,35 L25,22"/>
-      <path class="trace trace-pink" d="M50,50 L65,50 L65,30 L78,30 L78,18"/>
-      <path class="trace trace-teal" d="M50,50 L50,65 L30,65 L30,78"/>
-      <path class="trace trace-cyan" d="M50,50 L35,50 L35,70 L20,70 L20,82"/>
-      <path class="trace trace-pink" d="M50,50 L60,60 L80,60 L80,78"/>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+let bubbles = [];
+let mouse = { x: 0, y: 0, down: false, blowing: false };
+let audioCtx, masterGain;
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Thin-film interference color based on thickness
+function interferenceColor(thickness, angle = 0) {
+  // Simplified thin-film interference
+  // thickness in nm, typical soap film 100-1000nm
+  const n = 1.33; // refractive index of soap
+  const path = 2 * n * thickness * Math.cos(angle);
+  
+  // RGB wavelengths in nm
+  const wavelengths = [650, 550, 450]; // R, G, B
+  const rgb = wavelengths.map(lambda => {
+    const phase = (2 * Math.PI * path) / lambda;
+    // Interference intensity
+    return Math.pow(Math.sin(phase / 2), 2);
+  });
+  
+  return rgb;
+}
+
+class Bubble {
+  constructor(x, y, r, vx = 0, vy = 0) {
+    this.x = x;
+    this.y = y;
+    this.r = r;
+    this.vx = vx;
+    this.vy = vy;
+    this.baseThickness = 200 + Math.random() * 400; // nm
+    this.thicknessVariation = Math.random() * Math.PI * 2;
+    this.rotationSpeed = (Math.random() - 0.5) * 0.02;
+    this.wobble = Math.random() * Math.PI * 2;
+    this.wobbleSpeed = 0.02 + Math.random() * 0.02;
+    this.age = 0;
+    this.popping = false;
+    this.popProgress = 0;
+    this.popParticles = [];
+  }
+  
+  update(dt) {
+    if (this.popping) {
+      this.popProgress += dt * 3;
+      this.popParticles.forEach(p => {
+        p.x += p.vx * dt * 60;
+        p.y += p.vy * dt * 60;
+        p.vy += 0.1 * dt * 60;
+        p.life -= dt;
+      });
+      return this.popProgress < 1;
+    }
+    
+    this.age += dt;
+    this.wobble += this.wobbleSpeed;
+    this.thicknessVariation += this.rotationSpeed;
+    
+    // Gentle floating
+    this.vy -= 0.005 * dt * 60; // buoyancy
+    this.vx *= 0.995;
+    this.vy *= 0.995;
+    
+    // Wind toward mouse when blowing
+    if (mouse.blowing) {
+      const dx = this.x - mouse.x;
+      const dy = this.y - mouse.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 200) {
+        const force = (200 - dist) / 200 * 0.3;
+        this.vx += (dx / dist) * force;
+        this.vy += (dy / dist) * force;
+      }
+    }
+    
+    // Wobble effect on radius
+    const wobbleR = this.r * (1 + Math.sin(this.wobble) * 0.03);
+    
+    this.x += this.vx * dt * 60;
+    this.y += this.vy * dt * 60;
+    
+    // Boundaries - soft bounce
+    if (this.x < this.r) { this.x = this.r; this.vx *= -0.5; }
+    if (this.x > W - this.r) { this.x = W - this.r; this.vx *= -0.5; }
+    if (this.y < this.r) { this.y = this.r; this.vy *= -0.5; }
+    if (this.y > H - this.r) { this.y = H - this.r; this.vy *= -0.5; }
+    
+    // Thin over time - eventually pop
+    this.baseThickness -= dt * 5;
+    if (this.baseThickness < 80) {
+      this.pop();
+    }
+    
+    return true;
+  }
+  
+  pop() {
+    if (this.popping) return;
+    this.popping = true;
+    playPop(this.r);
+    
+    // Create pop particles
+    const numParticles = Math.floor(this.r / 2);
+    for (let i = 0; i < numParticles; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 1 + Math.random() * 3;
+      this.popParticles.push({
+        x: this.x + Math.cos(angle) * this.r * Math.random(),
+        y: this.y + Math.sin(angle) * this.r * Math.random(),
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 0.5 + Math.random() * 0.5,
+        color: this.getColorAt(Math.random(), Math.random())
+      });
+    }
+  }
+  
+  getColorAt(u, v) {
+    // u, v from 0 to 1 across the bubble surface
+    const angle = Math.atan2(v - 0.5, u - 0.5) + this.thicknessVariation;
+    const dist = Math.sqrt((u - 0.5) ** 2 + (v - 0.5) ** 2) * 2;
+    
+    // Thickness varies across surface - thinner at top (draining)
+    const thickness = this.baseThickness * (0.7 + 0.3 * v) * (1 + Math.sin(angle * 3) * 0.3);
+    
+    const [r, g, b] = interferenceColor(thickness, dist * 0.5);
+    return `rgb(${Math.floor(r * 255)}, ${Math.floor(g * 255)}, ${Math.floor(b * 255)})`;
+  }
+  
+  draw() {
+    if (this.popping) {
+      // Draw pop particles
+      this.popParticles.forEach(p => {
+        if (p.life > 0) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+          ctx.fillStyle = p.color;
+          ctx.globalAlpha = p.life;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+      });
+      return;
+    }
+    
+    const wobbleR = this.r * (1 + Math.sin(this.wobble) * 0.03);
+    
+    // Draw bubble with gradient showing interference
+    const gradient = ctx.createRadialGradient(
+      this.x - wobbleR * 0.3, this.y - wobbleR * 0.3, 0,
+      this.x, this.y, wobbleR
+    );
+    
+    // Sample interference colors at different points
+    const colors = [];
+    for (let i = 0; i <= 4; i++) {
+      const t = i / 4;
+      const thickness = this.baseThickness * (0.6 + t * 0.4);
+      const [r, g, b] = interferenceColor(thickness + Math.sin(this.thicknessVariation + t * 4) * 100);
+      colors.push({ t, r: Math.floor(r * 200 + 55), g: Math.floor(g * 200 + 55), b: Math.floor(b * 200 + 55) });
+    }
+    
+    colors.forEach((c, i) => {
+      const alpha = i === colors.length - 1 ? 0.1 : 0.4;
+      gradient.addColorStop(c.t, `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`);
+    });
+    
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, wobbleR, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    
+    // Specular highlight
+    ctx.beginPath();
+    ctx.arc(this.x - wobbleR * 0.25, this.y - wobbleR * 0.25, wobbleR * 0.2, 0, Math.PI * 2);
+    const specGrad = ctx.createRadialGradient(
+      this.x - wobbleR * 0.25, this.y - wobbleR * 0.25, 0,
+      this.x - wobbleR * 0.25, this.y - wobbleR * 0.25, wobbleR * 0.2
+    );
+    specGrad.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
+    specGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = specGrad;
+    ctx.fill();
+    
+    // Rim highlight
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, wobbleR, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    
+    // Swirling colors on surface
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, wobbleR - 2, 0, Math.PI * 2);
+    ctx.clip();
+    
+    for (let i = 0; i < 5; i++) {
+      const angle = this.thicknessVariation + i * Math.PI * 0.4;
+      const dist = wobbleR * 0.4;
+      const cx = this.x + Math.cos(angle) * dist;
+      const cy = this.y + Math.sin(angle) * dist;
+      const thickness = this.baseThickness + Math.sin(angle * 2 + this.age) * 150;
+      const [r, g, b] = interferenceColor(thickness);
       
-      <!-- Cross traces -->
-      <path class="trace trace-teal" d="M25,22 L25,15 L75,15 L75,22"/>
-      <path class="trace trace-cyan" d="M20,82 L20,90 L80,90 L80,78"/>
-      <path class="trace trace-pink" d="M15,40 L15,60 L25,60"/>
-      <path class="trace trace-teal" d="M85,35 L85,55 L75,55"/>
-    </svg>
-    
-    <!-- Main processor chip -->
-    <div class="chip chip-main">
-      <span class="label">ψ-CORE</span>
-    </div>
-    
-    <!-- Secondary chips -->
-    <div class="chip chip-sm chip-1"></div>
-    <div class="chip chip-sm chip-2"></div>
-    <div class="chip chip-sm chip-3"></div>
-    <div class="chip chip-sm chip-4"></div>
-    
-    <!-- Via holes scattered around -->
-    <div class="via via-cyan" style="top: 30%; left: 40%;"></div>
-    <div class="via via-pink" style="top: 45%; left: 65%;"></div>
-    <div class="via via-teal" style="top: 60%; left: 35%;"></div>
-    <div class="via via-cyan" style="top: 70%; left: 55%;"></div>
-    <div class="via via-pink" style="top: 25%; left: 60%;"></div>
-    <div class="via via-teal" style="top: 75%; left: 70%;"></div>
-    
-    <!-- Passive components -->
-    <div class="cap" style="top: 40%; left: 12%;"></div>
-    <div class="cap" style="top: 55%; right: 10%;"></div>
-    
-    <div class="resistor" style="top: 28%; left: 35%;">
-      <span class="band-brown"></span>
-      <span class="band-red"></span>
-      <span class="band-orange"></span>
-      <span class="band-gold"></span>
-    </div>
-    <div class="resistor" style="bottom: 32%; right: 30%;">
-      <span class="band-red"></span>
-      <span class="band-red"></span>
-      <span class="band-brown"></span>
-      <span class="band-gold"></span>
-    </div>
-    
-    <!-- Spark traveling -->
-    <div class="spark"></div>
-  </div>
+      const swirlGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, wobbleR * 0.5);
+      swirlGrad.addColorStop(0, `rgba(${Math.floor(r * 200 + 55)}, ${Math.floor(g * 200 + 55)}, ${Math.floor(b * 200 + 55)}, 0.3)`);
+      swirlGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = swirlGrad;
+      ctx.fillRect(this.x - wobbleR, this.y - wobbleR, wobbleR * 2, wobbleR * 2);
+    }
+    ctx.restore();
+  }
+  
+  contains(px, py) {
+    const dx = px - this.x;
+    const dy = py - this.y;
+    return dx * dx + dy * dy < this.r * this.r;
+  }
+}
+
+// Check bubble collisions
+function handleCollisions() {
+  for (let i = 0; i < bubbles.length; i++) {
+    for (let j = i + 1; j < bubbles.length; j++) {
+      const a = bubbles[i];
+      const b = bubbles[j];
+      if (a.popping || b.popping) continue;
+      
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const minDist = a.r + b.r;
+      
+      if (dist < minDist) {
+        // Merge or bounce
+        if (dist < minDist * 0.7 && Math.random() < 0.02) {
+          // Merge - bigger bubble absorbs smaller
+          if (a.r > b.r) {
+            a.r = Math.sqrt(a.r * a.r + b.r * b.r * 0.5);
+            b.pop();
+          } else {
+            b.r = Math.sqrt(b.r * b.r + a.r * a.r * 0.5);
+            a.pop();
+          }
+          playMerge();
+        } else {
+          // Soft bounce
+          const overlap = minDist - dist;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          
+          a.x -= nx * overlap * 0.5;
+          a.y -= ny * overlap * 0.5;
+          b.x += nx * overlap * 0.5;
+          b.y += ny * overlap * 0.5;
+          
+          // Exchange some velocity
+          const relVel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
+          a.vx -= relVel * nx * 0.3;
+          a.vy -= relVel * ny * 0.3;
+          b.vx += relVel * nx * 0.3;
+          b.vy += relVel * ny * 0.3;
+        }
+      }
+    }
+  }
+}
+
+// Audio
+function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.3;
+  masterGain.connect(audioCtx.destination);
+}
+
+function playPop(size) {
+  if (!audioCtx) return;
+  
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  const filter = audioCtx.createBiquadFilter();
+  
+  // Higher pitch for smaller bubbles
+  osc.frequency.value = 800 + (100 - size) * 10;
+  osc.type = 'sine';
+  
+  filter.type = 'highpass';
+  filter.frequency.value = 400;
+  
+  gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+  gain.gain.exponentialDecayTo = (v, t) => gain.gain.exponentialRampToValueAtTime(v, t);
+  gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+  
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(masterGain);
+  
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.1);
+  
+  // Add a tiny noise burst
+  const bufferSize = audioCtx.sampleRate * 0.05;
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+  }
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+  const noiseGain = audioCtx.createGain();
+  noiseGain.gain.value = 0.1;
+  noise.connect(noiseGain);
+  noiseGain.connect(masterGain);
+  noise.start();
+}
+
+function playMerge() {
+  if (!audioCtx) return;
+  
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  
+  osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.2);
+  osc.type = 'sine';
+  
+  gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+  
+  osc.connect(gain);
+  gain.connect(masterGain);
+  
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.2);
+}
+
+function playBlow() {
+  if (!audioCtx) return;
+  
+  const bufferSize = audioCtx.sampleRate * 0.3;
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    const t = i / bufferSize;
+    data[i] = (Math.random() * 2 - 1) * 0.3 * Math.sin(t * Math.PI);
+  }
+  
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+  
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.value = 500;
+  filter.Q.value = 2;
+  
+  const gain = audioCtx.createGain();
+  gain.gain.value = 0.15;
+  
+  noise.connect(filter);
+  filter.connect(gain);
+  gain.connect(masterGain);
+  noise.start();
+}
+
+// Spawn bubble at position
+function spawnBubble(x, y) {
+  const r = 20 + Math.random() * 40;
+  const angle = Math.random() * Math.PI * 2;
+  const speed = 0.5 + Math.random() * 1;
+  bubbles.push(new Bubble(x, y, r, Math.cos(angle) * speed, Math.sin(angle) * speed - 1));
+}
+
+// Input
+canvas.addEventListener('mousedown', (e) => {
+  if (!audioCtx) initAudio();
+  mouse.down = true;
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+  
+  // Check if clicking on a bubble
+  let popped = false;
+  for (const b of bubbles) {
+    if (!b.popping && b.contains(mouse.x, mouse.y)) {
+      b.pop();
+      popped = true;
+      break;
+    }
+  }
+  
+  if (!popped) {
+    // Start blowing
+    mouse.blowing = true;
+    playBlow();
+  }
+});
+
+canvas.addEventListener('mouseup', () => {
+  if (mouse.blowing && mouse.down) {
+    // Release creates a bubble
+    spawnBubble(mouse.x, mouse.y);
+  }
+  mouse.down = false;
+  mouse.blowing = false;
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+});
+
+// Touch support
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (!audioCtx) initAudio();
+  const touch = e.touches[0];
+  mouse.x = touch.clientX;
+  mouse.y = touch.clientY;
+  mouse.down = true;
+  
+  let popped = false;
+  for (const b of bubbles) {
+    if (!b.popping && b.contains(mouse.x, mouse.y)) {
+      b.pop();
+      popped = true;
+      break;
+    }
+  }
+  
+  if (!popped) {
+    mouse.blowing = true;
+    playBlow();
+  }
+});
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  if (mouse.blowing && mouse.down) {
+    spawnBubble(mouse.x, mouse.y);
+  }
+  mouse.down = false;
+  mouse.blowing = false;
+});
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  mouse.x = touch.clientX;
+  mouse.y = touch.clientY;
+});
+
+// Initial bubbles
+for (let i = 0; i < 8; i++) {
+  spawnBubble(
+    W * 0.2 + Math.random() * W * 0.6,
+    H * 0.3 + Math.random() * H * 0.5
+  );
+}
+
+// Ambient spawning
+let lastSpawn = 0;
+function ambientSpawn(time) {
+  if (time - lastSpawn > 3000 && bubbles.filter(b => !b.popping).length < 15) {
+    spawnBubble(Math.random() * W, H + 50);
+    lastSpawn = time;
+  }
+}
+
+// Main loop
+let lastTime = 0;
+function animate(time) {
+  const dt = Math.min((time - lastTime) / 1000, 0.1);
+  lastTime = time;
+  
+  // Dark gradient background
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, '#0a0a12');
+  bgGrad.addColorStop(1, '#0f0a18');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+  
+  // Subtle ambient particles (dust motes)
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.02)';
+  for (let i = 0; i < 50; i++) {
+    const x = (Math.sin(time * 0.0001 + i * 0.5) * 0.5 + 0.5) * W;
+    const y = (Math.cos(time * 0.00015 + i * 0.7) * 0.5 + 0.5) * H;
+    ctx.beginPath();
+    ctx.arc(x, y, 1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  
+  // Draw blow indicator
+  if (mouse.blowing) {
+    ctx.beginPath();
+    ctx.arc(mouse.x, mouse.y, 30 + Math.sin(time * 0.01) * 5, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  
+  handleCollisions();
+  
+  // Update and draw bubbles
+  bubbles = bubbles.filter(b => b.update(dt));
+  
+  // Sort by size for proper layering
+  bubbles.sort((a, b) => b.r - a.r);
+  bubbles.forEach(b => b.draw());
+  
+  ambientSpawn(time);
+  
+  requestAnimationFrame(animate);
+}
+
+requestAnimationFrame(animate);
+</script>
 </body>
 </html>
