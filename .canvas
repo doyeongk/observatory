@@ -3,540 +3,331 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>iridescence</title>
+<title>double</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: #0a0a0f; overflow: hidden; }
+body { 
+  background: #0a0a0f; 
+  overflow: hidden; 
+  font-family: monospace;
+}
 canvas { display: block; }
+#info {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  color: rgba(255, 100, 200, 0.6);
+  font-size: 12px;
+  pointer-events: none;
+}
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
+<canvas id="canvas"></canvas>
+<div id="info">click to spawn · drag to disturb</div>
 <script>
-const canvas = document.getElementById('c');
+const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-let W, H;
-let bubbles = [];
-let mouse = { x: 0, y: 0, down: false, blowing: false };
-let audioCtx, masterGain;
+
+let W, H, cx, cy;
+const g = 9.81;
+const dt = 0.016;
+const substeps = 8;
+
+// Audio context
+let audioCtx = null;
+let oscillators = [];
+let gainNodes = [];
+
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  
+  // Create oscillators for each pendulum
+  for (let i = 0; i < 4; i++) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const filter = audioCtx.createBiquadFilter();
+    
+    osc.type = 'sine';
+    osc.frequency.value = 100 + i * 50;
+    filter.type = 'lowpass';
+    filter.frequency.value = 400;
+    filter.Q.value = 2;
+    gain.gain.value = 0;
+    
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    
+    oscillators.push(osc);
+    gainNodes.push(gain);
+  }
+}
+
+class DoublePendulum {
+  constructor(x, y, l1, l2, m1, m2, a1, a2, hue) {
+    this.ox = x;
+    this.oy = y;
+    this.l1 = l1;
+    this.l2 = l2;
+    this.m1 = m1;
+    this.m2 = m2;
+    this.a1 = a1;
+    this.a2 = a2;
+    this.v1 = 0;
+    this.v2 = 0;
+    this.hue = hue;
+    this.trail = [];
+    this.maxTrail = 800;
+  }
+
+  update() {
+    for (let i = 0; i < substeps; i++) {
+      const subDt = dt / substeps;
+      
+      // Double pendulum equations of motion
+      const { l1, l2, m1, m2, a1, a2, v1, v2 } = this;
+      
+      const num1 = -g * (2 * m1 + m2) * Math.sin(a1);
+      const num2 = -m2 * g * Math.sin(a1 - 2 * a2);
+      const num3 = -2 * Math.sin(a1 - a2) * m2;
+      const num4 = v2 * v2 * l2 + v1 * v1 * l1 * Math.cos(a1 - a2);
+      const den = l1 * (2 * m1 + m2 - m2 * Math.cos(2 * a1 - 2 * a2));
+      const acc1 = (num1 + num2 + num3 * num4) / den;
+
+      const num5 = 2 * Math.sin(a1 - a2);
+      const num6 = v1 * v1 * l1 * (m1 + m2);
+      const num7 = g * (m1 + m2) * Math.cos(a1);
+      const num8 = v2 * v2 * l2 * m2 * Math.cos(a1 - a2);
+      const den2 = l2 * (2 * m1 + m2 - m2 * Math.cos(2 * a1 - 2 * a2));
+      const acc2 = (num5 * (num6 + num7 + num8)) / den2;
+
+      this.v1 += acc1 * subDt;
+      this.v2 += acc2 * subDt;
+      this.a1 += this.v1 * subDt;
+      this.a2 += this.v2 * subDt;
+
+      // Damping
+      this.v1 *= 0.9999;
+      this.v2 *= 0.9999;
+    }
+
+    // Calculate end positions
+    const x1 = this.ox + this.l1 * Math.sin(this.a1);
+    const y1 = this.oy + this.l1 * Math.cos(this.a1);
+    const x2 = x1 + this.l2 * Math.sin(this.a2);
+    const y2 = y1 + this.l2 * Math.cos(this.a2);
+
+    this.x1 = x1;
+    this.y1 = y1;
+    this.x2 = x2;
+    this.y2 = y2;
+
+    // Add to trail
+    this.trail.push({ x: x2, y: y2, v: Math.abs(this.v2) });
+    if (this.trail.length > this.maxTrail) {
+      this.trail.shift();
+    }
+  }
+
+  draw() {
+    // Draw trail with gradient based on velocity and age
+    if (this.trail.length > 1) {
+      for (let i = 1; i < this.trail.length; i++) {
+        const p1 = this.trail[i - 1];
+        const p2 = this.trail[i];
+        const age = i / this.trail.length;
+        const vel = Math.min(p2.v * 0.1, 1);
+        
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        
+        // Color shifts based on velocity and hue
+        const h = (this.hue + vel * 60) % 360;
+        const alpha = age * 0.8 * (0.3 + vel * 0.7);
+        ctx.strokeStyle = `hsla(${h}, 100%, 65%, ${alpha})`;
+        ctx.lineWidth = 1 + vel * 2;
+        ctx.stroke();
+      }
+    }
+
+    // Draw arms
+    ctx.beginPath();
+    ctx.moveTo(this.ox, this.oy);
+    ctx.lineTo(this.x1, this.y1);
+    ctx.lineTo(this.x2, this.y2);
+    ctx.strokeStyle = `hsla(${this.hue}, 60%, 50%, 0.4)`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Draw pivot
+    ctx.beginPath();
+    ctx.arc(this.ox, this.oy, 4, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, 0.8)`;
+    ctx.fill();
+
+    // Draw joints with glow
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = `hsla(${this.hue}, 100%, 60%, 0.8)`;
+    
+    ctx.beginPath();
+    ctx.arc(this.x1, this.y1, 6, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, 0.9)`;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(this.x2, this.y2, 8, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${(this.hue + 30) % 360}, 100%, 70%, 1)`;
+    ctx.fill();
+    
+    ctx.shadowBlur = 0;
+  }
+
+  perturb(mx, my, strength) {
+    const dx1 = this.x1 - mx;
+    const dy1 = this.y1 - my;
+    const dx2 = this.x2 - mx;
+    const dy2 = this.y2 - my;
+    const d1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+    const d2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+    
+    if (d1 < 150) {
+      this.v1 += (Math.random() - 0.5) * strength * (1 - d1 / 150);
+    }
+    if (d2 < 150) {
+      this.v2 += (Math.random() - 0.5) * strength * (1 - d2 / 150);
+    }
+  }
+}
+
+let pendulums = [];
+
+function spawnPendulum(x, y) {
+  const scale = Math.min(W, H) * 0.15;
+  const l1 = scale * (0.8 + Math.random() * 0.4);
+  const l2 = scale * (0.8 + Math.random() * 0.4);
+  const a1 = Math.PI * (0.5 + Math.random());
+  const a2 = Math.PI * (0.5 + Math.random());
+  
+  // Palette: cyan (180), pink (320), purple (280)
+  const hues = [180, 300, 320, 260];
+  const hue = hues[pendulums.length % hues.length];
+  
+  const p = new DoublePendulum(x, y, l1, l2, 10, 10, a1, a2, hue);
+  pendulums.push(p);
+  
+  if (pendulums.length > 6) {
+    pendulums.shift();
+  }
+}
 
 function resize() {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
+  cx = W / 2;
+  cy = H / 2;
 }
-resize();
+
+function updateAudio() {
+  if (!audioCtx || pendulums.length === 0) return;
+  
+  pendulums.forEach((p, i) => {
+    if (i >= gainNodes.length) return;
+    
+    // Map angular velocity to pitch and volume
+    const energy = Math.abs(p.v1) + Math.abs(p.v2);
+    const freq = 80 + energy * 30;
+    const vol = Math.min(energy * 0.02, 0.08);
+    
+    oscillators[i].frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.1);
+    gainNodes[i].gain.setTargetAtTime(vol, audioCtx.currentTime, 0.1);
+  });
+}
+
+let mouseX = 0, mouseY = 0, mouseDown = false;
+
+function animate() {
+  // Fade trail
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.08)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Update and draw pendulums
+  pendulums.forEach(p => {
+    if (mouseDown) {
+      p.perturb(mouseX, mouseY, 0.3);
+    }
+    p.update();
+    p.draw();
+  });
+
+  updateAudio();
+  requestAnimationFrame(animate);
+}
+
+// Event listeners
 window.addEventListener('resize', resize);
 
-// Thin-film interference color based on thickness
-function interferenceColor(thickness, angle = 0) {
-  // Simplified thin-film interference
-  // thickness in nm, typical soap film 100-1000nm
-  const n = 1.33; // refractive index of soap
-  const path = 2 * n * thickness * Math.cos(angle);
-  
-  // RGB wavelengths in nm
-  const wavelengths = [650, 550, 450]; // R, G, B
-  const rgb = wavelengths.map(lambda => {
-    const phase = (2 * Math.PI * path) / lambda;
-    // Interference intensity
-    return Math.pow(Math.sin(phase / 2), 2);
-  });
-  
-  return rgb;
-}
+canvas.addEventListener('click', (e) => {
+  initAudio();
+  spawnPendulum(e.clientX, e.clientY);
+});
 
-class Bubble {
-  constructor(x, y, r, vx = 0, vy = 0) {
-    this.x = x;
-    this.y = y;
-    this.r = r;
-    this.vx = vx;
-    this.vy = vy;
-    this.baseThickness = 200 + Math.random() * 400; // nm
-    this.thicknessVariation = Math.random() * Math.PI * 2;
-    this.rotationSpeed = (Math.random() - 0.5) * 0.02;
-    this.wobble = Math.random() * Math.PI * 2;
-    this.wobbleSpeed = 0.02 + Math.random() * 0.02;
-    this.age = 0;
-    this.popping = false;
-    this.popProgress = 0;
-    this.popParticles = [];
-  }
-  
-  update(dt) {
-    if (this.popping) {
-      this.popProgress += dt * 3;
-      this.popParticles.forEach(p => {
-        p.x += p.vx * dt * 60;
-        p.y += p.vy * dt * 60;
-        p.vy += 0.1 * dt * 60;
-        p.life -= dt;
-      });
-      return this.popProgress < 1;
-    }
-    
-    this.age += dt;
-    this.wobble += this.wobbleSpeed;
-    this.thicknessVariation += this.rotationSpeed;
-    
-    // Gentle floating
-    this.vy -= 0.005 * dt * 60; // buoyancy
-    this.vx *= 0.995;
-    this.vy *= 0.995;
-    
-    // Wind toward mouse when blowing
-    if (mouse.blowing) {
-      const dx = this.x - mouse.x;
-      const dy = this.y - mouse.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < 200) {
-        const force = (200 - dist) / 200 * 0.3;
-        this.vx += (dx / dist) * force;
-        this.vy += (dy / dist) * force;
-      }
-    }
-    
-    // Wobble effect on radius
-    const wobbleR = this.r * (1 + Math.sin(this.wobble) * 0.03);
-    
-    this.x += this.vx * dt * 60;
-    this.y += this.vy * dt * 60;
-    
-    // Boundaries - soft bounce
-    if (this.x < this.r) { this.x = this.r; this.vx *= -0.5; }
-    if (this.x > W - this.r) { this.x = W - this.r; this.vx *= -0.5; }
-    if (this.y < this.r) { this.y = this.r; this.vy *= -0.5; }
-    if (this.y > H - this.r) { this.y = H - this.r; this.vy *= -0.5; }
-    
-    // Thin over time - eventually pop
-    this.baseThickness -= dt * 5;
-    if (this.baseThickness < 80) {
-      this.pop();
-    }
-    
-    return true;
-  }
-  
-  pop() {
-    if (this.popping) return;
-    this.popping = true;
-    playPop(this.r);
-    
-    // Create pop particles
-    const numParticles = Math.floor(this.r / 2);
-    for (let i = 0; i < numParticles; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 1 + Math.random() * 3;
-      this.popParticles.push({
-        x: this.x + Math.cos(angle) * this.r * Math.random(),
-        y: this.y + Math.sin(angle) * this.r * Math.random(),
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        life: 0.5 + Math.random() * 0.5,
-        color: this.getColorAt(Math.random(), Math.random())
-      });
-    }
-  }
-  
-  getColorAt(u, v) {
-    // u, v from 0 to 1 across the bubble surface
-    const angle = Math.atan2(v - 0.5, u - 0.5) + this.thicknessVariation;
-    const dist = Math.sqrt((u - 0.5) ** 2 + (v - 0.5) ** 2) * 2;
-    
-    // Thickness varies across surface - thinner at top (draining)
-    const thickness = this.baseThickness * (0.7 + 0.3 * v) * (1 + Math.sin(angle * 3) * 0.3);
-    
-    const [r, g, b] = interferenceColor(thickness, dist * 0.5);
-    return `rgb(${Math.floor(r * 255)}, ${Math.floor(g * 255)}, ${Math.floor(b * 255)})`;
-  }
-  
-  draw() {
-    if (this.popping) {
-      // Draw pop particles
-      this.popParticles.forEach(p => {
-        if (p.life > 0) {
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
-          ctx.fillStyle = p.color;
-          ctx.globalAlpha = p.life;
-          ctx.fill();
-          ctx.globalAlpha = 1;
-        }
-      });
-      return;
-    }
-    
-    const wobbleR = this.r * (1 + Math.sin(this.wobble) * 0.03);
-    
-    // Draw bubble with gradient showing interference
-    const gradient = ctx.createRadialGradient(
-      this.x - wobbleR * 0.3, this.y - wobbleR * 0.3, 0,
-      this.x, this.y, wobbleR
-    );
-    
-    // Sample interference colors at different points
-    const colors = [];
-    for (let i = 0; i <= 4; i++) {
-      const t = i / 4;
-      const thickness = this.baseThickness * (0.6 + t * 0.4);
-      const [r, g, b] = interferenceColor(thickness + Math.sin(this.thicknessVariation + t * 4) * 100);
-      colors.push({ t, r: Math.floor(r * 200 + 55), g: Math.floor(g * 200 + 55), b: Math.floor(b * 200 + 55) });
-    }
-    
-    colors.forEach((c, i) => {
-      const alpha = i === colors.length - 1 ? 0.1 : 0.4;
-      gradient.addColorStop(c.t, `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`);
-    });
-    
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, wobbleR, 0, Math.PI * 2);
-    ctx.fillStyle = gradient;
-    ctx.fill();
-    
-    // Specular highlight
-    ctx.beginPath();
-    ctx.arc(this.x - wobbleR * 0.25, this.y - wobbleR * 0.25, wobbleR * 0.2, 0, Math.PI * 2);
-    const specGrad = ctx.createRadialGradient(
-      this.x - wobbleR * 0.25, this.y - wobbleR * 0.25, 0,
-      this.x - wobbleR * 0.25, this.y - wobbleR * 0.25, wobbleR * 0.2
-    );
-    specGrad.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
-    specGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-    ctx.fillStyle = specGrad;
-    ctx.fill();
-    
-    // Rim highlight
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, wobbleR, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    
-    // Swirling colors on surface
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, wobbleR - 2, 0, Math.PI * 2);
-    ctx.clip();
-    
-    for (let i = 0; i < 5; i++) {
-      const angle = this.thicknessVariation + i * Math.PI * 0.4;
-      const dist = wobbleR * 0.4;
-      const cx = this.x + Math.cos(angle) * dist;
-      const cy = this.y + Math.sin(angle) * dist;
-      const thickness = this.baseThickness + Math.sin(angle * 2 + this.age) * 150;
-      const [r, g, b] = interferenceColor(thickness);
-      
-      const swirlGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, wobbleR * 0.5);
-      swirlGrad.addColorStop(0, `rgba(${Math.floor(r * 200 + 55)}, ${Math.floor(g * 200 + 55)}, ${Math.floor(b * 200 + 55)}, 0.3)`);
-      swirlGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = swirlGrad;
-      ctx.fillRect(this.x - wobbleR, this.y - wobbleR, wobbleR * 2, wobbleR * 2);
-    }
-    ctx.restore();
-  }
-  
-  contains(px, py) {
-    const dx = px - this.x;
-    const dy = py - this.y;
-    return dx * dx + dy * dy < this.r * this.r;
-  }
-}
-
-// Check bubble collisions
-function handleCollisions() {
-  for (let i = 0; i < bubbles.length; i++) {
-    for (let j = i + 1; j < bubbles.length; j++) {
-      const a = bubbles[i];
-      const b = bubbles[j];
-      if (a.popping || b.popping) continue;
-      
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const minDist = a.r + b.r;
-      
-      if (dist < minDist) {
-        // Merge or bounce
-        if (dist < minDist * 0.7 && Math.random() < 0.02) {
-          // Merge - bigger bubble absorbs smaller
-          if (a.r > b.r) {
-            a.r = Math.sqrt(a.r * a.r + b.r * b.r * 0.5);
-            b.pop();
-          } else {
-            b.r = Math.sqrt(b.r * b.r + a.r * a.r * 0.5);
-            a.pop();
-          }
-          playMerge();
-        } else {
-          // Soft bounce
-          const overlap = minDist - dist;
-          const nx = dx / dist;
-          const ny = dy / dist;
-          
-          a.x -= nx * overlap * 0.5;
-          a.y -= ny * overlap * 0.5;
-          b.x += nx * overlap * 0.5;
-          b.y += ny * overlap * 0.5;
-          
-          // Exchange some velocity
-          const relVel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
-          a.vx -= relVel * nx * 0.3;
-          a.vy -= relVel * ny * 0.3;
-          b.vx += relVel * nx * 0.3;
-          b.vy += relVel * ny * 0.3;
-        }
-      }
-    }
-  }
-}
-
-// Audio
-function initAudio() {
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  masterGain = audioCtx.createGain();
-  masterGain.gain.value = 0.3;
-  masterGain.connect(audioCtx.destination);
-}
-
-function playPop(size) {
-  if (!audioCtx) return;
-  
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  const filter = audioCtx.createBiquadFilter();
-  
-  // Higher pitch for smaller bubbles
-  osc.frequency.value = 800 + (100 - size) * 10;
-  osc.type = 'sine';
-  
-  filter.type = 'highpass';
-  filter.frequency.value = 400;
-  
-  gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-  gain.gain.exponentialDecayTo = (v, t) => gain.gain.exponentialRampToValueAtTime(v, t);
-  gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-  
-  osc.connect(filter);
-  filter.connect(gain);
-  gain.connect(masterGain);
-  
-  osc.start();
-  osc.stop(audioCtx.currentTime + 0.1);
-  
-  // Add a tiny noise burst
-  const bufferSize = audioCtx.sampleRate * 0.05;
-  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
-  }
-  const noise = audioCtx.createBufferSource();
-  noise.buffer = buffer;
-  const noiseGain = audioCtx.createGain();
-  noiseGain.gain.value = 0.1;
-  noise.connect(noiseGain);
-  noiseGain.connect(masterGain);
-  noise.start();
-}
-
-function playMerge() {
-  if (!audioCtx) return;
-  
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  
-  osc.frequency.setValueAtTime(300, audioCtx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.2);
-  osc.type = 'sine';
-  
-  gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
-  
-  osc.connect(gain);
-  gain.connect(masterGain);
-  
-  osc.start();
-  osc.stop(audioCtx.currentTime + 0.2);
-}
-
-function playBlow() {
-  if (!audioCtx) return;
-  
-  const bufferSize = audioCtx.sampleRate * 0.3;
-  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    const t = i / bufferSize;
-    data[i] = (Math.random() * 2 - 1) * 0.3 * Math.sin(t * Math.PI);
-  }
-  
-  const noise = audioCtx.createBufferSource();
-  noise.buffer = buffer;
-  
-  const filter = audioCtx.createBiquadFilter();
-  filter.type = 'bandpass';
-  filter.frequency.value = 500;
-  filter.Q.value = 2;
-  
-  const gain = audioCtx.createGain();
-  gain.gain.value = 0.15;
-  
-  noise.connect(filter);
-  filter.connect(gain);
-  gain.connect(masterGain);
-  noise.start();
-}
-
-// Spawn bubble at position
-function spawnBubble(x, y) {
-  const r = 20 + Math.random() * 40;
-  const angle = Math.random() * Math.PI * 2;
-  const speed = 0.5 + Math.random() * 1;
-  bubbles.push(new Bubble(x, y, r, Math.cos(angle) * speed, Math.sin(angle) * speed - 1));
-}
-
-// Input
 canvas.addEventListener('mousedown', (e) => {
-  if (!audioCtx) initAudio();
-  mouse.down = true;
-  mouse.x = e.clientX;
-  mouse.y = e.clientY;
-  
-  // Check if clicking on a bubble
-  let popped = false;
-  for (const b of bubbles) {
-    if (!b.popping && b.contains(mouse.x, mouse.y)) {
-      b.pop();
-      popped = true;
-      break;
-    }
-  }
-  
-  if (!popped) {
-    // Start blowing
-    mouse.blowing = true;
-    playBlow();
-  }
+  initAudio();
+  mouseDown = true;
+  mouseX = e.clientX;
+  mouseY = e.clientY;
 });
 
-canvas.addEventListener('mouseup', () => {
-  if (mouse.blowing && mouse.down) {
-    // Release creates a bubble
-    spawnBubble(mouse.x, mouse.y);
-  }
-  mouse.down = false;
-  mouse.blowing = false;
-});
+canvas.addEventListener('mouseup', () => mouseDown = false);
+canvas.addEventListener('mouseleave', () => mouseDown = false);
 
 canvas.addEventListener('mousemove', (e) => {
-  mouse.x = e.clientX;
-  mouse.y = e.clientY;
+  mouseX = e.clientX;
+  mouseY = e.clientY;
 });
 
 // Touch support
 canvas.addEventListener('touchstart', (e) => {
   e.preventDefault();
-  if (!audioCtx) initAudio();
+  initAudio();
   const touch = e.touches[0];
-  mouse.x = touch.clientX;
-  mouse.y = touch.clientY;
-  mouse.down = true;
-  
-  let popped = false;
-  for (const b of bubbles) {
-    if (!b.popping && b.contains(mouse.x, mouse.y)) {
-      b.pop();
-      popped = true;
-      break;
-    }
-  }
-  
-  if (!popped) {
-    mouse.blowing = true;
-    playBlow();
-  }
-});
-
-canvas.addEventListener('touchend', (e) => {
-  e.preventDefault();
-  if (mouse.blowing && mouse.down) {
-    spawnBubble(mouse.x, mouse.y);
-  }
-  mouse.down = false;
-  mouse.blowing = false;
+  spawnPendulum(touch.clientX, touch.clientY);
+  mouseDown = true;
+  mouseX = touch.clientX;
+  mouseY = touch.clientY;
 });
 
 canvas.addEventListener('touchmove', (e) => {
-  e.preventDefault();
   const touch = e.touches[0];
-  mouse.x = touch.clientX;
-  mouse.y = touch.clientY;
+  mouseX = touch.clientX;
+  mouseY = touch.clientY;
 });
 
-// Initial bubbles
-for (let i = 0; i < 8; i++) {
-  spawnBubble(
-    W * 0.2 + Math.random() * W * 0.6,
-    H * 0.3 + Math.random() * H * 0.5
-  );
-}
+canvas.addEventListener('touchend', () => mouseDown = false);
 
-// Ambient spawning
-let lastSpawn = 0;
-function ambientSpawn(time) {
-  if (time - lastSpawn > 3000 && bubbles.filter(b => !b.popping).length < 15) {
-    spawnBubble(Math.random() * W, H + 50);
-    lastSpawn = time;
-  }
-}
+// Initialize
+resize();
 
-// Main loop
-let lastTime = 0;
-function animate(time) {
-  const dt = Math.min((time - lastTime) / 1000, 0.1);
-  lastTime = time;
-  
-  // Dark gradient background
-  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
-  bgGrad.addColorStop(0, '#0a0a12');
-  bgGrad.addColorStop(1, '#0f0a18');
-  ctx.fillStyle = bgGrad;
-  ctx.fillRect(0, 0, W, H);
-  
-  // Subtle ambient particles (dust motes)
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.02)';
-  for (let i = 0; i < 50; i++) {
-    const x = (Math.sin(time * 0.0001 + i * 0.5) * 0.5 + 0.5) * W;
-    const y = (Math.cos(time * 0.00015 + i * 0.7) * 0.5 + 0.5) * H;
-    ctx.beginPath();
-    ctx.arc(x, y, 1, 0, Math.PI * 2);
-    ctx.fill();
+// Spawn initial pendulums showing chaos divergence
+setTimeout(() => {
+  const baseAngle = Math.PI * 0.75;
+  for (let i = 0; i < 3; i++) {
+    const scale = Math.min(W, H) * 0.18;
+    const offset = (i - 1) * 80;
+    // Tiny differences in initial angle
+    const a1 = baseAngle + i * 0.001;
+    const a2 = baseAngle + i * 0.001;
+    const hues = [180, 300, 320];
+    const p = new DoublePendulum(cx + offset, cy - 100, scale, scale, 10, 10, a1, a2, hues[i]);
+    pendulums.push(p);
   }
-  
-  // Draw blow indicator
-  if (mouse.blowing) {
-    ctx.beginPath();
-    ctx.arc(mouse.x, mouse.y, 30 + Math.sin(time * 0.01) * 5, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  }
-  
-  handleCollisions();
-  
-  // Update and draw bubbles
-  bubbles = bubbles.filter(b => b.update(dt));
-  
-  // Sort by size for proper layering
-  bubbles.sort((a, b) => b.r - a.r);
-  bubbles.forEach(b => b.draw());
-  
-  ambientSpawn(time);
-  
-  requestAnimationFrame(animate);
-}
+}, 100);
 
-requestAnimationFrame(animate);
+animate();
 </script>
 </body>
 </html>
