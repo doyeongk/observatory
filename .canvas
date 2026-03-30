@@ -3,226 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>double</title>
+<title>retrograde</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { 
-  background: #0a0a0f; 
-  overflow: hidden; 
-  font-family: monospace;
-}
+body { background: #0a0010; overflow: hidden; }
 canvas { display: block; }
-#info {
-  position: fixed;
-  bottom: 20px;
-  left: 20px;
-  color: rgba(255, 100, 200, 0.6);
-  font-size: 12px;
-  pointer-events: none;
-}
 </style>
 </head>
 <body>
-<canvas id="canvas"></canvas>
-<div id="info">click to spawn · drag to disturb</div>
+<canvas id="c"></canvas>
 <script>
-const canvas = document.getElementById('canvas');
+const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
 let W, H, cx, cy;
-const g = 9.81;
-const dt = 0.016;
-const substeps = 8;
-
-// Audio context
-let audioCtx = null;
-let oscillators = [];
-let gainNodes = [];
-
-function initAudio() {
-  if (audioCtx) return;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  
-  // Create oscillators for each pendulum
-  for (let i = 0; i < 4; i++) {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    const filter = audioCtx.createBiquadFilter();
-    
-    osc.type = 'sine';
-    osc.frequency.value = 100 + i * 50;
-    filter.type = 'lowpass';
-    filter.frequency.value = 400;
-    filter.Q.value = 2;
-    gain.gain.value = 0;
-    
-    osc.connect(filter);
-    filter.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start();
-    
-    oscillators.push(osc);
-    gainNodes.push(gain);
-  }
-}
-
-class DoublePendulum {
-  constructor(x, y, l1, l2, m1, m2, a1, a2, hue) {
-    this.ox = x;
-    this.oy = y;
-    this.l1 = l1;
-    this.l2 = l2;
-    this.m1 = m1;
-    this.m2 = m2;
-    this.a1 = a1;
-    this.a2 = a2;
-    this.v1 = 0;
-    this.v2 = 0;
-    this.hue = hue;
-    this.trail = [];
-    this.maxTrail = 800;
-  }
-
-  update() {
-    for (let i = 0; i < substeps; i++) {
-      const subDt = dt / substeps;
-      
-      // Double pendulum equations of motion
-      const { l1, l2, m1, m2, a1, a2, v1, v2 } = this;
-      
-      const num1 = -g * (2 * m1 + m2) * Math.sin(a1);
-      const num2 = -m2 * g * Math.sin(a1 - 2 * a2);
-      const num3 = -2 * Math.sin(a1 - a2) * m2;
-      const num4 = v2 * v2 * l2 + v1 * v1 * l1 * Math.cos(a1 - a2);
-      const den = l1 * (2 * m1 + m2 - m2 * Math.cos(2 * a1 - 2 * a2));
-      const acc1 = (num1 + num2 + num3 * num4) / den;
-
-      const num5 = 2 * Math.sin(a1 - a2);
-      const num6 = v1 * v1 * l1 * (m1 + m2);
-      const num7 = g * (m1 + m2) * Math.cos(a1);
-      const num8 = v2 * v2 * l2 * m2 * Math.cos(a1 - a2);
-      const den2 = l2 * (2 * m1 + m2 - m2 * Math.cos(2 * a1 - 2 * a2));
-      const acc2 = (num5 * (num6 + num7 + num8)) / den2;
-
-      this.v1 += acc1 * subDt;
-      this.v2 += acc2 * subDt;
-      this.a1 += this.v1 * subDt;
-      this.a2 += this.v2 * subDt;
-
-      // Damping
-      this.v1 *= 0.9999;
-      this.v2 *= 0.9999;
-    }
-
-    // Calculate end positions
-    const x1 = this.ox + this.l1 * Math.sin(this.a1);
-    const y1 = this.oy + this.l1 * Math.cos(this.a1);
-    const x2 = x1 + this.l2 * Math.sin(this.a2);
-    const y2 = y1 + this.l2 * Math.cos(this.a2);
-
-    this.x1 = x1;
-    this.y1 = y1;
-    this.x2 = x2;
-    this.y2 = y2;
-
-    // Add to trail
-    this.trail.push({ x: x2, y: y2, v: Math.abs(this.v2) });
-    if (this.trail.length > this.maxTrail) {
-      this.trail.shift();
-    }
-  }
-
-  draw() {
-    // Draw trail with gradient based on velocity and age
-    if (this.trail.length > 1) {
-      for (let i = 1; i < this.trail.length; i++) {
-        const p1 = this.trail[i - 1];
-        const p2 = this.trail[i];
-        const age = i / this.trail.length;
-        const vel = Math.min(p2.v * 0.1, 1);
-        
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        
-        // Color shifts based on velocity and hue
-        const h = (this.hue + vel * 60) % 360;
-        const alpha = age * 0.8 * (0.3 + vel * 0.7);
-        ctx.strokeStyle = `hsla(${h}, 100%, 65%, ${alpha})`;
-        ctx.lineWidth = 1 + vel * 2;
-        ctx.stroke();
-      }
-    }
-
-    // Draw arms
-    ctx.beginPath();
-    ctx.moveTo(this.ox, this.oy);
-    ctx.lineTo(this.x1, this.y1);
-    ctx.lineTo(this.x2, this.y2);
-    ctx.strokeStyle = `hsla(${this.hue}, 60%, 50%, 0.4)`;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // Draw pivot
-    ctx.beginPath();
-    ctx.arc(this.ox, this.oy, 4, 0, Math.PI * 2);
-    ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, 0.8)`;
-    ctx.fill();
-
-    // Draw joints with glow
-    ctx.shadowBlur = 15;
-    ctx.shadowColor = `hsla(${this.hue}, 100%, 60%, 0.8)`;
-    
-    ctx.beginPath();
-    ctx.arc(this.x1, this.y1, 6, 0, Math.PI * 2);
-    ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, 0.9)`;
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.arc(this.x2, this.y2, 8, 0, Math.PI * 2);
-    ctx.fillStyle = `hsla(${(this.hue + 30) % 360}, 100%, 70%, 1)`;
-    ctx.fill();
-    
-    ctx.shadowBlur = 0;
-  }
-
-  perturb(mx, my, strength) {
-    const dx1 = this.x1 - mx;
-    const dy1 = this.y1 - my;
-    const dx2 = this.x2 - mx;
-    const dy2 = this.y2 - my;
-    const d1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
-    const d2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-    
-    if (d1 < 150) {
-      this.v1 += (Math.random() - 0.5) * strength * (1 - d1 / 150);
-    }
-    if (d2 < 150) {
-      this.v2 += (Math.random() - 0.5) * strength * (1 - d2 / 150);
-    }
-  }
-}
-
-let pendulums = [];
-
-function spawnPendulum(x, y) {
-  const scale = Math.min(W, H) * 0.15;
-  const l1 = scale * (0.8 + Math.random() * 0.4);
-  const l2 = scale * (0.8 + Math.random() * 0.4);
-  const a1 = Math.PI * (0.5 + Math.random());
-  const a2 = Math.PI * (0.5 + Math.random());
-  
-  // Palette: cyan (180), pink (320), purple (280)
-  const hues = [180, 300, 320, 260];
-  const hue = hues[pendulums.length % hues.length];
-  
-  const p = new DoublePendulum(x, y, l1, l2, 10, 10, a1, a2, hue);
-  pendulums.push(p);
-  
-  if (pendulums.length > 6) {
-    pendulums.shift();
-  }
-}
+let mouseX = 0.5, mouseY = 0.5;
+let speed = 1;
+let targetSpeed = 1;
+let time = 0;
+let audioStarted = false;
+let audioCtx, oscillator, gainNode, lfo, lfoGain;
 
 function resize() {
   W = canvas.width = window.innerWidth;
@@ -230,104 +30,285 @@ function resize() {
   cx = W / 2;
   cy = H / 2;
 }
-
-function updateAudio() {
-  if (!audioCtx || pendulums.length === 0) return;
-  
-  pendulums.forEach((p, i) => {
-    if (i >= gainNodes.length) return;
-    
-    // Map angular velocity to pitch and volume
-    const energy = Math.abs(p.v1) + Math.abs(p.v2);
-    const freq = 80 + energy * 30;
-    const vol = Math.min(energy * 0.02, 0.08);
-    
-    oscillators[i].frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.1);
-    gainNodes[i].gain.setTargetAtTime(vol, audioCtx.currentTime, 0.1);
-  });
-}
-
-let mouseX = 0, mouseY = 0, mouseDown = false;
-
-function animate() {
-  // Fade trail
-  ctx.fillStyle = 'rgba(10, 10, 15, 0.08)';
-  ctx.fillRect(0, 0, W, H);
-
-  // Update and draw pendulums
-  pendulums.forEach(p => {
-    if (mouseDown) {
-      p.perturb(mouseX, mouseY, 0.3);
-    }
-    p.update();
-    p.draw();
-  });
-
-  updateAudio();
-  requestAnimationFrame(animate);
-}
-
-// Event listeners
+resize();
 window.addEventListener('resize', resize);
 
-canvas.addEventListener('click', (e) => {
-  initAudio();
-  spawnPendulum(e.clientX, e.clientY);
+// Mouse tracking
+document.addEventListener('mousemove', e => {
+  mouseX = e.clientX / W;
+  mouseY = e.clientY / H;
 });
 
-canvas.addEventListener('mousedown', (e) => {
-  initAudio();
-  mouseDown = true;
-  mouseX = e.clientX;
-  mouseY = e.clientY;
+document.addEventListener('click', () => {
+  targetSpeed = 4;
+  setTimeout(() => targetSpeed = 1, 800);
+  if (!audioStarted) initAudio();
 });
 
-canvas.addEventListener('mouseup', () => mouseDown = false);
-canvas.addEventListener('mouseleave', () => mouseDown = false);
-
-canvas.addEventListener('mousemove', (e) => {
-  mouseX = e.clientX;
-  mouseY = e.clientY;
+document.addEventListener('touchstart', e => {
+  targetSpeed = 4;
+  setTimeout(() => targetSpeed = 1, 800);
+  if (!audioStarted) initAudio();
 });
 
-// Touch support
-canvas.addEventListener('touchstart', (e) => {
-  e.preventDefault();
-  initAudio();
-  const touch = e.touches[0];
-  spawnPendulum(touch.clientX, touch.clientY);
-  mouseDown = true;
-  mouseX = touch.clientX;
-  mouseY = touch.clientY;
-});
+function initAudio() {
+  if (audioStarted) return;
+  audioStarted = true;
+  
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  
+  // Deep bass drone
+  oscillator = audioCtx.createOscillator();
+  oscillator.type = 'sawtooth';
+  oscillator.frequency.value = 55; // A1
+  
+  // LFO for wobble
+  lfo = audioCtx.createOscillator();
+  lfo.frequency.value = 0.3;
+  lfoGain = audioCtx.createGain();
+  lfoGain.gain.value = 5;
+  lfo.connect(lfoGain);
+  lfoGain.connect(oscillator.frequency);
+  
+  // Filter for that muffled synth sound
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 200;
+  filter.Q.value = 8;
+  
+  gainNode = audioCtx.createGain();
+  gainNode.gain.value = 0.15;
+  
+  oscillator.connect(filter);
+  filter.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+  
+  oscillator.start();
+  lfo.start();
+}
 
-canvas.addEventListener('touchmove', (e) => {
-  const touch = e.touches[0];
-  mouseX = touch.clientX;
-  mouseY = touch.clientY;
-});
+// Stars
+const stars = [];
+for (let i = 0; i < 200; i++) {
+  stars.push({
+    x: Math.random() * 2 - 1,
+    y: Math.random() * 0.5,
+    z: Math.random() * 1000,
+    size: Math.random() * 2 + 0.5
+  });
+}
 
-canvas.addEventListener('touchend', () => mouseDown = false);
-
-// Initialize
-resize();
-
-// Spawn initial pendulums showing chaos divergence
-setTimeout(() => {
-  const baseAngle = Math.PI * 0.75;
-  for (let i = 0; i < 3; i++) {
-    const scale = Math.min(W, H) * 0.18;
-    const offset = (i - 1) * 80;
-    // Tiny differences in initial angle
-    const a1 = baseAngle + i * 0.001;
-    const a2 = baseAngle + i * 0.001;
-    const hues = [180, 300, 320];
-    const p = new DoublePendulum(cx + offset, cy - 100, scale, scale, 10, 10, a1, a2, hues[i]);
-    pendulums.push(p);
+// Mountain generation
+function generateMountain() {
+  const points = [];
+  let y = 0.3 + Math.random() * 0.1;
+  for (let i = 0; i <= 20; i++) {
+    const x = i / 20;
+    if (i === 0 || i === 20) {
+      points.push({ x, y: 0.5 });
+    } else {
+      y += (Math.random() - 0.5) * 0.08;
+      y = Math.max(0.15, Math.min(0.45, y));
+      points.push({ x, y });
+    }
   }
-}, 100);
+  return points;
+}
 
-animate();
+const mountains = [
+  { points: generateMountain(), z: 800, color: '#1a0030' },
+  { points: generateMountain(), z: 600, color: '#2a0848' },
+  { points: generateMountain(), z: 400, color: '#3d1060' }
+];
+
+function draw() {
+  // Smooth speed changes
+  speed += (targetSpeed - speed) * 0.1;
+  time += 0.016 * speed;
+  
+  // Camera tilt from mouse
+  const tiltX = (mouseX - 0.5) * 0.3;
+  const tiltY = (mouseY - 0.5) * 0.15;
+  
+  // Sky gradient
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, H * 0.6);
+  skyGrad.addColorStop(0, '#0a0015');
+  skyGrad.addColorStop(0.5, '#1a0030');
+  skyGrad.addColorStop(1, '#3d0066');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, W, H);
+  
+  // Stars
+  ctx.save();
+  for (const star of stars) {
+    star.z -= speed * 8;
+    if (star.z < 1) {
+      star.z = 1000;
+      star.x = Math.random() * 2 - 1;
+      star.y = Math.random() * 0.5;
+    }
+    
+    const perspective = 500 / star.z;
+    const sx = cx + (star.x + tiltX) * W * perspective;
+    const sy = (H * 0.4) * (1 - star.y * perspective) + tiltY * 100;
+    
+    if (sy < H * 0.55 && sy > 0 && sx > 0 && sx < W) {
+      const alpha = Math.min(1, (1000 - star.z) / 500);
+      const twinkle = 0.5 + 0.5 * Math.sin(time * 3 + star.z);
+      ctx.fillStyle = `rgba(255, 220, 255, ${alpha * twinkle})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, star.size * perspective * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+  
+  // Sun
+  const sunY = H * 0.48 + tiltY * 50;
+  const sunX = cx + tiltX * 100;
+  const sunRadius = Math.min(W, H) * 0.15;
+  const pulse = 1 + 0.05 * Math.sin(time * 2);
+  
+  // Sun glow
+  const glowGrad = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunRadius * 2.5 * pulse);
+  glowGrad.addColorStop(0, 'rgba(255, 100, 200, 0.6)');
+  glowGrad.addColorStop(0.3, 'rgba(255, 50, 150, 0.3)');
+  glowGrad.addColorStop(0.6, 'rgba(180, 0, 255, 0.1)');
+  glowGrad.addColorStop(1, 'rgba(100, 0, 200, 0)');
+  ctx.fillStyle = glowGrad;
+  ctx.fillRect(0, 0, W, H);
+  
+  // Sun body with horizontal stripes
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(sunX, sunY, sunRadius * pulse, 0, Math.PI * 2);
+  ctx.clip();
+  
+  const sunGrad = ctx.createLinearGradient(sunX, sunY - sunRadius, sunX, sunY + sunRadius);
+  sunGrad.addColorStop(0, '#ff71ce');
+  sunGrad.addColorStop(0.5, '#ff3399');
+  sunGrad.addColorStop(1, '#b967ff');
+  ctx.fillStyle = sunGrad;
+  ctx.fillRect(sunX - sunRadius, sunY - sunRadius, sunRadius * 2, sunRadius * 2);
+  
+  // Stripe cutouts
+  ctx.globalCompositeOperation = 'destination-out';
+  for (let i = 0; i < 8; i++) {
+    const stripeY = sunY + (i - 3.5) * (sunRadius * 0.2);
+    const stripeH = 3 + i * 1.5;
+    ctx.fillStyle = 'rgba(0,0,0,1)';
+    ctx.fillRect(sunX - sunRadius, stripeY, sunRadius * 2, stripeH);
+  }
+  ctx.restore();
+  
+  // Mountains
+  for (const mountain of mountains) {
+    const perspective = 300 / mountain.z;
+    ctx.beginPath();
+    
+    const baseY = H * 0.55 + tiltY * 30;
+    
+    for (let i = 0; i < mountain.points.length; i++) {
+      const p = mountain.points[i];
+      const mx = p.x * W;
+      const my = baseY - (0.5 - p.y) * H * perspective * 1.5;
+      
+      if (i === 0) ctx.moveTo(mx, my);
+      else ctx.lineTo(mx, my);
+    }
+    ctx.lineTo(W, H);
+    ctx.lineTo(0, H);
+    ctx.closePath();
+    
+    ctx.fillStyle = mountain.color;
+    ctx.fill();
+    
+    // Mountain wireframe
+    ctx.strokeStyle = mountain.z < 500 ? '#ff00ff44' : '#ff00ff22';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i < mountain.points.length; i++) {
+      const p = mountain.points[i];
+      const mx = p.x * W;
+      const my = baseY - (0.5 - p.y) * H * perspective * 1.5;
+      if (i === 0) ctx.moveTo(mx, my);
+      else ctx.lineTo(mx, my);
+    }
+    ctx.stroke();
+  }
+  
+  // Ground plane
+  const horizonY = H * 0.55 + tiltY * 30;
+  const groundGrad = ctx.createLinearGradient(0, horizonY, 0, H);
+  groundGrad.addColorStop(0, '#1a0030');
+  groundGrad.addColorStop(1, '#0a0015');
+  ctx.fillStyle = groundGrad;
+  ctx.fillRect(0, horizonY, W, H - horizonY);
+  
+  // Grid
+  const gridOffset = (time * 100) % 100;
+  const vanishY = horizonY;
+  const vanishX = cx + tiltX * W * 0.5;
+  
+  // Horizontal lines
+  ctx.strokeStyle = '#00ffff';
+  ctx.lineWidth = 1;
+  
+  for (let i = 0; i < 20; i++) {
+    const t = (i * 50 + gridOffset) / 1000;
+    const y = vanishY + (H - vanishY) * Math.pow(t, 0.7) * 2;
+    
+    if (y > vanishY && y < H) {
+      const alpha = Math.min(1, (y - vanishY) / 100);
+      ctx.strokeStyle = `rgba(0, 255, 255, ${alpha * 0.8})`;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+    }
+  }
+  
+  // Vertical lines (perspective)
+  const numLines = 30;
+  for (let i = -numLines; i <= numLines; i++) {
+    const xOffset = i * (W / numLines);
+    const alpha = 1 - Math.abs(i) / numLines * 0.5;
+    ctx.strokeStyle = `rgba(0, 255, 255, ${alpha * 0.6})`;
+    ctx.beginPath();
+    ctx.moveTo(vanishX, vanishY);
+    ctx.lineTo(vanishX + xOffset * 3, H);
+    ctx.stroke();
+  }
+  
+  // Scanlines overlay
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
+  for (let y = 0; y < H; y += 3) {
+    ctx.fillRect(0, y, W, 1);
+  }
+  
+  // Chromatic aberration on edges
+  const edgeGrad = ctx.createLinearGradient(0, 0, W * 0.1, 0);
+  edgeGrad.addColorStop(0, 'rgba(255, 0, 100, 0.1)');
+  edgeGrad.addColorStop(1, 'rgba(255, 0, 100, 0)');
+  ctx.fillStyle = edgeGrad;
+  ctx.fillRect(0, 0, W * 0.15, H);
+  
+  const edgeGrad2 = ctx.createLinearGradient(W, 0, W * 0.9, 0);
+  edgeGrad2.addColorStop(0, 'rgba(0, 255, 255, 0.1)');
+  edgeGrad2.addColorStop(1, 'rgba(0, 255, 255, 0)');
+  ctx.fillStyle = edgeGrad2;
+  ctx.fillRect(W * 0.85, 0, W * 0.15, H);
+  
+  // Update audio
+  if (audioStarted && oscillator) {
+    oscillator.frequency.value = 55 + speed * 10;
+    gainNode.gain.value = 0.1 + speed * 0.05;
+  }
+  
+  requestAnimationFrame(draw);
+}
+
+draw();
 </script>
 </body>
 </html>
