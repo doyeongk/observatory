@@ -3,10 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>kaleidoscope</title>
+<title>rime</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: #000; overflow: hidden; }
+body { 
+  background: #0a0a0f; 
+  overflow: hidden; 
+  cursor: crosshair;
+}
 canvas { display: block; }
 </style>
 </head>
@@ -16,279 +20,298 @@ canvas { display: block; }
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
-let W, H, cx, cy;
-let mouseX = 0, mouseY = 0;
-let rotation = 0;
-let segments = 8;
-let seedShapes = [];
-let patternSeed = 0;
-let audioCtx, masterGain;
-let oscillators = [];
-let audioStarted = false;
+let W, H;
+let grid;
+let cellSize = 3;
+let cols, rows;
+let walkers = [];
+let crystalPixels = [];
+let mouse = { x: -1000, y: -1000 };
+let audioCtx = null;
+let time = 0;
 
 function resize() {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
-  cx = W / 2;
-  cy = H / 2;
+  cols = Math.floor(W / cellSize);
+  rows = Math.floor(H / cellSize);
+  initGrid();
 }
-resize();
-window.addEventListener('resize', resize);
 
-// Mouse tracking
-document.addEventListener('mousemove', e => {
-  mouseX = e.clientX;
-  mouseY = e.clientY;
-});
+function initGrid() {
+  grid = new Array(cols * rows).fill(0);
+  crystalPixels = [];
+  walkers = [];
+  
+  // Seed initial crystals at edges (like frost forming from window frame)
+  for (let i = 0; i < cols; i++) {
+    if (Math.random() < 0.02) {
+      const idx = i;
+      grid[idx] = 1;
+      crystalPixels.push({ x: i, y: 0, age: 0, seed: Math.random() });
+    }
+    if (Math.random() < 0.02) {
+      const idx = i + (rows - 1) * cols;
+      grid[idx] = 1;
+      crystalPixels.push({ x: i, y: rows - 1, age: 0, seed: Math.random() });
+    }
+  }
+  for (let j = 0; j < rows; j++) {
+    if (Math.random() < 0.02) {
+      const idx = j * cols;
+      grid[idx] = 1;
+      crystalPixels.push({ x: 0, y: j, age: 0, seed: Math.random() });
+    }
+    if (Math.random() < 0.02) {
+      const idx = (cols - 1) + j * cols;
+      grid[idx] = 1;
+      crystalPixels.push({ x: cols - 1, y: j, age: 0, seed: Math.random() });
+    }
+  }
+  
+  // Spawn initial walkers
+  for (let i = 0; i < 2000; i++) {
+    spawnWalker();
+  }
+}
 
-// Click to change pattern
-document.addEventListener('click', e => {
-  patternSeed++;
-  generateShapes();
-  if (!audioStarted) initAudio();
-  playChime();
-});
-
-// Scroll to change symmetry
-document.addEventListener('wheel', e => {
-  segments = Math.max(3, Math.min(16, segments + Math.sign(e.deltaY)));
-  updateHarmonics();
-});
+function spawnWalker() {
+  // Spawn from random edge
+  const edge = Math.floor(Math.random() * 4);
+  let x, y;
+  switch (edge) {
+    case 0: x = Math.random() * cols; y = 0; break;
+    case 1: x = Math.random() * cols; y = rows - 1; break;
+    case 2: x = 0; y = Math.random() * rows; break;
+    case 3: x = cols - 1; y = Math.random() * rows; break;
+  }
+  walkers.push({ x, y, steps: 0 });
+}
 
 function initAudio() {
-  if (audioStarted) return;
+  if (audioCtx) return;
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  masterGain = audioCtx.createGain();
-  masterGain.gain.value = 0.08;
-  masterGain.connect(audioCtx.destination);
-  
-  // Create harmonic drones based on symmetry
-  const baseFreq = 55; // A1
-  for (let i = 0; i < 5; i++) {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = baseFreq * (i + 1);
-    gain.gain.value = 0.15 / (i + 1);
-    osc.connect(gain);
-    gain.connect(masterGain);
-    osc.start();
-    oscillators.push({ osc, gain });
-  }
-  audioStarted = true;
-  updateHarmonics();
 }
 
-function updateHarmonics() {
-  if (!audioStarted) return;
-  const baseFreq = 55 * (segments / 8);
-  oscillators.forEach((o, i) => {
-    o.osc.frequency.setTargetAtTime(baseFreq * (i + 1), audioCtx.currentTime, 0.3);
-  });
-}
-
-function playChime() {
+function playChime(freq, vol = 0.03) {
   if (!audioCtx) return;
+  
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
-  osc.type = 'triangle';
-  osc.frequency.value = 440 * Math.pow(2, (segments - 8) / 12);
-  gain.gain.value = 0.3;
+  const filter = audioCtx.createBiquadFilter();
+  
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  
+  filter.type = 'highpass';
+  filter.frequency.setValueAtTime(2000, audioCtx.currentTime);
+  
+  gain.gain.setValueAtTime(vol, audioCtx.currentTime);
   gain.gain.exponentialDecayTo = gain.gain.exponentialRampToValueAtTime.bind(gain.gain);
-  osc.connect(gain);
-  gain.connect(masterGain);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+  
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(audioCtx.destination);
+  
   osc.start();
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
-  osc.stop(audioCtx.currentTime + 0.5);
+  osc.stop(audioCtx.currentTime + 0.3);
 }
 
-// Shape class for kaleidoscope elements
-class Shape {
-  constructor() {
-    this.reset();
-  }
+function seedCrystal(cx, cy) {
+  const gx = Math.floor(cx / cellSize);
+  const gy = Math.floor(cy / cellSize);
   
-  reset() {
-    this.type = Math.floor(Math.random() * 4); // 0: circle, 1: triangle, 2: rect, 3: line
-    this.x = Math.random() * 200 - 100;
-    this.y = Math.random() * 200 - 100;
-    this.size = Math.random() * 30 + 10;
-    this.angle = Math.random() * Math.PI * 2;
-    this.vx = (Math.random() - 0.5) * 0.5;
-    this.vy = (Math.random() - 0.5) * 0.5;
-    this.va = (Math.random() - 0.5) * 0.02;
-    this.hue = Math.random();
-    this.alpha = Math.random() * 0.5 + 0.3;
-  }
-  
-  update() {
-    this.x += this.vx;
-    this.y += this.vy;
-    this.angle += this.va;
-    
-    // Bounds check - stay in viewable triangle
-    const dist = Math.sqrt(this.x * this.x + this.y * this.y);
-    if (dist > 250) {
-      this.x *= 0.95;
-      this.y *= 0.95;
+  if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) {
+    const idx = gx + gy * cols;
+    if (grid[idx] === 0) {
+      grid[idx] = 1;
+      crystalPixels.push({ x: gx, y: gy, age: 0, seed: Math.random() });
+      playChime(800 + Math.random() * 400, 0.08);
     }
   }
+}
+
+function updateWalkers() {
+  const mouseGx = mouse.x / cellSize;
+  const mouseGy = mouse.y / cellSize;
+  const heatRadius = 40;
   
-  draw(ctx) {
-    ctx.save();
-    ctx.translate(this.x, this.y);
-    ctx.rotate(this.angle);
+  let attachCount = 0;
+  
+  for (let i = walkers.length - 1; i >= 0; i--) {
+    const w = walkers[i];
     
-    // Color palette: pink, cyan, purple
-    let color;
-    if (this.hue < 0.33) {
-      color = `rgba(255, 50, 150, ${this.alpha})`; // pink
-    } else if (this.hue < 0.66) {
-      color = `rgba(0, 255, 255, ${this.alpha})`; // cyan
-    } else {
-      color = `rgba(180, 50, 255, ${this.alpha})`; // purple
+    // Random walk with slight bias away from mouse (heat repels)
+    let dx = (Math.random() - 0.5) * 2;
+    let dy = (Math.random() - 0.5) * 2;
+    
+    // Heat repulsion
+    const distToMouse = Math.hypot(w.x - mouseGx, w.y - mouseGy);
+    if (distToMouse < heatRadius) {
+      const repel = (heatRadius - distToMouse) / heatRadius;
+      dx += (w.x - mouseGx) / distToMouse * repel * 0.5;
+      dy += (w.y - mouseGy) / distToMouse * repel * 0.5;
     }
     
-    ctx.fillStyle = color;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
+    w.x += dx;
+    w.y += dy;
+    w.steps++;
     
-    switch (this.type) {
-      case 0: // circle
-        ctx.beginPath();
-        ctx.arc(0, 0, this.size / 2, 0, Math.PI * 2);
-        ctx.fill();
-        break;
-      case 1: // triangle
-        ctx.beginPath();
-        for (let i = 0; i < 3; i++) {
-          const a = (i / 3) * Math.PI * 2;
-          const px = Math.cos(a) * this.size / 2;
-          const py = Math.sin(a) * this.size / 2;
-          if (i === 0) ctx.moveTo(px, py);
-          else ctx.lineTo(px, py);
+    // Wrap or respawn if out of bounds
+    if (w.x < 0 || w.x >= cols || w.y < 0 || w.y >= rows || w.steps > 5000) {
+      walkers.splice(i, 1);
+      spawnWalker();
+      continue;
+    }
+    
+    // Check for adjacent crystal (8-connected)
+    const gx = Math.floor(w.x);
+    const gy = Math.floor(w.y);
+    let adjacent = false;
+    
+    for (let ox = -1; ox <= 1 && !adjacent; ox++) {
+      for (let oy = -1; oy <= 1 && !adjacent; oy++) {
+        if (ox === 0 && oy === 0) continue;
+        const nx = gx + ox;
+        const ny = gy + oy;
+        if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+          if (grid[nx + ny * cols] === 1) {
+            adjacent = true;
+          }
         }
-        ctx.closePath();
-        ctx.fill();
-        break;
-      case 2: // rectangle
-        ctx.fillRect(-this.size / 2, -this.size / 4, this.size, this.size / 2);
-        break;
-      case 3: // line
-        ctx.beginPath();
-        ctx.moveTo(-this.size / 2, 0);
-        ctx.lineTo(this.size / 2, 0);
-        ctx.stroke();
-        break;
-    }
-    ctx.restore();
-  }
-}
-
-function generateShapes() {
-  seedShapes = [];
-  const count = 8 + (patternSeed % 8);
-  for (let i = 0; i < count; i++) {
-    seedShapes.push(new Shape());
-  }
-}
-generateShapes();
-
-function drawKaleidoscope(time) {
-  const radius = Math.min(W, H) * 0.45;
-  const segmentAngle = (Math.PI * 2) / segments;
-  
-  // Mouse affects rotation speed
-  const dx = mouseX - cx;
-  const dy = mouseY - cy;
-  const mouseAngle = Math.atan2(dy, dx);
-  const mouseDist = Math.sqrt(dx * dx + dy * dy);
-  rotation += 0.003 + (mouseDist / W) * 0.01;
-  
-  // Create clipping path for circle boundary
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-  ctx.clip();
-  
-  // Draw each kaleidoscope segment
-  for (let i = 0; i < segments; i++) {
-    const angle = segmentAngle * i + rotation;
-    const flip = i % 2 === 1;
-    
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(angle);
-    
-    if (flip) {
-      ctx.scale(1, -1);
+      }
     }
     
-    // Clip to segment wedge
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(radius * 1.5, 0);
-    ctx.arc(0, 0, radius * 1.5, 0, segmentAngle);
-    ctx.closePath();
-    ctx.clip();
-    
-    // Draw shapes
-    seedShapes.forEach(shape => shape.draw(ctx));
-    
-    ctx.restore();
+    // Attach to crystal with some stickiness probability
+    if (adjacent && Math.random() < 0.15) {
+      const idx = gx + gy * cols;
+      if (grid[idx] === 0) {
+        grid[idx] = 1;
+        crystalPixels.push({ x: gx, y: gy, age: 0, seed: Math.random() });
+        attachCount++;
+      }
+      walkers.splice(i, 1);
+      spawnWalker();
+    }
   }
   
-  ctx.restore();
-  
-  // Outer ring glow
-  const gradient = ctx.createRadialGradient(cx, cy, radius - 10, cx, cy, radius + 30);
-  gradient.addColorStop(0, 'rgba(255, 50, 150, 0.3)');
-  gradient.addColorStop(0.5, 'rgba(0, 255, 255, 0.2)');
-  gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  ctx.fillStyle = gradient;
-  ctx.beginPath();
-  ctx.arc(cx, cy, radius + 30, 0, Math.PI * 2);
-  ctx.fill();
-  
-  // Center jewel
-  const centerGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 20);
-  centerGrad.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
-  centerGrad.addColorStop(0.3, 'rgba(0, 255, 255, 0.6)');
-  centerGrad.addColorStop(0.7, 'rgba(255, 50, 150, 0.3)');
-  centerGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  ctx.fillStyle = centerGrad;
-  ctx.beginPath();
-  ctx.arc(cx, cy, 20, 0, Math.PI * 2);
-  ctx.fill();
+  // Audio feedback for crystal growth
+  if (attachCount > 0 && Math.random() < 0.1) {
+    const freq = 1200 + Math.random() * 1600;
+    playChime(freq, 0.02 * Math.min(attachCount, 5));
+  }
 }
 
-function animate(time) {
-  // Fade trail
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+function render() {
+  // Slight fade for trails
+  ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
   ctx.fillRect(0, 0, W, H);
   
-  // Update shapes
-  seedShapes.forEach(shape => shape.update());
+  time++;
   
-  // Draw kaleidoscope
-  drawKaleidoscope(time);
+  // Age crystals
+  for (const p of crystalPixels) {
+    p.age++;
+  }
   
-  // Subtle vignette
-  const vignette = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.7);
-  vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
-  vignette.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+  // Draw crystals
+  for (const p of crystalPixels) {
+    const age = Math.min(p.age / 500, 1);
+    const x = p.x * cellSize;
+    const y = p.y * cellSize;
+    
+    // Color gradient: cyan (new) -> pink (old) with seed variation
+    const hue = 180 + age * 150 + p.seed * 30; // 180 (cyan) to 330 (pink)
+    const sat = 80 + p.seed * 20;
+    const light = 50 + (1 - age) * 30;
+    const alpha = 0.7 + Math.sin(time * 0.02 + p.seed * 10) * 0.1;
+    
+    ctx.fillStyle = `hsla(${hue % 360}, ${sat}%, ${light}%, ${alpha})`;
+    ctx.fillRect(x, y, cellSize, cellSize);
+    
+    // Subtle glow for newer crystals
+    if (p.age < 100) {
+      const glow = (100 - p.age) / 100;
+      ctx.fillStyle = `hsla(${hue % 360}, 100%, 70%, ${glow * 0.3})`;
+      ctx.beginPath();
+      ctx.arc(x + cellSize / 2, y + cellSize / 2, cellSize * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  
+  // Draw a few walkers (not all, too noisy)
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+  for (let i = 0; i < walkers.length; i += 10) {
+    const w = walkers[i];
+    ctx.fillRect(w.x * cellSize, w.y * cellSize, 1, 1);
+  }
+  
+  // Mouse heat glow
+  if (mouse.x > 0 && mouse.y > 0) {
+    const gradient = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, 120);
+    gradient.addColorStop(0, 'rgba(255, 150, 100, 0.1)');
+    gradient.addColorStop(1, 'rgba(255, 150, 100, 0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(mouse.x - 120, mouse.y - 120, 240, 240);
+  }
+  
+  // Frost border vignette
+  const vignette = ctx.createRadialGradient(W/2, H/2, Math.min(W, H) * 0.3, W/2, H/2, Math.max(W, H) * 0.7);
+  vignette.addColorStop(0, 'rgba(10, 10, 15, 0)');
+  vignette.addColorStop(1, 'rgba(10, 10, 15, 0.4)');
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, W, H);
+}
+
+function animate() {
+  // Multiple walker updates per frame for faster growth
+  for (let i = 0; i < 5; i++) {
+    updateWalkers();
+  }
   
-  // Segment count indicator
-  ctx.fillStyle = 'rgba(255, 50, 150, 0.5)';
-  ctx.font = '12px monospace';
-  ctx.fillText(`${segments}-fold symmetry`, 20, H - 20);
+  // Maintain walker population
+  while (walkers.length < 3000) {
+    spawnWalker();
+  }
   
+  render();
   requestAnimationFrame(animate);
 }
 
-animate(0);
+// Event listeners
+window.addEventListener('resize', resize);
+
+canvas.addEventListener('mousemove', (e) => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+});
+
+canvas.addEventListener('mouseleave', () => {
+  mouse.x = -1000;
+  mouse.y = -1000;
+});
+
+canvas.addEventListener('click', (e) => {
+  initAudio();
+  seedCrystal(e.clientX, e.clientY);
+});
+
+canvas.addEventListener('touchstart', (e) => {
+  initAudio();
+  const touch = e.touches[0];
+  seedCrystal(touch.clientX, touch.clientY);
+});
+
+canvas.addEventListener('touchmove', (e) => {
+  const touch = e.touches[0];
+  mouse.x = touch.clientX;
+  mouse.y = touch.clientY;
+});
+
+// Init
+resize();
+animate();
 </script>
 </body>
 </html>
